@@ -198,7 +198,8 @@ def probe(cfg) -> int:
     try:
         import niba.agent.loop, niba.agent.model, niba.agent.telegram, niba.agent.memory  # noqa: F401
         from niba.agent import tools as _tools
-        missing = [n for n in ("shell_run", "sensors_battery", "device_list") if n not in _tools.REGISTRY]
+        missing = [n for n in ("shell_run", "sensors_battery", "device_list", "web_search")
+                   if n not in _tools.REGISTRY]
         if missing:
             print(f"probe failed: tools not registered: {missing}")
             return 1

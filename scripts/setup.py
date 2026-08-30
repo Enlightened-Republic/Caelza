@@ -71,7 +71,8 @@ def grant_perms():
     )
 
 
-def write_config(telegram_token, owner_chat_id, openrouter_key, niba_home=None):
+def write_config(telegram_token, owner_chat_id, openrouter_key, firecrawl_key="",
+                 niba_home=None):
     """Write `<niba_home>/config.toml` in the exact shape `niba.agent.config` loads."""
     home = _home(niba_home)
     home.mkdir(parents=True, exist_ok=True)
@@ -83,6 +84,8 @@ def write_config(telegram_token, owner_chat_id, openrouter_key, niba_home=None):
         f"owner_chat_id = {int(owner_chat_id)}\n"
         "[openrouter]\n"
         f"api_key = '{openrouter_key}'\n"
+        "[firecrawl]\n"
+        f"api_key = '{firecrawl_key}'\n"
         "[minimax]\n"
         'mmx_config_path = "~/.mmx/config.json"\n'
         "[limits]\n"
@@ -184,11 +187,13 @@ def capture_owner_chat_id(telegram_token, *, attempts=150, delay=2.0):
 
 
 def configure_niba(niba_home=None):
-    """[prompt] Collect the Telegram/OpenRouter secrets and write config.toml."""
+    """[prompt] Collect the secrets and write config.toml."""
     telegram_token = input("Telegram bot token: ").strip()
     openrouter_key = input("OpenRouter API key (blank to skip): ").strip()
+    firecrawl_key = input("Firecrawl API key (fc-…, blank to skip web tools): ").strip()
     owner_chat_id = capture_owner_chat_id(telegram_token)
-    write_config(telegram_token, owner_chat_id, openrouter_key, niba_home=niba_home)
+    write_config(telegram_token, owner_chat_id, openrouter_key, firecrawl_key,
+                 niba_home=niba_home)
 
 
 def battery_unrestrict():

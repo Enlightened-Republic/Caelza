@@ -11,10 +11,10 @@ from niba.agent.model import Model
 from niba.agent.redact import Redactor
 from niba.agent.session import Session
 from niba.agent.telegram import Telegram, api_client
-from niba.agent.tools import device, selfmod, sensors, shell
+from niba.agent.tools import device, selfmod, sensors, shell, web
 
 
-def _register_tools(repo_root, niba_home):  # pragma: no cover
+def _register_tools(repo_root, niba_home, firecrawl_api_key=""):  # pragma: no cover
     tools.reset()
     selfmod.configure(repo_root, niba_home)
     selfmod.register()
@@ -23,6 +23,8 @@ def _register_tools(repo_root, niba_home):  # pragma: no cover
     shell.register()
     device.configure(niba_home)
     device.register()
+    web.configure(niba_home, firecrawl_api_key)
+    web.register()
 
 
 def _install_sigterm_handler():  # pragma: no cover
@@ -40,10 +42,10 @@ def main(argv=None):  # pragma: no cover
     cfg = _config.load_config()
 
     if "--probe" in argv:
-        _register_tools(cfg.repo_root, cfg.niba_home)
+        _register_tools(cfg.repo_root, cfg.niba_home, cfg.firecrawl_api_key)
         raise SystemExit(loop.probe(cfg))
 
-    _register_tools(cfg.repo_root, cfg.niba_home)
+    _register_tools(cfg.repo_root, cfg.niba_home, cfg.firecrawl_api_key)
     # One shared client, based at Telegram's API root because Telegram calls use
     # relative paths. Model's absolute api.minimax.io URLs override base_url.
     client = api_client()

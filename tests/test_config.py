@@ -65,3 +65,20 @@ def test_load_mmx_token_nested_oauth(tmp_path):
     assert reloaded["oauth"]["access_token"] == "oat-new"
     assert reloaded["oauth"]["expires_at"] == "2026-09-01T01:05:07Z"  # untouched
     assert reloaded["region"] == "global"
+
+
+def test_firecrawl_key_loads_and_is_a_secret(tmp_path):
+    from niba.agent import config as c
+    (tmp_path / "mmx.json").write_text('{"oauth":{"access_token":"A","refresh_token":"R"}}')
+    (tmp_path / "config.toml").write_text(
+        "[telegram]\nbot_token='T'\nowner_chat_id=1\n"
+        "[firecrawl]\napi_key='fc-abc123'\n")
+    cfg = c.load_config(tmp_path)
+    assert cfg.firecrawl_api_key == "fc-abc123"
+    assert "fc-abc123" in c.secret_values(cfg, None)
+
+
+def test_firecrawl_key_defaults_empty(tmp_path):
+    from niba.agent import config as c
+    (tmp_path / "config.toml").write_text("[telegram]\nbot_token='T'\nowner_chat_id=1\n")
+    assert c.load_config(tmp_path).firecrawl_api_key == ""

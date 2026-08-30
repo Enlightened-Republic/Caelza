@@ -164,9 +164,10 @@ def test_probe_redacts_even_when_the_mmx_token_file_is_missing(tmp_path, monkeyp
 
 def test_all_v1_and_plan2_a_tools_register():
     from niba.agent import tools
-    from niba.agent.tools import selfmod, shell, sensors, memtools
+    from niba.agent.tools import selfmod, shell, sensors, memtools, web
     tools.reset()
-    selfmod.register(); shell.register(); sensors.register(); memtools.configure(object())
-    memtools.register()
+    selfmod.register(); shell.register(); sensors.register(); web.register()
+    memtools.configure(object()); memtools.register()
     names = set(tools.REGISTRY)
-    assert {"self_read_file", "shell_run", "sensors_camera_photo", "memory_recall"} <= names
+    assert {"self_read_file", "shell_run", "sensors_camera_photo",
+            "memory_recall", "web_search"} <= names

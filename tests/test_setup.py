@@ -32,6 +32,24 @@ def test_write_config_is_valid_toml_the_agent_can_load(tmp_path):
     assert data["limits"]["monthly_token_budget"] == 1_600_000_000
 
 
+def test_write_config_includes_firecrawl(tmp_path):
+    import tomllib
+
+    setup.write_config("TG", 42, "OR", "fc-xyz", niba_home=tmp_path)
+    text = (tmp_path / "config.toml").read_text()
+    assert "[firecrawl]" in text and "api_key = 'fc-xyz'" in text
+    # still valid TOML the agent can load
+    assert tomllib.loads(text)["firecrawl"]["api_key"] == "fc-xyz"
+
+
+def test_write_config_firecrawl_optional(tmp_path):
+    import tomllib
+
+    setup.write_config("TG", 42, "OR", niba_home=tmp_path)  # no firecrawl arg
+    d = tomllib.loads((tmp_path / "config.toml").read_text())
+    assert d.get("firecrawl", {}).get("api_key", "") == ""
+
+
 def test_dry_run_lists_steps():
     out = subprocess.run([sys.executable, "scripts/setup.py", "--dry-run"],
                          capture_output=True, text=True)

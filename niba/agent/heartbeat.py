@@ -16,7 +16,17 @@ def beat(niba_home: Path) -> None:
     # Atomic: a reader must never catch the file mid-truncate and parse "".
     tmp = run / "heartbeat.tmp"
     tmp.write_text(str(time.time()))
-    os.replace(tmp, run / "heartbeat")
+    dst = run / "heartbeat"
+    # POSIX os.replace is atomic and never blocks. On Windows it raises
+    # PermissionError while a reader holds the target open (a transient
+    # sharing violation) — retry briefly rather than skip a beat.
+    for _ in range(10):
+        try:
+            os.replace(tmp, dst)
+            return
+        except PermissionError:
+            time.sleep(0.01)
+    os.replace(tmp, dst)  # last attempt — let it raise if it truly can't
 
 
 def start_daemon(niba_home: Path, interval: float = DEFAULT_INTERVAL,
