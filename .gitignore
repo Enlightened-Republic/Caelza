@@ -1,0 +1,13 @@
+__pycache__/
+*.pyc
+.venv/
+venv/
+/config.toml
+.niba/
+*.log
+niba.egg-info/
+*.egg-info/
+
+# The owner's real system prompt — copy prompt.example.md to prompt.md and
+# customize. The runtime prefers prompt.md when present.
+/niba/agent/prompt.md
