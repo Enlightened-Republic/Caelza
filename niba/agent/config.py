@@ -25,6 +25,8 @@ class Config:
     model_max_attempts: int = 3
     model_retry_base_seconds: float = 1.0
     firecrawl_api_key: str = ""
+    tavily_api_key: str = ""
+    searchapi_api_key: str = ""
 
 
 @dataclass
@@ -62,6 +64,8 @@ def load_config(niba_home: Path | None = None) -> Config:
         model_max_attempts=int(model.get("max_attempts", 3)),
         model_retry_base_seconds=float(model.get("retry_base_seconds", 1.0)),
         firecrawl_api_key=data.get("firecrawl", {}).get("api_key", ""),
+        tavily_api_key=data.get("tavily", {}).get("api_key", ""),
+        searchapi_api_key=data.get("searchapi", {}).get("api_key", ""),
     )
 
 
@@ -93,7 +97,8 @@ def save_mmx_token(path: Path, token: MmxToken) -> None:
 
 
 def secret_values(cfg: Config, token: MmxToken | None) -> list[str]:
-    vals = [cfg.telegram_token, cfg.openrouter_api_key, cfg.firecrawl_api_key]
+    vals = [cfg.telegram_token, cfg.openrouter_api_key, cfg.firecrawl_api_key,
+            cfg.tavily_api_key, cfg.searchapi_api_key]
     if token:
         vals += [token.access_token, token.refresh_token]
     return [v for v in vals if v]

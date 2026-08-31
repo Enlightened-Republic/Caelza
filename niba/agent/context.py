@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import json
+from datetime import datetime
 from pathlib import Path
 
 
@@ -12,7 +13,9 @@ def user_text(user_content):
 
 def build_messages(*, prompt_path: Path, session, memory, user_content,
                    history_turns: int = 20, max_chars: int = 400_000):
-    system = {"role": "system", "content": Path(prompt_path).read_text()}
+    now = datetime.now().astimezone().isoformat(timespec="seconds")
+    system = {"role": "system",
+              "content": Path(prompt_path).read_text() + f"\n\nCurrent time: {now}"}
     history = session.recent(history_turns)
     hits = memory.recall(user_text(user_content))
     mem_block = None

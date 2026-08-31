@@ -58,21 +58,38 @@ def mcp_install():
 
 # --- side-effecting steps ------------------------------------------------
 
-def grant_perms():
-    """Set up shared storage and tell the owner which app perms termux-api needs."""
+def grant_perms(niba_home=None):
+    """Set up shared storage and grant runtime perms to Termux:API via adb if available."""
     sh("termux-setup-storage")
-    print(
-        "\nGrant these to Termux:API in Android Settings -> Apps -> Termux:API "
-        "-> Permissions:\n"
-        "  - Camera\n"
-        "  - Microphone\n"
-        "  - Location\n"
-        "  - Storage\n"
-    )
+    port = _home(niba_home) / "run" / "adb-self-port"
+    p = port.read_text().strip() if port.exists() else ""
+    if p.isdigit():
+        results = []
+        for perm in ("CAMERA", "RECORD_AUDIO", "ACCESS_FINE_LOCATION",
+                     "ACCESS_COARSE_LOCATION"):
+            r = sh(f"adb -s 127.0.0.1:{p} shell pm grant com.termux.api "
+                   f"android.permission.{perm}", capture_output=True, text=True)
+            results.append((perm, getattr(r, "returncode", 0)))
+        failed = [perm for perm, rc in results if rc != 0]
+        if failed:
+            print(f"WARNING: pm grant failed for {failed} — self-ADB may not be connected; "
+                  f"grant them manually in Android Settings -> Apps -> Termux:API")
+        else:
+            print("granted Termux:API runtime permissions via adb")
+    else:
+        print(
+            "\nGrant these to Termux:API in Android Settings -> Apps -> Termux:API "
+            "-> Permissions:\n"
+            "  - Camera\n"
+            "  - Microphone\n"
+            "  - Location\n"
+            "  - Storage\n"
+            "(self-ADB not up yet, so this can't be automated).\n"
+        )
 
 
 def write_config(telegram_token, owner_chat_id, openrouter_key, firecrawl_key="",
-                 niba_home=None):
+                 tavily_key="", searchapi_key="", niba_home=None):
     """Write `<niba_home>/config.toml` in the exact shape `niba.agent.config` loads."""
     home = _home(niba_home)
     home.mkdir(parents=True, exist_ok=True)
@@ -86,6 +103,10 @@ def write_config(telegram_token, owner_chat_id, openrouter_key, firecrawl_key=""
         f"api_key = '{openrouter_key}'\n"
         "[firecrawl]\n"
         f"api_key = '{firecrawl_key}'\n"
+        "[tavily]\n"
+        f"api_key = '{tavily_key}'\n"
+        "[searchapi]\n"
+        f"api_key = '{searchapi_key}'\n"
         "[minimax]\n"
         'mmx_config_path = "~/.mmx/config.json"\n'
         "[limits]\n"
@@ -191,9 +212,11 @@ def configure_niba(niba_home=None):
     telegram_token = input("Telegram bot token: ").strip()
     openrouter_key = input("OpenRouter API key (blank to skip): ").strip()
     firecrawl_key = input("Firecrawl API key (fc-…, blank to skip web tools): ").strip()
+    tavily_key = input("Tavily API key (tvly-…, blank to skip): ").strip()
+    searchapi_key = input("SearchAPI.io key (blank to skip): ").strip()
     owner_chat_id = capture_owner_chat_id(telegram_token)
     write_config(telegram_token, owner_chat_id, openrouter_key, firecrawl_key,
-                 niba_home=niba_home)
+                 tavily_key, searchapi_key, niba_home=niba_home)
 
 
 def battery_unrestrict():
@@ -236,10 +259,10 @@ STEPS = [
     ("pkg_install", "cmds", pkg_install),
     ("sharpwave_install", "cmds", sharpwave_install),
     ("mcp_install", "cmds", mcp_install),
-    ("grant_perms", "auto", grant_perms),
     ("battery_unrestrict", "prompt", battery_unrestrict),
     ("mmx_login", "prompt", mmx_login),
     ("pair_self_adb", "prompt", pair_self_adb),
+    ("grant_perms", "auto", grant_perms),
     ("configure_niba", "prompt", configure_niba),
     ("install_boot_script", "auto", install_boot_script),
     ("verify", "prompt", verify),

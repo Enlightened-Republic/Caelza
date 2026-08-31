@@ -3,6 +3,10 @@ name = "airframe-lite"
 version = "0.1.0"
 description = "A supervised, self-modifying autonomous agent that lives on a device as its body."
 requires-python = ">=3.11"
+# `ddgs` (the DuckDuckGo/metasearch fallback for web_search) is deliberately NOT
+# a dependency — it needs lxml + primp, which don't build cleanly on Termux.
+# web.py degrades gracefully when it's absent (the ddg provider reports
+# "unavailable"). To enable it on a device: `pkg install python-lxml && pip install ddgs`.
 dependencies = ["httpx>=0.27", "mcp>=1.0,<2"]
 
 [project.optional-dependencies]

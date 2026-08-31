@@ -14,7 +14,8 @@ from niba.agent.telegram import Telegram, api_client
 from niba.agent.tools import device, selfmod, sensors, shell, web
 
 
-def _register_tools(repo_root, niba_home, firecrawl_api_key=""):  # pragma: no cover
+def _register_tools(repo_root, niba_home, firecrawl_api_key="",
+                    tavily_api_key="", searchapi_api_key=""):  # pragma: no cover
     tools.reset()
     selfmod.configure(repo_root, niba_home)
     selfmod.register()
@@ -23,7 +24,7 @@ def _register_tools(repo_root, niba_home, firecrawl_api_key=""):  # pragma: no c
     shell.register()
     device.configure(niba_home)
     device.register()
-    web.configure(niba_home, firecrawl_api_key)
+    web.configure(niba_home, firecrawl_api_key, tavily_api_key, searchapi_api_key)
     web.register()
 
 
@@ -42,10 +43,12 @@ def main(argv=None):  # pragma: no cover
     cfg = _config.load_config()
 
     if "--probe" in argv:
-        _register_tools(cfg.repo_root, cfg.niba_home, cfg.firecrawl_api_key)
+        _register_tools(cfg.repo_root, cfg.niba_home, cfg.firecrawl_api_key,
+                        cfg.tavily_api_key, cfg.searchapi_api_key)
         raise SystemExit(loop.probe(cfg))
 
-    _register_tools(cfg.repo_root, cfg.niba_home, cfg.firecrawl_api_key)
+    _register_tools(cfg.repo_root, cfg.niba_home, cfg.firecrawl_api_key,
+                    cfg.tavily_api_key, cfg.searchapi_api_key)
     # One shared client, based at Telegram's API root because Telegram calls use
     # relative paths. Model's absolute api.minimax.io URLs override base_url.
     client = api_client()

@@ -3,6 +3,8 @@ from __future__ import annotations
 import time
 from pathlib import Path
 
+import httpx
+
 from niba.agent import proc
 from niba.agent import tools
 from niba.agent.tools.media import emit_image
@@ -63,6 +65,37 @@ def _ts() -> str:
     return time.strftime("%Y%m%d-%H%M%S") + f"-{int(time.time() * 1000) % 1000:03d}"
 
 
+def _ipgeo() -> dict:
+    """Approximate location from the public IP. Keyless. {} on failure."""
+    for url, keymap in (
+        ("https://ipwho.is/", {"city": "city", "region": "region", "country": "country",
+                               "latitude": "latitude", "longitude": "longitude"}),
+        ("https://ipapi.co/json/", {"city": "city", "region": "region", "country": "country_name",
+                                    "latitude": "latitude", "longitude": "longitude"}),
+    ):
+        try:
+            r = httpx.request("GET", url, timeout=8)
+            if r.status_code >= 400:
+                continue
+            d = r.json()
+            if not isinstance(d, dict) or d.get("success") is False:
+                continue
+            # ipapi.co signals its rate limit as {"error": true, "reason": "RateLimited"}
+            if d.get("error") or d.get("reason") == "RateLimited":
+                continue
+            out = {k: d.get(src) for k, src in keymap.items() if d.get(src) is not None}
+            conn = d.get("connection") or {}
+            if conn.get("isp"):
+                out["isp"] = conn["isp"]
+            elif d.get("org"):
+                out["isp"] = d["org"]
+            if out.get("city") or out.get("latitude"):
+                return out
+        except Exception:  # noqa: BLE001
+            continue
+    return {}
+
+
 def register() -> None:
     @tools.tool(
         "sensors_camera_photo",
@@ -103,14 +136,28 @@ def register() -> None:
 
     @tools.tool(
         "sensors_location",
-        "Get the current location as JSON (accuracy: 'coarse' or 'fine').",
+        "Where the phone is. mode='quick' (default): wifi network + approximate "
+        "city from the public IP, fast and reliable. mode='gps'/'network': real "
+        "coordinates from termux-location (slow, can hang indoors).",
         {"type": "object",
-         "properties": {"accuracy": {"type": "string", "enum": ["coarse", "fine"],
-                                     "default": "coarse"}}},
+         "properties": {"mode": {"type": "string", "enum": ["quick", "gps", "network"],
+                                 "default": "quick"},
+                        "accuracy": {"type": "string", "enum": ["coarse", "fine"]}},
+        },
     )
-    def sensors_location(accuracy: str = "coarse"):
-        provider = "network" if accuracy == "coarse" else "gps"
-        return _run(["termux-location", "-p", provider], timeout=60)
+    def sensors_location(mode="quick", accuracy=None):
+        if accuracy and mode == "quick":
+            mode = "network" if accuracy == "coarse" else "gps"
+        if mode in ("gps", "network"):
+            return _run(["termux-location", "-p", mode], timeout=60)
+        import json as _json
+        wifi_raw = _run(["termux-wifi-connectioninfo"], timeout=15)
+        try:
+            wifi = _json.loads(wifi_raw)
+        except (ValueError, TypeError):
+            wifi = {"raw": wifi_raw[:300]}
+        return _json.dumps({"wifi": wifi, "approx": _ipgeo(),
+                            "note": "approx is city-level from the IP; call with mode='gps' for coordinates"})
 
     @tools.tool(
         "sensors_notifications",

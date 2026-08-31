@@ -82,3 +82,14 @@ def test_firecrawl_key_defaults_empty(tmp_path):
     from niba.agent import config as c
     (tmp_path / "config.toml").write_text("[telegram]\nbot_token='T'\nowner_chat_id=1\n")
     assert c.load_config(tmp_path).firecrawl_api_key == ""
+
+
+def test_tavily_and_searchapi_keys_load_and_redact(tmp_path):
+    from niba.agent import config as c
+    (tmp_path / "config.toml").write_text(
+        "[telegram]\nbot_token='T'\nowner_chat_id=1\n"
+        "[tavily]\napi_key='tvly-abc'\n[searchapi]\napi_key='sa-abc'\n")
+    cfg = c.load_config(tmp_path)
+    assert cfg.tavily_api_key == "tvly-abc" and cfg.searchapi_api_key == "sa-abc"
+    secs = c.secret_values(cfg, None)
+    assert "tvly-abc" in secs and "sa-abc" in secs

@@ -14,7 +14,8 @@ def test_build_messages_shape(tmp_path):
     msgs = build_messages(prompt_path=p, session=s,
                           memory=FakeMem([{"text": "owner likes tea"}]),
                           user_content="hello")
-    assert msgs[0] == {"role": "system", "content": "You are Niba."}
+    assert msgs[0]["role"] == "system"
+    assert "You are Niba." in msgs[0]["content"]
     assert {"role": "user", "content": "earlier"} in msgs
     mem = [m for m in msgs if isinstance(m.get("content"), str)
            and "owner likes tea" in m["content"]]
@@ -33,3 +34,17 @@ def test_no_memory_block_when_empty(tmp_path):
 def test_user_text_from_parts():
     parts = [{"type": "text", "text": "what is this"}, {"type": "image_url", "image_url": {"url": "x"}}]
     assert user_text(parts) == "what is this"
+
+
+def test_system_message_carries_the_current_time(tmp_path):
+    p = tmp_path / "p.md"; p.write_text("You are the agent.")
+    s = Session(tmp_path / "s.db")
+    class M:
+        def recall(self, q, k=8): return []
+    msgs = build_messages(prompt_path=p, session=s, memory=M(), user_content="hi")
+    sysmsg = msgs[0]["content"]
+    assert "You are the agent." in sysmsg
+    assert "Current time:" in sysmsg
+    # a 4-digit year appears
+    import re
+    assert re.search(r"20\d\d-\d\d-\d\d", sysmsg)

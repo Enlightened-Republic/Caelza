@@ -50,6 +50,13 @@ def test_write_config_firecrawl_optional(tmp_path):
     assert d.get("firecrawl", {}).get("api_key", "") == ""
 
 
+def test_write_config_includes_tavily_and_searchapi(tmp_path):
+    import tomllib
+    setup.write_config("TG", 42, "OR", "fc", "tv", "sa", niba_home=tmp_path)
+    d = tomllib.loads((tmp_path / "config.toml").read_text())
+    assert d["tavily"]["api_key"] == "tv" and d["searchapi"]["api_key"] == "sa"
+
+
 def test_dry_run_lists_steps():
     out = subprocess.run([sys.executable, "scripts/setup.py", "--dry-run"],
                          capture_output=True, text=True)
@@ -74,6 +81,45 @@ def test_pair_self_adb_writes_the_self_port_file(tmp_path, monkeypatch):
 
     assert (tmp_path / "run" / "adb-self-port").read_text().strip() == "42585"
     assert any("adb pair 127.0.0.1:37000 123456" in c for c in ran)
+
+
+def test_grant_perms_reports_failures(tmp_path, monkeypatch, capsys):
+    """I3: every `pm grant` failing must not print success."""
+    port = tmp_path / "run" / "adb-self-port"
+    port.parent.mkdir(parents=True)
+    port.write_text("42585")
+
+    class FakeCP:
+        returncode = 1
+
+    monkeypatch.setattr(setup, "sh", lambda cmd, **k: FakeCP())
+    setup.grant_perms(niba_home=tmp_path)
+    out = capsys.readouterr().out
+    assert "WARNING" in out
+    assert "CAMERA" in out and "ACCESS_FINE_LOCATION" in out
+
+
+def test_grant_perms_manual_when_no_self_adb(tmp_path, monkeypatch, capsys):
+    """No port file -> print the by-hand instructions, don't touch adb."""
+    ran = []
+    monkeypatch.setattr(setup, "sh", lambda cmd, **k: ran.append(cmd))
+    setup.grant_perms(niba_home=tmp_path)
+    out = capsys.readouterr().out
+    assert "Android Settings" in out and "Camera" in out
+    assert not any("pm grant" in c for c in ran)
+
+
+def test_grant_perms_manual_when_port_is_not_a_number(tmp_path, monkeypatch, capsys):
+    """M1: a garbage port file falls back to the manual branch, not a shell call."""
+    port = tmp_path / "run" / "adb-self-port"
+    port.parent.mkdir(parents=True)
+    port.write_text("not-a-port")
+    ran = []
+    monkeypatch.setattr(setup, "sh", lambda cmd, **k: ran.append(cmd))
+    setup.grant_perms(niba_home=tmp_path)
+    out = capsys.readouterr().out
+    assert "Android Settings" in out
+    assert not any("pm grant" in c for c in ran)
 
 
 def test_install_boot_script_writes_an_executable_boot_file(tmp_path, monkeypatch):
