@@ -1,6 +1,26 @@
 from __future__ import annotations
 
+import os
 from pathlib import Path
+
+#: SharpWave 0.4.0 runs in single-agent mode when this id is pinned in the
+#: subprocess env (`SHARPWAVE_AGENT_ID`); the `agent` tool argument is then
+#: optional. This is Niba's brain.
+NIBA_AGENT_ID = "niba"
+
+
+def _sharpwave_env(db_dir, agent_id):
+    """Environment for the SharpWave 0.4.0 stdio subprocess.
+
+    0.4.0 replaced the ignored `SHARPWAVE_DB` with `SHARPWAVE_DB_PATH` (an
+    exact file) and added agent scoping: pinning `SHARPWAVE_AGENT_ID` keeps
+    the server in single-agent mode so brain_* calls need no `agent` arg.
+    """
+    return {
+        **os.environ,
+        "SHARPWAVE_AGENT_ID": agent_id,
+        "SHARPWAVE_DB_PATH": str(Path(db_dir) / "brain.db"),
+    }
 
 
 class Memory:
@@ -35,6 +55,19 @@ class Memory:
         except Exception:
             return []
 
+    def reset(self, confirm):
+        """Wipe long-term memory. Returns SharpWave's raw reply — a string
+        starting with ``Brain reset for`` on success (with the backup path and
+        cleared counts), or ``Error: …`` on a refusal / failed backup (nothing
+        wiped). Propagates the exception if the backend is unreachable — again,
+        nothing wiped. The caller decides how to report each case."""
+        text = self._call("brain_reset", {"confirm": confirm}).get("raw", "")
+        if text.startswith("Brain reset for"):
+            # a real wipe happened — drop queued pre-wipe writes so
+            # flush_pending() doesn't replay them into the empty brain.
+            self._pending.clear()
+        return text
+
     def link(self, a, b, rel):
         self._call("brain_link", {"from": a, "to": b, "type": rel})
 
@@ -42,7 +75,7 @@ class Memory:
         self._call("brain_supersede", {"id": node_id, "text": text})
 
 
-def spawn_sharpwave_session(db_path: Path):  # pragma: no cover
+def spawn_sharpwave_session(db_path: Path, agent_id: str = NIBA_AGENT_ID):  # pragma: no cover
     """Start the `sharpwave` MCP stdio server in a background thread.
 
     Returns (call_tool, close). Implemented with the `mcp` package's stdio
@@ -54,9 +87,10 @@ def spawn_sharpwave_session(db_path: Path):  # pragma: no cover
     closure translates that to the real SharpWave MCP API and parses its
     plain-text responses back into those dicts.
 
-    Verified against **sharpwave 0.2.1** (tools listed
-    live) on 2026-08-29. Re-confirm against the SharpWave repo / a newer
-    release before trusting these mappings:
+    Verified against **sharpwave 0.4.0** (packages/core tool surface) on
+    2026-08-31. Single-agent mode: `SHARPWAVE_AGENT_ID` pins the server to one
+    agent, `SHARPWAVE_DB_PATH` sets the exact db file. The tool I/O the parsers
+    below depend on is unchanged from 0.2.1:
       - brain_write requires {type,label,content}; replies
         `Written: node <uuid> (<type>) "<label>"`. No `links` arg (auto-links).
       - brain_query takes {query,type?,limit?}; replies a plain-text listing,
@@ -67,6 +101,7 @@ def spawn_sharpwave_session(db_path: Path):  # pragma: no cover
         blocks separated by a blank line; `No matching nodes found.` when empty.
       - brain_link takes {from_id,to_id,edge_type} (enum; see _VALID_EDGE_TYPES).
       - brain_supersede takes {old_node_id,new_content,new_label?}.
+      - brain_reset takes {confirm} — must equal the agent id; backs up first.
     """
     import asyncio
     import atexit
@@ -128,7 +163,7 @@ def spawn_sharpwave_session(db_path: Path):  # pragma: no cover
             # sharpwave); `npx -y` breaks on Termux (no /usr/bin/env for the shebang).
             params = StdioServerParameters(
                 command="sharpwave", args=[],
-                env={**os.environ, "SHARPWAVE_DB": str(db_path)},
+                env=_sharpwave_env(db_path, agent_id),
             )
             async with stdio_client(params) as (r, w):
                 async with ClientSession(r, w) as session:

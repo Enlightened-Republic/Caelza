@@ -171,3 +171,20 @@ def test_all_v1_and_plan2_a_tools_register():
     names = set(tools.REGISTRY)
     assert {"self_read_file", "shell_run", "sensors_camera_photo",
             "memory_recall", "web_search"} <= names
+
+
+def test_memory_reset_absent_from_probe_then_registers_and_dispatches(tmp_path):
+    """memory_reset needs the live Memory built in main(), so _register_tools
+    (the probe path — no backend) must never register it. Once wired with a
+    real Memory it registers AND dispatches."""
+    from niba.agent import main as main_mod, tools
+    from niba.agent.tools import memreset
+    from niba.agent.memory import Memory
+    tools.reset()
+    main_mod._register_tools(tmp_path, tmp_path)
+    assert "memory_reset" not in tools.REGISTRY
+
+    memreset.configure(Memory(lambda n, a: {"raw": 'Brain reset for "niba".\nBackup: /x'}))
+    memreset.register()
+    assert "memory_reset" in tools.REGISTRY
+    assert tools.dispatch("memory_reset", {"confirm": "niba"}).startswith("Brain reset")

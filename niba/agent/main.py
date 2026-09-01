@@ -11,7 +11,7 @@ from niba.agent.model import Model
 from niba.agent.redact import Redactor
 from niba.agent.session import Session
 from niba.agent.telegram import Telegram, api_client
-from niba.agent.tools import device, selfmod, sensors, shell, web
+from niba.agent.tools import device, memreset, selfmod, sensors, shell, web
 
 
 def _register_tools(repo_root, niba_home, firecrawl_api_key="",
@@ -75,6 +75,8 @@ def main(argv=None):  # pragma: no cover
     from niba.agent.tools import memtools
     memtools.configure(memory)
     memtools.register()
+    memreset.configure(memory)
+    memreset.register()
     telegram = Telegram(cfg.telegram_token, client)
     try:
         loop.run(cfg=cfg, telegram=telegram, model=model, memory=memory,
