@@ -3,14 +3,15 @@
 
     python3 brand/make_assets.py                 # → brand/out/ (+ brand/hero.png for the README)
     python3 brand/make_assets.py --runtime DIR   # write into a staged runtime tree
+    python3 brand/make_assets.py --art-icons     # opt in to the illustration for app icons ≥ 128 px
 
-The geometric mark (a lightning bolt with a chamfered C, neon cyan→violet→purple
-strokes, constellation stars) is drawn from brand/tokens.json so every build is
-reproducible without an SVG rasteriser; brand/logo.svg carries the same
-geometry. The two source illustrations under brand/art/ (the constellation
-figure app icon and the bolt hero) are used verbatim where they are big enough
-to read: app icons ≥ 128 px and hero surfaces. Everything smaller gets the
-geometric mark.
+The mark is the constellation Caelum drawn as a lightning bolt: its four main
+stars at the bolt's turning points, the constellation line as the bolt's spine,
+a chamfered C outlined in neon in the centre, all in the cyan→violet→purple
+gradient. It is drawn from brand/tokens.json so every build is reproducible
+without an SVG rasteriser; brand/logo.svg carries the same geometry. The
+illustrations under brand/art/ are reference material; the bolt hero is copied
+into the runtime docs, the figure icon is used only with --art-icons.
 """
 from __future__ import annotations
 
@@ -116,51 +117,79 @@ def _star(cx: float, cy: float, r: float, inner: float = 0.33) -> list[tuple[flo
 # the mark
 # ---------------------------------------------------------------------------
 
+def _closed_stroke_mask(size_px: int, pts: list[tuple[float, float]], width: float) -> Image.Image:
+    """Luminance mask of a closed polyline stroked at `width` with round joints."""
+    m = Image.new("L", (size_px, size_px), 0)
+    md = ImageDraw.Draw(m)
+    md.line(pts + [pts[0]], fill=255, width=max(int(width), 1), joint="curve")
+    for p in pts:
+        md.ellipse([p[0] - width / 2, p[1] - width / 2, p[0] + width / 2, p[1] + width / 2], fill=255)
+    return m
+
+
 def draw_mark(size: int, *, glow: bool = True) -> Image.Image:
-    """Bolt + chamfered C in neon gradient strokes with constellation stars."""
+    """Caelum as a bolt: neon gradient outline, the constellation as its spine,
+    an outlined C in the centre."""
     s = size * SS
     bolt = [(x * s, y * s) for x, y in M["bolt"]]
-    cpts = [(x * s, y * s) for x, y in M["c"]]
-    sw, cw = M["stroke"] * s, M["c_stroke"] * s
+    cpoly = [(x * s, y * s) for x, y in M["c_polygon"]]
+    sw = M["stroke"] * s
+    cw, cgap = M["c_outline"] * s, M["c_inner_gap"] * s
     stops = C["gradient_mark"]
+    direction = M.get("gradient_direction", "vertical")
+    big = glow and size >= 40
+    stars = M["stars"]
 
     im = Image.new("RGBA", (s, s), (0, 0, 0, 0))
     # Translucent dark fill inside the bolt so the stars read on any surface.
     ImageDraw.Draw(im).polygon(bolt, fill=_hex(C["void"], 185))
 
-    def stroke_mask(width_mul: float) -> Image.Image:
-        m = Image.new("L", (s, s), 0)
-        md = ImageDraw.Draw(m)
-        md.line(bolt + [bolt[0]], fill=255, width=int(sw * width_mul), joint="curve")
-        md.line(cpts, fill=255, width=int(cw * width_mul), joint="curve")
-        for p in bolt:
-            md.ellipse([p[0] - sw * width_mul / 2, p[1] - sw * width_mul / 2,
-                        p[0] + sw * width_mul / 2, p[1] + sw * width_mul / 2], fill=255)
-        for p in (cpts[0], cpts[-1]):
-            md.ellipse([p[0] - cw * width_mul / 2, p[1] - cw * width_mul / 2,
-                        p[0] + cw * width_mul / 2, p[1] + cw * width_mul / 2], fill=255)
-        return m
-
-    direction = M.get("gradient_direction", "vertical")
-    if glow and size >= 40:
-        halo = stroke_mask(1.9).filter(ImageFilter.GaussianBlur(s * 0.028))
+    # Bolt outline with glow.
+    if big:
+        halo = _closed_stroke_mask(s, bolt, sw * 1.9).filter(ImageFilter.GaussianBlur(s * 0.028))
         im = Image.alpha_composite(im, _through_mask(halo, stops, direction=direction, alpha=0.6))
-    im = Image.alpha_composite(im, _through_mask(stroke_mask(1.0), stops, direction=direction))
+    im = Image.alpha_composite(im, _through_mask(_closed_stroke_mask(s, bolt, sw), stops, direction=direction))
 
-    # Constellation lines + stars.
+    # Constellation spine: delta → alpha → beta → gamma, under the C.
+    spine = Image.new("RGBA", (s, s), (0, 0, 0, 0))
+    sd = ImageDraw.Draw(spine)
+    for a, b in M["constellation"]:
+        (x0, y0), (x1, y1) = stars[a]["pos"], stars[b]["pos"]
+        sd.line([(x0 * s, y0 * s), (x1 * s, y1 * s)], fill=_hex(C["star"], 150), width=max(int(s * 0.007), 1))
+    if big:
+        spine = Image.alpha_composite(spine.filter(ImageFilter.GaussianBlur(s * 0.006)), spine)
+    im = Image.alpha_composite(im, spine)
+
+    # The C: dark fill, then a neon outline drawn as two parallel lines (a
+    # gradient stroke with its centre line cut back out), with glow.
+    cfill = Image.new("RGBA", (s, s), (0, 0, 0, 0))
+    ImageDraw.Draw(cfill).polygon(cpoly, fill=_hex(C["void"], 215))
+    im = Image.alpha_composite(im, cfill)
+    outline = _closed_stroke_mask(s, cpoly, cw)
+    if big:
+        halo = _closed_stroke_mask(s, cpoly, cw * 2.2).filter(ImageFilter.GaussianBlur(s * 0.022))
+        im = Image.alpha_composite(im, _through_mask(halo, stops, direction=direction, alpha=0.55))
+        inner = _closed_stroke_mask(s, cpoly, cgap)
+        outline = Image.composite(Image.new("L", (s, s), 0), outline, inner)
+    im = Image.alpha_composite(im, _through_mask(outline, stops, direction=direction))
+
+    # Stars: the four of Caelum (glyph size by brightness) plus faint minors.
     layer = Image.new("RGBA", (s, s), (0, 0, 0, 0))
-    ld = ImageDraw.Draw(layer)
-    for (x0, y0), (x1, y1) in M["constellation"]:
-        ld.line([(x0 * s, y0 * s), (x1 * s, y1 * s)], fill=_hex(C["star"], 120), width=max(int(s * 0.006), 1))
-    if glow and size >= 40:
+    if big:
         g = Image.new("RGBA", (s, s), (0, 0, 0, 0))
         gd = ImageDraw.Draw(g)
-        for x, y, r in M["stars"]:
-            gd.polygon(_star(x * s, y * s, r * s * 1.4), fill=_hex(C["primary"], 160))
-        layer = Image.alpha_composite(layer, g.filter(ImageFilter.GaussianBlur(s * 0.012)))
-        ld = ImageDraw.Draw(layer)
-    for x, y, r in M["stars"]:
+        for st in stars.values():
+            (x, y), r = st["pos"], st["r"]
+            gd.polygon(_star(x * s, y * s, r * s * 1.5), fill=_hex(C["primary"], 170))
+        layer = Image.alpha_composite(layer, g.filter(ImageFilter.GaussianBlur(s * 0.014)))
+    ld = ImageDraw.Draw(layer)
+    for st in stars.values():
+        (x, y), r = st["pos"], st["r"]
         ld.polygon(_star(x * s, y * s, r * s), fill=_hex(C["star"]))
+        ld.ellipse([x * s - r * s * 0.18, y * s - r * s * 0.18, x * s + r * s * 0.18, y * s + r * s * 0.18],
+                   fill=_hex(C["primary_light"]))
+    for x, y, r in M.get("minor_stars", []):
+        ld.ellipse([x * s - r * s, y * s - r * s, x * s + r * s, y * s + r * s], fill=_hex(C["star"], 200))
     im = Image.alpha_composite(im, layer)
     return im.resize((size, size), Image.LANCZOS)
 
@@ -293,7 +322,8 @@ def art_icon_square() -> Image.Image | None:
 
 
 def icon(size: int, *, art: Image.Image | None = None) -> Image.Image:
-    """App icon: the illustration when it can be read, else backdrop + neon frame + mark."""
+    """App icon: backdrop + neon frame + the mark. With `art` (opt-in via
+    --art-icons) the illustration is used instead at 128 px and above."""
     if art is not None and size >= 128:
         return art.resize((size, size), Image.LANCZOS)
     s = size * SS
@@ -322,11 +352,11 @@ def save_png(im: Image.Image, path: Path) -> None:
     im.save(path, "PNG", optimize=True)
 
 
-def render_set(out: Path) -> None:
-    art = art_icon_square()
+def render_set(out: Path, *, use_art: bool = False) -> None:
+    art = art_icon_square() if use_art else None
     save_png(draw_mark(1024), out / "caelza-mark-1024.png")
     save_png(draw_mark(512), out / "caelza-mark-512.png")
-    save_png(icon(512), out / "caelza-icon-geometric-512.png")
+    save_png(icon(512), out / "caelza-icon-512.png")
     if art is not None:
         save_png(icon(1024, art=art), out / "caelza-icon-art-1024.png")
     save_png(wordmark(160), out / "caelza-wordmark.png")
@@ -338,10 +368,10 @@ def render_set(out: Path) -> None:
                         sizes=[(16, 16), (32, 32), (48, 48), (64, 64), (128, 128), (256, 256)])
 
 
-def render_runtime(root: Path) -> None:
+def render_runtime(root: Path, *, use_art: bool = False) -> None:
     """Write assets at the paths the (renamed) upstream tree expects."""
     svg = (HERE / "logo.svg").read_text(encoding="utf-8")
-    art = art_icon_square()
+    art = art_icon_square() if use_art else None
     mark256 = draw_mark(256)
     save_png(mark256, root / "web/public/logo.png")
     save_png(mark256, root / "web/dist/logo.png")
@@ -376,12 +406,14 @@ def main() -> None:
     ap = argparse.ArgumentParser(description=__doc__, formatter_class=argparse.RawDescriptionHelpFormatter)
     ap.add_argument("--runtime", type=Path, help="staged runtime tree to write assets into")
     ap.add_argument("--out", type=Path, default=HERE / "out", help="loose asset output dir (default brand/out)")
+    ap.add_argument("--art-icons", action="store_true",
+                    help="use the illustration in brand/art for app icons >= 128 px instead of the geometric mark")
     args = ap.parse_args()
     if args.runtime:
-        render_runtime(args.runtime.resolve())
+        render_runtime(args.runtime.resolve(), use_art=args.art_icons)
         print(f"brand assets written into {args.runtime}")
     else:
-        render_set(args.out)
+        render_set(args.out, use_art=args.art_icons)
         print(f"brand assets written to {args.out} (and brand/hero.png)")
 
 
