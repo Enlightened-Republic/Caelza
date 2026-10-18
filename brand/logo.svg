@@ -15,37 +15,30 @@
   </defs>
 
   <!-- Bolt body: a translucent dark fill so the stars read on any surface. -->
-  <polygon points="60,3 27,55 46,55 37,97 73,42 54,42" fill="#06040f" fill-opacity="0.72"/>
+  <polygon points="60,3 27,64 46,64 37,97 73,36 54,36" fill="#06040f" fill-opacity="0.72"/>
 
   <!-- Bolt outline: glow, then crisp. -->
-  <polygon points="60,3 27,55 46,55 37,97 73,42 54,42" fill="none" stroke="url(#cz)" stroke-width="5.5"
+  <polygon points="60,3 27,64 46,64 37,97 73,36 54,36" fill="none" stroke="url(#cz)" stroke-width="5.5"
            stroke-linejoin="round" opacity="0.55" filter="url(#glow)"/>
-  <polygon points="60,3 27,55 46,55 37,97 73,42 54,42" fill="none" stroke="url(#cz)" stroke-width="3.4"
+  <polygon points="60,3 27,64 46,64 37,97 73,36 54,36" fill="none" stroke="url(#cz)" stroke-width="3.4"
            stroke-linejoin="round"/>
 
   <!-- Caelum's spine: delta → alpha → beta → gamma, the zigzag inside the bolt. -->
-  <polyline points="41,86 34.5,50 65.5,46 53.3,21" fill="none" stroke="#eafcff" stroke-opacity="0.6"
+  <polyline points="41.8,86 33,62.5 68,40 54.8,19" fill="none" stroke="#eafcff" stroke-opacity="0.6"
             stroke-width="0.7" stroke-linejoin="round"/>
-
-  <!-- The C: dark fill, neon outline drawn as two parallel lines, glow. -->
-  <polygon id="c" points="62,34.5 45.5,34.5 40.5,39.5 40.5,60.5 45.5,65.5 60,65.5 60,58.5 48.5,58.5 47.5,57.5 47.5,42.5 48.5,41.5 62,41.5"
-           fill="#06040f" fill-opacity="0.85"/>
-  <use href="#c" fill="none" stroke="url(#cz)" stroke-width="4.4" stroke-linejoin="round" opacity="0.5" filter="url(#glow)"/>
-  <use href="#c" fill="none" stroke="url(#cz)" stroke-width="2.0" stroke-linejoin="round"/>
-  <use href="#c" fill="none" stroke="#06040f" stroke-width="0.7" stroke-linejoin="round"/>
 
   <!-- The four stars of Caelum, glyph size by brightness: alpha, gamma, beta, delta. -->
   <g fill="#22e6ff" opacity="0.7" filter="url(#starglow)">
-    <polygon points="34.5,44.5 36,48.5 40,50 36,51.5 34.5,55.5 33,51.5 29,50 33,48.5"/>
-    <polygon points="53.3,16.5 54.6,19.7 57.8,21 54.6,22.3 53.3,25.5 52,22.3 48.8,21 52,19.7"/>
+    <polygon points="33,56.2 34.5,61 39.3,62.5 34.5,64 33,68.8 31.5,64 26.7,62.5 31.5,61"/>
+    <polygon points="54.8,13.6 56.1,17.7 60.2,19 56.1,20.3 54.8,24.4 53.5,20.3 49.4,19 53.5,17.7"/>
   </g>
   <g fill="#eafcff">
-    <polygon points="34.5,45.8 35.9,48.6 38.7,50 35.9,51.4 34.5,54.2 33.1,51.4 30.3,50 33.1,48.6"/>
-    <polygon points="53.3,17.4 54.5,19.8 56.9,21 54.5,22.2 53.3,24.6 52.1,22.2 49.7,21 52.1,19.8"/>
-    <polygon points="65.5,43.4 66.4,45.1 68.1,46 66.4,46.9 65.5,48.6 64.6,46.9 62.9,46 64.6,45.1"/>
-    <polygon points="41,83.7 41.8,85.2 43.3,86 41.8,86.8 41,88.3 40.2,86.8 38.7,86 40.2,85.2"/>
+    <polygon points="33,58.3 34,61.5 37.2,62.5 34,63.5 33,66.7 32,63.5 28.8,62.5 32,61.5"/>
+    <polygon points="54.8,15.4 55.6,18.2 58.4,19 55.6,19.8 54.8,22.6 54,19.8 51.2,19 54,18.2"/>
+    <polygon points="68,37.4 68.6,39.4 70.6,40 68.6,40.6 68,42.6 67.4,40.6 65.4,40 67.4,39.4"/>
+    <polygon points="41.8,83.7 42.3,85.5 44.1,86 42.3,86.5 41.8,88.3 41.3,86.5 39.5,86 41.3,85.5"/>
     <circle cx="50.5" cy="30" r="1"/>
-    <circle cx="44" cy="74" r="0.9"/>
-    <circle cx="60" cy="33" r="0.8"/>
+    <circle cx="44" cy="76" r="0.9"/>
+    <circle cx="63" cy="50" r="0.8"/>
   </g>
 </svg>

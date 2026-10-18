@@ -6,12 +6,13 @@
     python3 brand/make_assets.py --art-icons     # opt in to the illustration for app icons ≥ 128 px
 
 The mark is the constellation Caelum drawn as a lightning bolt: its four main
-stars at the bolt's turning points, the constellation line as the bolt's spine,
-a chamfered C outlined in neon in the centre, all in the cyan→violet→purple
-gradient. It is drawn from brand/tokens.json so every build is reproducible
-without an SVG rasteriser; brand/logo.svg carries the same geometry. The
-illustrations under brand/art/ are reference material; the bolt hero is copied
-into the runtime docs, the figure icon is used only with --art-icons.
+stars at the bolt's turning points and the constellation line as the bolt's
+spine, in the cyan→violet→purple gradient. A chamfered C in the waist is
+opt-in (--with-c / mark.c.enabled). Everything is drawn from brand/tokens.json
+so every build is reproducible without an SVG rasteriser; brand/logo.svg
+(and logo-with-c.svg) carry the same geometry. The illustrations under
+brand/art/ are reference material; the bolt hero is copied into the runtime
+docs, the figure icon is used only with --art-icons.
 """
 from __future__ import annotations
 
@@ -127,18 +128,26 @@ def _closed_stroke_mask(size_px: int, pts: list[tuple[float, float]], width: flo
     return m
 
 
-def draw_mark(size: int, *, glow: bool = True) -> Image.Image:
+def c_points(scale: float = 1.0) -> list[tuple[float, float]]:
+    """The C polygon with the bolt's lean applied (shear about y = 0.5)."""
+    k = M["c"].get("shear", 0.0)
+    return [((x + k * (0.5 - y)) * scale, y * scale) for x, y in M["c"]["polygon"]]
+
+
+def draw_mark(size: int, *, glow: bool = True, with_c: bool | None = None) -> Image.Image:
     """Caelum as a bolt: neon gradient outline, the constellation as its spine,
-    an outlined C in the centre."""
+    and (by default) an outlined C in the centre."""
     s = size * SS
     bolt = [(x * s, y * s) for x, y in M["bolt"]]
-    cpoly = [(x * s, y * s) for x, y in M["c_polygon"]]
+    cpoly = c_points(s)
     sw = M["stroke"] * s
-    cw, cgap = M["c_outline"] * s, M["c_inner_gap"] * s
+    cw, cgap = M["c"]["outline"] * s, M["c"]["inner_gap"] * s
     stops = C["gradient_mark"]
     direction = M.get("gradient_direction", "vertical")
     big = glow and size >= 40
     stars = M["stars"]
+    if with_c is None:
+        with_c = bool(M["c"].get("enabled", True))
 
     im = Image.new("RGBA", (s, s), (0, 0, 0, 0))
     # Translucent dark fill inside the bolt so the stars read on any surface.
@@ -162,16 +171,17 @@ def draw_mark(size: int, *, glow: bool = True) -> Image.Image:
 
     # The C: dark fill, then a neon outline drawn as two parallel lines (a
     # gradient stroke with its centre line cut back out), with glow.
-    cfill = Image.new("RGBA", (s, s), (0, 0, 0, 0))
-    ImageDraw.Draw(cfill).polygon(cpoly, fill=_hex(C["void"], 215))
-    im = Image.alpha_composite(im, cfill)
-    outline = _closed_stroke_mask(s, cpoly, cw)
-    if big:
-        halo = _closed_stroke_mask(s, cpoly, cw * 2.2).filter(ImageFilter.GaussianBlur(s * 0.022))
-        im = Image.alpha_composite(im, _through_mask(halo, stops, direction=direction, alpha=0.55))
-        inner = _closed_stroke_mask(s, cpoly, cgap)
-        outline = Image.composite(Image.new("L", (s, s), 0), outline, inner)
-    im = Image.alpha_composite(im, _through_mask(outline, stops, direction=direction))
+    if with_c:
+        cfill = Image.new("RGBA", (s, s), (0, 0, 0, 0))
+        ImageDraw.Draw(cfill).polygon(cpoly, fill=_hex(C["void"], 215))
+        im = Image.alpha_composite(im, cfill)
+        outline = _closed_stroke_mask(s, cpoly, cw)
+        if big:
+            halo = _closed_stroke_mask(s, cpoly, cw * 2.2).filter(ImageFilter.GaussianBlur(s * 0.022))
+            im = Image.alpha_composite(im, _through_mask(halo, stops, direction=direction, alpha=0.55))
+            inner = _closed_stroke_mask(s, cpoly, cgap)
+            outline = Image.composite(Image.new("L", (s, s), 0), outline, inner)
+        im = Image.alpha_composite(im, _through_mask(outline, stops, direction=direction))
 
     # Stars: the four of Caelum (glyph size by brightness) plus faint minors.
     layer = Image.new("RGBA", (s, s), (0, 0, 0, 0))
@@ -408,7 +418,14 @@ def main() -> None:
     ap.add_argument("--out", type=Path, default=HERE / "out", help="loose asset output dir (default brand/out)")
     ap.add_argument("--art-icons", action="store_true",
                     help="use the illustration in brand/art for app icons >= 128 px instead of the geometric mark")
+    cgrp = ap.add_mutually_exclusive_group()
+    cgrp.add_argument("--with-c", dest="with_c", action="store_true", default=None,
+                      help="draw the C inside the bolt (overrides tokens.json mark.c.enabled)")
+    cgrp.add_argument("--no-c", dest="with_c", action="store_false",
+                      help="bolt, spine and stars only")
     args = ap.parse_args()
+    if args.with_c is not None:
+        M["c"]["enabled"] = args.with_c
     if args.runtime:
         render_runtime(args.runtime.resolve(), use_art=args.art_icons)
         print(f"brand assets written into {args.runtime}")

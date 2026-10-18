@@ -25,9 +25,8 @@ architecture, the roadmap, what we are borrowing from
 Brand: [`brand/BRAND.md`](brand/BRAND.md). Caelza uses the Enlightened Republic
 Build Lab design system (Inter Tight, JetBrains Mono, the Republic palette)
 with its own identity on top: the mark is the constellation **Caelum** drawn
-as a lightning bolt, its four stars at the bolt's turning points and an
-outlined C in the centre, in neon cyan→purple, with the Orbitron wordmark and
-the cosmic backdrop.
+as a lightning bolt, its four stars at the bolt's turning points, in neon
+cyan→purple, with the Orbitron wordmark and the cosmic backdrop.
 
 ## Runtime
 
