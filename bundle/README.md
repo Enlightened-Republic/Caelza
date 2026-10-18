@@ -11,8 +11,8 @@ the machine-readable pin list; this file is the human version.
 │   │   Runtime    │    │     Mind     │    │        Body        │    │
 │   │              │◀──▶│              │    │                    │    │
 │   │ caelza (Rust)│    │ xanima       │    │ caelza_body (Py)   │    │
-│   │ loop·tools·  │    │ sharpwave-   │◀──▶│ supervisor·sensors·│    │
-│   │ channels·    │    │ core engine  │    │ ADB·self-mod       │    │
+│   │ loop·tools·  │    │ xanima-core  │◀──▶│ supervisor·sensors·│    │
+│   │ channels·    │    │ engine       │    │ ADB·self-mod       │    │
 │   │ gateway·UI   │    │ brain service│    │ (Termux/Android)   │    │
 │   └──────┬───────┘    └──────────────┘    └─────────┬──────────┘    │
 │          │                 MCP / HTTP               │ MCP (stdio)   │
