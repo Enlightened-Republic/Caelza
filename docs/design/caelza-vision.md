@@ -19,7 +19,7 @@ Three layers, three words, and the product name for the whole:
 | Layer | What | Comes from |
 |---|---|---|
 | **Runtime** | agent loop, 20+ model providers, 30+ channels, tools, security policy, SOP engine, cron, gateway, dashboard, WASM plugins, hardware peripherals | rebranded ZeroClaw build (`runtime/`) |
-| **Mind** | autonomic long-term memory: graph + forgetting curve + sleep | xanima (openwave) on sharpwave-core (`mind/`) |
+| **Mind** | autonomic long-term memory: graph + forgetting curve + sleep | xanima (formerly openwave) on xanima-core (`mind/`) |
 | **Body** | the device: termux-api sensors, ADB control of self and paired phones, the immutable supervisor with git-backed self-modification and rollback | Airframe Lite (`caelza_body/`) |
 
 ## 2. Why rebuild on ZeroClaw (decision record)
@@ -59,14 +59,14 @@ requirement for redistribution, not vanity.
  │  security policy · tool receipts · SOP engine · cron · gateway + dashboard   │
  │  tools: shell · browser · http · MCP servers ──────────────┐                 │
  └───────────────┬───────────────────────────────────────────┼─────────────────┘
-                 │ Memory trait (SharpwaveMemory)             │ MCP (stdio or http)
+                 │ Memory trait (XanimaMemory)             │ MCP (stdio or http)
                  ▼                                           ▼
  ┌──────── Caelza Mind ────────┐                 ┌──────── Caelza Body ────────┐
- │ sharpwave-server            │                 │ caelza-body MCP server      │
+ │ xanima-server            │                 │ caelza-body MCP server      │
  │  shared brain + per-agent   │                 │  sensors_* (camera, mic,    │
  │  brains, tokens, sleep      │                 │   location, notifs, tts…)   │
  │ xanima (OpenClaw gateways)  │                 │  device_* (ADB self+remote, │
- │ sharpwave MCP (IDE agents)  │                 │   snapshots, audit log)     │
+ │ xanima MCP (IDE agents)     │                 │   snapshots, audit log)     │
  └─────────────────────────────┘                 │  shell_run                  │
                                                  │ supervisor.py (immutable)   │
                                                  │  probe · promote · rollback │
@@ -76,7 +76,7 @@ requirement for redistribution, not vanity.
 Deployment shapes, all from the same bundle:
 
 1. **Phone-only** (today's Niba): Runtime (`aarch64-linux-android`), Body and
-   the sharpwave engine all in Termux on one phone.
+   the xanima engine all in Termux on one phone.
 2. **Hub + bodies**: Runtime and Mind on a Pi/NUC/VPS; one or more phones run
    only the Body, reached over Tailscale. Fleet management falls out of this.
 3. **Dev box**: everything on a laptop with the dashboard; the phone is a
@@ -98,7 +98,7 @@ Body's own code plus the Runtime binary (§3.3).
 ### 3.2 The Mind
 
 See `mind/README.md`. Short version: tools path now (`sharpwave` MCP), service
-path for shared brains (`sharpwave-server`), then a native `SharpwaveMemory`
+path for shared brains (`xanima-server`), then a native `XanimaMemory`
 backend in the Runtime so recall is automatic per turn.
 
 ### 3.3 The Caelza app (Android + web) and Shizuku
@@ -257,7 +257,7 @@ priority, and where it lands in Caelza:
 | OpenClaw | Caelza equivalent |
 |---|---|
 | **Nodes / device-pair**: phones and laptops pair to the gateway with a code and advertise capabilities (camera, screen, location, canvas, voice) | the Body pairing model. QR/code pairing from the dashboard; a Body advertises its tool set; fleet view |
-| **Memory plugin slot** (one active memory plugin; `memory-core`, `memory-lancedb`, `active-memory`) | the `SharpwaveMemory` backend as the one Mind; same "exactly one memory backend" rule |
+| **Memory plugin slot** (one active memory plugin; `memory-core`, `memory-lancedb`, `active-memory`) | the `XanimaMemory` backend as the one Mind; same "exactly one memory backend" rule |
 | **`doctor --fix`** config migrations | adopt the contract: every config shape change ships a migration; `caelza doctor --fix` |
 | **Code Mode (QuickJS)**: the model writes a short script that calls tools instead of one tool call per turn | big win on a phone's token budget and latency; upstream has `tool_search` deferred loading, Code Mode is the next step |
 | **web-readability / web-search / web-fetch** | Airframe's Firecrawl tools already do this; keep them until the Runtime's browser tool matches |
@@ -384,9 +384,9 @@ Grouped, unranked inside each group. ★ = cheap given what we already have.
 | Milestone | Deliverable | Depends on |
 |---|---|---|
 | **M0 Rebrand** | this PR: Caelza identity, `runtime/` pipeline producing a `caelza` binary from the pin, brand assets, Mind wiring docs, this doc | — |
-| **M1 Runtime on the phone** | `caelza` built for `aarch64-linux-android`, running in Termux beside Niba; Telegram via the Runtime; sharpwave MCP (Mind path A) | NDK cross-build |
+| **M1 Runtime on the phone** | `caelza` built for `aarch64-linux-android`, running in Termux beside Niba; Telegram via the Runtime; the engine's MCP server (Mind path A) | NDK cross-build |
 | **M2 Body as MCP** | `caelza-body` stdio MCP server exposing sensors/device/shell with the Airframe safety semantics; Runtime risk profile for it; Python loop retired | M1 |
-| **M3 Mind native** | `SharpwaveMemory` backend in the Runtime over `sharpwave-server`; auto-provisioned per-agent brains; noise filtering ported | xanima rename shipped; service published |
+| **M3 Mind native** | `XanimaMemory` backend in the Runtime over `xanima-server`; auto-provisioned per-agent brains; noise filtering ported | xanima rename shipped; service published |
 | **M1.5 Free local default** | Quickstart door 1: DeepSeek R1 via Ollama (hub) or llama.cpp (phone) with the size ladder; the Guide persona; "bring your own" as door 2 | M1 |
 | **M4 UI phases 1–2** | Caelza themes as default, Bodies page, Memory page; web app installable as a PWA | M2, M3 |
 | **M5 SOP playbooks** | debloat / malware / new-phone / diagnostics as SOPs with approvals; evals on an emulator | M2 |
@@ -397,7 +397,7 @@ Grouped, unranked inside each group. ★ = cheap given what we already have.
 
 | # | Question | Decision |
 |---|---|---|
-| 1 | xanima naming | **xanima everywhere**: npm package, plugin id, ClawHub slug, config entry, cron id, env var. One clean break; the openwave repo update carries it. |
+| 1 | xanima naming | **Already done** on the `xanima/v0.5.0` branches of the openwave and sharpwave repos: package `xanima-openclaw`, plugin id `xanima` (legacy id `openwave` honoured), engine `xanima-core`, service `xanima-server`, brains in `~/.xanima`, env `XANIMA_BRAIN_TOKEN`, an upgrade CLI. What is left is merging those branches to `main` and publishing to npm / ClawHub; today npm still serves `openwave` 0.1.1 and `sharpwave-core` 0.4.5. |
 | 2 | Repo rename | **Rename `airframe-lite` → `caelza` now** (GitHub Settings, redirects keep old links). Every URL in this repo already assumes it. |
 | 3 | Body package | **`caelza_body`**, state in `~/.caelza-body`, env `CAELZA_BODY_HOME`. The reference agent persona stays "Niba". The legacy `~/.niba` / `NIBA_HOME` are honoured until `python scripts/setup.py --migrate` runs on the phone. |
 | 4 | Licence | **MIT** for this repo (Body, pipeline, brand, docs). Runtime stays MIT OR Apache-2.0 from upstream; fonts OFL. |
@@ -410,6 +410,6 @@ Grouped, unranked inside each group. ★ = cheap given what we already have.
 
 Still open:
 
-- The openwave → xanima rename itself (separate repo; checklist in `mind/README.md`).
+- Merging the `xanima/v0.5.0` branches (openwave and sharpwave repos) to `main` and publishing `xanima-openclaw`, `xanima-core` and `xanima-server`; finishing the openwave README body, which still carries the old install commands under the new banner.
 - Whether the Body's `caelza-body-last-good` git tag should replace `niba-last-good` on deployed phones (left as is so the phone's rollback pointer survives the rename).
 - A product domain for Caelza, if any.

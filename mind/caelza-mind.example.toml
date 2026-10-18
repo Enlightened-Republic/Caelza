@@ -1,30 +1,36 @@
-# Caelza Mind — wiring the sharpwave / xanima memory engine into the Caelza
-# runtime. Merge the relevant blocks into ~/.caelza/config.toml.
+# Caelza Mind — wiring the xanima memory engine into the Caelza runtime.
+# Merge the relevant blocks into ~/.caelza/config.toml.
 #
 # Two paths exist today (see mind/README.md for the roadmap):
 #
-#   A. Tools path  — the `sharpwave` stdio MCP server. The agent gets the
+#   A. Tools path  — the engine's stdio MCP server. The agent gets the
 #      brain_* tools (deliberate recall/write). No automatic per-turn injection.
-#   B. Service path — the `sharpwave-server` brain service over MCP Streamable
-#      HTTP, one private brain per agent + a shared brain, bearer tokens. This
-#      is the same endpoint xanima's remote mode speaks, so one brain serves
-#      both an OpenClaw gateway (via xanima) and a Caelza runtime.
+#      Published today as `sharpwave` 0.4.1; on the xanima/v0.5.0 branch the
+#      package is `xanima` and keeps a `sharpwave` alias bin, so this block
+#      works before and after the publish.
+#   B. Service path — `xanima-server` (formerly sharpwave-server) over MCP
+#      Streamable HTTP, one private brain per agent + a shared brain, bearer
+#      tokens. This is the same endpoint xanima's remote mode speaks, so one
+#      brain service serves an OpenClaw gateway (via xanima) and a Caelza
+#      runtime.
 
 # ---------------------------------------------------------------------------
 # A. Tools path (stdio). Requires: npm i -g sharpwave   (Node 20+)
+#    After the xanima publish: npm i -g xanima   (same command, alias kept)
 [[mcp.servers]]
 name = "brain"
 transport = "stdio"
 command = "sharpwave"
-# Brain databases live at ~/.sharpwave/<agent>/brain.db. Point this agent at
-# its own brain; SHARPWAVE_DATA_DIR / SHARPWAVE_DB_PATH are honoured by the
-# engine. (env values are stored encrypted by the runtime.)
+# Brain databases: ~/.sharpwave/<agent>/brain.db today, ~/.xanima/<agent>/brain.db
+# on the xanima branch (the old folder is read until `xanima-server migrate`).
+# SHARPWAVE_DATA_DIR / SHARPWAVE_DB_PATH are honoured by the engine.
+# (env values are stored encrypted by the runtime.)
 env = { SHARPWAVE_DATA_DIR = "~/.sharpwave/main" }
 tool_timeout_secs = 20
 
 # ---------------------------------------------------------------------------
-# B. Service path (Streamable HTTP). Requires sharpwave-server running on
-#    127.0.0.1:18790 and a token minted with `sharpwave-server token mint`.
+# B. Service path (Streamable HTTP). Requires xanima-server running on
+#    127.0.0.1:18790 and a token minted with `xanima-server token mint`.
 #    Put the bearer token in `headers` through `caelza config set
 #    mcp.servers.brain-service.headers.Authorization`, never in plaintext here.
 [[mcp.servers]]
@@ -50,8 +56,11 @@ auto_approve = [
   "brain__brain_history",
   "brain__brain_expand",
   "brain__brain_edges",
+  "brain__brain_status",
+  "brain__brain_briefing",
 ]
 always_ask = [
   "brain__brain_reset",
   "brain__brain_forget",
+  "brain__brain_retract",
 ]

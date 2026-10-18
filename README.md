@@ -16,7 +16,7 @@ Caelza is three layers shipped as one product (`bundle/manifest.toml`):
 | Layer | What | Where |
 |---|---|---|
 | **Runtime** | the engine: agent loop, 20+ model providers, 30+ channels, tools, security policy, SOP engine, cron, gateway + web dashboard, WASM plugins, hardware peripherals. A rebranded build of [ZeroClaw](https://github.com/zeroclaw-labs/zeroclaw), regenerated from a pinned commit. | [`runtime/`](runtime/) |
-| **Mind** | autonomic long-term memory: a graph with a real forgetting curve and a sleep system. [xanima](https://github.com/Enlightened-Republic/openwave) (formerly openwave) on the [sharpwave-core](https://github.com/Enlightened-Republic/sharpwave) engine. | [`mind/`](mind/) |
+| **Mind** | autonomic long-term memory: a graph with a real forgetting curve and a sleep system. [xanima](https://github.com/Enlightened-Republic/openwave/tree/xanima/v0.5.0) (formerly openwave) on the [xanima-core](https://github.com/Enlightened-Republic/sharpwave/tree/xanima/v0.5.0) engine (formerly sharpwave-core). | [`mind/`](mind/) |
 | **Body** | the device layer: camera, mic, location, notifications and TTS through termux-api; ADB control of its own phone and paired phones with audit logging and pre-removal snapshots; an immutable supervisor that probes self-modified builds and rolls back. Formerly **Airframe Lite**. | [`caelza_body/`](caelza_body/) |
 
 Read [`docs/design/caelza-vision.md`](docs/design/caelza-vision.md) for the
@@ -49,9 +49,10 @@ npm i -g sharpwave                       # the memory engine's MCP server
 # then merge mind/caelza-mind.example.toml into ~/.caelza/config.toml
 ```
 
-That is the tools path. The service path (`sharpwave-server`, one brain per
-agent plus a shared one, same endpoint xanima's remote mode uses) and the
-native `Memory` backend that makes recall automatic per turn are described in
+That is the tools path, on the engine as published today. The service path
+(`xanima-server`, formerly `sharpwave-server`: one brain per agent plus a
+shared one, the same endpoint xanima's remote mode uses) and the native
+`Memory` backend that makes recall automatic per turn are described in
 [`mind/README.md`](mind/README.md).
 
 ## Body (the Airframe Lite layer)
