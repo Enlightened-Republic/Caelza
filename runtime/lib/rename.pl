@@ -15,7 +15,10 @@ my @map;
 open my $mh, '<', $map_file or die "$map_file: $!";
 while (my $line = <$mh>) {
     chomp $line;
-    next if $line =~ /^\s*(#|$)/;
+    # Blank lines and prose comments are skipped. A line that carries a tab is
+    # always an entry, even when FROM starts with "#" (hex colours do).
+    next if $line =~ /^\s*$/;
+    next if $line =~ /^\s*#/ && $line !~ /\t/;
     my ($from, $to) = split /\t/, $line, 2;
     die "$map_file: bad line (need FROM<TAB>TO): $line\n" unless defined $to;
     push @map, [ $from, $to ];

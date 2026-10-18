@@ -1,17 +1,18 @@
 # Dashboard fallback-palette swap: upstream "operator console" greys + cyan
-# accent → Enlightened Republic Build Lab tokens (brand/tokens.css).
-# Applied only to the files listed in THEME_FILES in build.sh. The actual
-# default theme entry (caelza-dark / caelza-light) is added to themes.json by
-# lib/dashboard_theme.py; this map keeps the hard-coded fallbacks and the
-# "cyan" accent preset consistent with it.
-# Format: FROM<TAB>TO, literal, ordered.
+# accent → Caelza tokens (brand/tokens.css: space-black with a violet cast,
+# the mark's cyan as primary accent). Applied only to the files listed in
+# THEME_FILES in build.sh. The actual default theme entries (caelza-dark /
+# caelza-light) are added to themes.json by lib/dashboard_theme.py; this map
+# keeps the hard-coded fallbacks and the "cyan" accent preset consistent.
+# Format: FROM<TAB>TO, literal, ordered. A line with a tab is an entry even
+# when it starts with "#" (hex colours); comments are tab-free lines.
 
 # backgrounds
-rgba(30, 30, 36, 0.95)	rgba(10, 10, 18, 0.95)
-#1e1e24	#0a0a12
-#232329	#0f1018
-#27272a	#14141f
-#1a1a20	#0a0a12
+rgba(30, 30, 36, 0.95)	rgba(6, 4, 15, 0.95)
+#1e1e24	#06040f
+#232329	#0c0918
+#27272a	#120e22
+#1a1a20	#06040f
 
 # text
 #d4d4d8	#e8e4f0
@@ -19,15 +20,15 @@ rgba(30, 30, 36, 0.95)	rgba(10, 10, 18, 0.95)
 #71717a	#6e6e85
 #52525b	#4a4a5e
 
-# accent preset "cyan" → ER teal
-rgba(34, 211, 238, 0.3)	rgba(0, 245, 212, 0.3)
-rgba(34, 211, 238, 0.1)	rgba(0, 245, 212, 0.1)
-rgba(34,211,238,0.3)	rgba(0,245,212,0.3)
-rgba(34,211,238,0.1)	rgba(0,245,212,0.1)
-34, 211, 238	0, 245, 212
-34,211,238	0,245,212
-#22d3ee	#00f5d4
-#67e8f9	#6cffe6
+# accent preset "cyan" → the Caelza mark cyan
+rgba(34, 211, 238, 0.3)	rgba(34, 230, 255, 0.3)
+rgba(34, 211, 238, 0.1)	rgba(34, 230, 255, 0.1)
+rgba(34,211,238,0.3)	rgba(34,230,255,0.3)
+rgba(34,211,238,0.1)	rgba(34,230,255,0.1)
+34, 211, 238	34, 230, 255
+34,211,238	34,230,255
+#22d3ee	#22e6ff
+#67e8f9	#7af0ff
 
 # fonts: Inter → Inter Tight (the Build Lab face)
 'Inter', -apple-system	'Inter Tight', 'Inter', -apple-system

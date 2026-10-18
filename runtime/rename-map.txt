@@ -26,6 +26,7 @@ discord.gg/zeroclaw	discord.gg/7EkMB4kBd
 
 # --- taglines ---
 Zero overhead. Zero compromise. 100% Rust. The fastest, smallest AI assistant.	Caelza: the embodied agent runtime. Single Rust binary, your hardware, your rules.
+The fastest, smallest AI assistant.	The embodied agent runtime. Enlightened Republic presents Caelza.
 
 # --- sub-apps (TUI + relay) ---
 ZERORELAY	CAELRELAY

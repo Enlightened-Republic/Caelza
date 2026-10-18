@@ -1,26 +1,43 @@
 <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 100 100" width="256" height="256" role="img" aria-label="Caelza">
   <defs>
-    <!-- Enlightened Republic gradient: cyan at the lower end, purple, pink at the upper end. -->
-    <linearGradient id="er" gradientUnits="userSpaceOnUse" x1="78" y1="78" x2="78" y2="22">
+    <!-- Cyan → violet → purple, top to bottom: the Caelza mark gradient. -->
+    <linearGradient id="cz" gradientUnits="userSpaceOnUse" x1="50" y1="3" x2="50" y2="97">
       <stop offset="0" stop-color="#22e6ff"/>
-      <stop offset="0.5" stop-color="#b44fff"/>
-      <stop offset="1" stop-color="#ff4fb8"/>
+      <stop offset="0.5" stop-color="#7b6bff"/>
+      <stop offset="1" stop-color="#b44fff"/>
     </linearGradient>
-    <filter id="glow" x="-30%" y="-30%" width="160%" height="160%">
-      <feGaussianBlur stdDeviation="2.5"/>
+    <filter id="glow" x="-40%" y="-40%" width="180%" height="180%">
+      <feGaussianBlur stdDeviation="2.2"/>
+    </filter>
+    <filter id="starglow" x="-100%" y="-100%" width="300%" height="300%">
+      <feGaussianBlur stdDeviation="1.2"/>
     </filter>
   </defs>
-  <!-- Neon glow under the ring. -->
-  <circle cx="50" cy="50" r="33" fill="none" stroke="url(#er)" stroke-width="11.5" opacity="0.45"
-          stroke-linecap="round" pathLength="360" stroke-dasharray="276 84"
-          transform="rotate(42 50 50)" filter="url(#glow)"/>
-  <!-- Open ring: the ER ring opened into a C. Gap of 84° centred on the right. -->
-  <circle cx="50" cy="50" r="33" fill="none" stroke="url(#er)" stroke-width="11.5"
-          stroke-linecap="round" pathLength="360" stroke-dasharray="276 84"
-          transform="rotate(42 50 50)"/>
-  <!-- Signal star in the gap. -->
-  <polygon fill="#ffe600" opacity="0.35" filter="url(#glow)"
-           points="83.7,39.5 86.2,47.5 94.2,50 86.2,52.5 83.7,60.5 81.2,52.5 73.2,50 81.2,47.5"/>
-  <polygon fill="#ffe600"
-           points="83.7,39.5 86.2,47.5 94.2,50 86.2,52.5 83.7,60.5 81.2,52.5 73.2,50 81.2,47.5"/>
+  <!-- Bolt body: a translucent dark fill so the stars read on any surface. -->
+  <polygon points="60,3 27,55 46,55 37,97 73,42 54,42" fill="#06040f" fill-opacity="0.72"/>
+  <!-- Neon glow under the strokes. -->
+  <g fill="none" stroke="url(#cz)" stroke-linejoin="round" stroke-linecap="round" opacity="0.55" filter="url(#glow)">
+    <polygon points="60,3 27,55 46,55 37,97 73,42 54,42" stroke-width="5.5"/>
+    <polyline points="62,34.5 45.5,34.5 40.5,39.5 40.5,60.5 45.5,65.5 60,65.5" stroke-width="11"/>
+  </g>
+  <!-- Crisp strokes: the bolt and the chamfered C. -->
+  <g fill="none" stroke="url(#cz)" stroke-linejoin="round" stroke-linecap="round">
+    <polygon points="60,3 27,55 46,55 37,97 73,42 54,42" stroke-width="3.4"/>
+    <polyline points="62,34.5 45.5,34.5 40.5,39.5 40.5,60.5 45.5,65.5 60,65.5" stroke-width="7.2"/>
+  </g>
+  <!-- Constellation: lines then four-point stars. -->
+  <g stroke="#eafcff" stroke-opacity="0.5" stroke-width="0.6" fill="none">
+    <polyline points="43,31 50,19 57,29"/>
+    <line x1="45.5" y1="72" x2="52" y2="83"/>
+  </g>
+  <g fill="#eafcff">
+    <g filter="url(#starglow)" opacity="0.8">
+      <polygon points="50,13.5 51.3,17.7 55.5,19 51.3,20.3 50,24.5 48.7,20.3 44.5,19 48.7,17.7"/>
+    </g>
+    <polygon points="50,13.5 51.3,17.7 55.5,19 51.3,20.3 50,24.5 48.7,20.3 44.5,19 48.7,17.7"/>
+    <polygon points="43,28.2 43.7,30.3 45.8,31 43.7,31.7 43,33.8 42.3,31.7 40.2,31 42.3,30.3"/>
+    <polygon points="57,26.6 57.6,28.4 59.4,29 57.6,29.6 57,31.4 56.4,29.6 54.6,29 56.4,28.4"/>
+    <polygon points="45.5,69 46.2,71.3 48.5,72 46.2,72.7 45.5,75 44.8,72.7 42.5,72 44.8,71.3"/>
+    <polygon points="52,81 52.5,82.5 54,83 52.5,83.5 52,85 51.5,83.5 50,83 51.5,82.5"/>
+  </g>
 </svg>

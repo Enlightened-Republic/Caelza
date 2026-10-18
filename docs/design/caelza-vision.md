@@ -287,9 +287,12 @@ plugin API itself.
 3. **Bodies are first-class.** Devices, sensors and paired phones are a top-level
    section, not a settings page.
 4. **It is an Enlightened Republic product.** The Build Lab system
-   (`enlightenedrepublic.tech`): void backgrounds, teal does the work, purple
-   marks the brand, yellow is the signal, Inter Tight + JetBrains Mono, mono
-   eyebrows in caps. One accent per view; the gradient is a flourish.
+   (`enlightenedrepublic.tech`) with Caelza's cosmic tint: space-black
+   backgrounds with a violet cast, cyan does the work, purple marks the brand,
+   Inter Tight + JetBrains Mono with mono eyebrows in caps, the bolt-C mark and
+   the Orbitron wordmark in the cyan→purple gradient, constellation stars and
+   the nebula/dot-matrix backdrop on hero surfaces only. One glowing element
+   per view; the gradient is a flourish.
 5. **Keep the stack.** React 19 + Vite + Tailwind 4, the upstream dashboard's
    component library and theme system. Redesign is tokens, IA and new pages,
    not a rewrite.

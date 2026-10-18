@@ -1,18 +1,13 @@
 <p align="center">
-  <a href="https://www.enlightenedrepublic.tech"><img src="https://enlightenedrepublic.online/assets/er-profile-pic.png" alt="Enlightened Republic" width="56" /></a><br/>
-  <sub><code>ENLIGHTENED REPUBLIC™ PRESENTS</code></sub>
+  <img src="brand/hero.png" alt="Enlightened Republic presents Caelza — the embodied agent runtime" width="100%" />
 </p>
 
-<p align="center">
-  <img src="brand/logo.svg" alt="Caelza" width="128" />
-</p>
-
-<h1 align="center">CAELZA</h1>
+<h1 align="center">Caelza</h1>
 
 <p align="center"><strong>The embodied agent runtime.</strong><br/>
 An agent that lives on your own hardware, remembers across months, and acts on the devices around it.</p>
 
-<p align="center"><sub>Built by <a href="https://www.enlightenedrepublic.tech">Enlightened Republic</a>, the lab behind SharpWave and xanima. · EST. 2026</sub></p>
+<p align="center"><sub><a href="https://www.enlightenedrepublic.tech"><img src="https://enlightenedrepublic.online/assets/er-profile-pic.png" alt="" width="20" align="absmiddle" /></a>&nbsp; Built by <a href="https://www.enlightenedrepublic.tech">Enlightened Republic</a>, the lab behind SharpWave and xanima. · EST. 2026</sub></p>
 
 ---
 
@@ -28,8 +23,9 @@ Read [`docs/design/caelza-vision.md`](docs/design/caelza-vision.md) for the
 architecture, the roadmap, what we are borrowing from
 [OpenClaw](https://github.com/openclaw/openclaw), and the UI redesign.
 Brand: [`brand/BRAND.md`](brand/BRAND.md). Caelza uses the Enlightened Republic
-Build Lab design system (Inter Tight, JetBrains Mono, teal on void) with its own
-mark: the Republic's neon ring opened into a C.
+Build Lab design system (Inter Tight, JetBrains Mono, the Republic palette)
+with its own identity on top: the bolt-C mark in neon cyan→purple, the
+Orbitron wordmark, constellation stars and the cosmic backdrop.
 
 ## Runtime
 
