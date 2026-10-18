@@ -1,0 +1,59 @@
+# Caelza distribution manifest — what "Caelza" ships as, and the pinned
+# version of every component. Tooling (install scripts, release CI) reads
+# this; humans read bundle/README.md.
+
+[caelza]
+name = "Caelza"
+version = "0.1.0"
+tagline = "The embodied agent runtime."
+repo = "https://github.com/Enlightened-Republic/caelza"
+license = "MIT OR Apache-2.0"   # runtime; Mind and Body are MIT
+
+[caelza.parent]
+name = "Enlightened Republic"   # the umbrella company; "ENLIGHTENED REPUBLIC™ presents Caelza"
+site = "https://www.enlightenedrepublic.tech"
+lab = "https://enlightenedrepublic.online"
+discord = "https://discord.gg/7EkMB4kBd"
+x = "https://x.com/EnlightenedRep"
+est = 2026
+
+# ---------------------------------------------------------------------------
+# Runtime — the agent loop, providers, channels, tools, gateway + dashboard.
+# A rebranded build of ZeroClaw. Source of truth: runtime/upstream.toml.
+[components.runtime]
+kind = "rust-binary"
+bin = "caelza"
+path = "runtime/"
+upstream = "https://github.com/zeroclaw-labs/zeroclaw"
+upstream_commit = "c473221313341a853e04122f93bb9bd26b5e6c47"
+upstream_version = "0.8.6"
+config = "~/.caelza/config.toml"
+targets = ["x86_64-unknown-linux-gnu", "aarch64-unknown-linux-gnu", "aarch64-linux-android", "aarch64-apple-darwin", "x86_64-pc-windows-msvc"]
+
+# ---------------------------------------------------------------------------
+# Mind — autonomic long-term memory. xanima is the renamed openwave plugin;
+# the engine underneath is sharpwave-core, served either in-process or by
+# the sharpwave-server brain service.
+[components.mind]
+kind = "memory"
+name = "xanima"
+formerly = "openwave"
+repo = "https://github.com/Enlightened-Republic/openwave"
+version = "0.2.0"
+engine = "sharpwave-core"
+engine_version = "0.4.5"
+service = "sharpwave-server"      # brain service, MCP Streamable HTTP on 127.0.0.1:18790
+mcp_server = "sharpwave"          # stdio MCP server, `npx -y sharpwave`
+brain_dir = "~/.sharpwave/<agent>/brain.db"
+integration = "mind/README.md"
+
+# ---------------------------------------------------------------------------
+# Body — the device layer: Termux/Android sensors, ADB device control, the
+# immutable supervisor with git-backed self-modification rollback.
+[components.body]
+kind = "python-package"
+package = "niba"                  # reference agent package name
+path = "niba/"
+python = ">=3.11"
+runtime_target = "Termux on non-root Android"
+state_dir = "~/.niba"

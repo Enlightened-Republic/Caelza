@@ -1,0 +1,110 @@
+/* Caelza design tokens. Caelza is an Enlightened Republic product, so these
+   are the Enlightened Republic Build Lab tokens (enlightenedrepublic.tech)
+   with Caelza-specific additions. Mirrors brand/tokens.json. Dark is default. */
+
+:root {
+  /* Backgrounds (void → panels) */
+  --cz-bg:        #0a0a12;
+  --cz-bg-2:      #0f1018;
+  --cz-bg-3:      #14141f;
+  --cz-bg-4:      #1a1b25;
+  --cz-bg-sidebar: rgba(10, 10, 18, 0.95);
+
+  /* Borders */
+  --cz-border:        rgba(255, 255, 255, 0.08);
+  --cz-border-strong: rgba(255, 255, 255, 0.15);
+  --cz-border-soft:   rgba(255, 255, 255, 0.04);
+  --cz-hover:         rgba(255, 255, 255, 0.05);
+
+  /* Text */
+  --cz-text:        #e8e4f0;
+  --cz-text-muted:  #a8a8c0;
+  --cz-text-dim:    #6e6e85;
+  --cz-text-faint:  #4a4a5e;
+
+  /* Accents — teal is primary (links, focus, primary buttons) */
+  --cz-teal:        #00f5d4;
+  --cz-teal-light:  #6cffe6;
+  --cz-teal-rgb:    0, 245, 212;
+  --cz-teal-dim:    rgba(var(--cz-teal-rgb), 0.3);
+  --cz-teal-glow:   rgba(var(--cz-teal-rgb), 0.1);
+  --cz-purple:      #b44fff;
+  --cz-purple-light:#c970ff;
+  --cz-pink:        #ff2d78;
+  --cz-pink-light:  #ff4fb8;
+  --cz-yellow:      #ffe600;   /* the signal star */
+  --cz-cyan:        #22e6ff;
+  --cz-green:       #39ff14;
+
+  /* The Enlightened Republic gradient — ring, hero rules, one flourish per view */
+  --cz-gradient: linear-gradient(90deg, #ff4fb8 0%, #b44fff 50%, #22e6ff 100%);
+
+  /* Status */
+  --cz-success: #39ff14;
+  --cz-warning: #ffe600;
+  --cz-error:   #ff2d78;
+  --cz-info:    #00f5d4;
+
+  --cz-link:       var(--cz-teal);
+  --cz-link-hover: var(--cz-teal-light);
+
+  /* Type */
+  --cz-font-body:    'Inter Tight', -apple-system, system-ui, 'Segoe UI', sans-serif;
+  --cz-font-display: 'Inter Tight', -apple-system, system-ui, sans-serif;
+  --cz-font-mono:    'JetBrains Mono', 'Fira Code', 'SF Mono', Consolas, 'Courier New', monospace;
+  --cz-fs-xs: 11px; --cz-fs-sm: 13px; --cz-fs-base: 15px; --cz-fs-md: 17px;
+  --cz-fs-lg: 20px; --cz-fs-xl: 24px; --cz-fs-2xl: 32px; --cz-fs-3xl: 44px;
+
+  /* Shape + motion */
+  --cz-radius-sm: 4px; --cz-radius: 6px; --cz-radius-lg: 10px;
+  --cz-radius-xl: 14px; --cz-radius-2xl: 20px; --cz-radius-full: 9999px;
+  --cz-shadow-sm: 0 1px 2px rgba(0, 0, 0, 0.2);
+  --cz-shadow:    0 2px 4px rgba(0, 0, 0, 0.3);
+  --cz-shadow-lg: 0 8px 24px rgba(0, 0, 0, 0.4);
+  --cz-transition:      180ms cubic-bezier(0.4, 0, 0.2, 1);
+  --cz-transition-slow: 320ms cubic-bezier(0.4, 0, 0.2, 1);
+
+  /* Hero backdrop, lifted from the Build Lab site */
+  --cz-hero-bg:
+    radial-gradient(ellipse 80% 60% at 50% 0%, rgba(180, 79, 255, 0.12), transparent 70%),
+    radial-gradient(ellipse 60% 50% at 80% 30%, rgba(255, 45, 120, 0.05), transparent 70%),
+    radial-gradient(circle at 1px 1px, rgba(255, 255, 255, 0.03) 1px, transparent 0);
+}
+
+/* Eyebrow / kicker: mono, caps, wide tracking, dim. */
+.cz-eyebrow {
+  font-family: var(--cz-font-mono);
+  font-size: var(--cz-fs-xs);
+  letter-spacing: 0.16em;
+  text-transform: uppercase;
+  color: var(--cz-text-dim);
+  font-weight: 500;
+}
+
+/* Brand text: "CAELZA" and "ENLIGHTENED REPUBLIC™" in nav and footer. */
+.cz-brand {
+  font-family: var(--cz-font-display);
+  font-weight: 700;
+  font-size: var(--cz-fs-sm);
+  letter-spacing: 0.06em;
+  color: var(--cz-text);
+}
+
+:root[data-theme="light"] {
+  --cz-bg:        #f6f6fb;
+  --cz-bg-2:      #ffffff;
+  --cz-bg-3:      #efeff6;
+  --cz-bg-4:      #e6e6f0;
+  --cz-bg-sidebar: rgba(246, 246, 251, 0.95);
+  --cz-border:        rgba(10, 10, 18, 0.08);
+  --cz-border-strong: rgba(10, 10, 18, 0.15);
+  --cz-border-soft:   rgba(10, 10, 18, 0.04);
+  --cz-hover:         rgba(10, 10, 18, 0.04);
+  --cz-text:        #0a0a12;
+  --cz-text-muted:  #3f3f55;
+  --cz-text-dim:    #6e6e85;
+  --cz-text-faint:  #a8a8c0;
+  --cz-teal:        #008f7a;
+  --cz-teal-light:  #00bfa5;
+  --cz-teal-rgb:    0, 143, 122;
+}

@@ -1,121 +1,113 @@
-# Airframe Lite
+<p align="center">
+  <a href="https://www.enlightenedrepublic.tech"><img src="https://enlightenedrepublic.online/assets/er-profile-pic.png" alt="Enlightened Republic" width="56" /></a><br/>
+  <sub><code>ENLIGHTENED REPUBLIC™ PRESENTS</code></sub>
+</p>
 
-A supervised, self-modifying autonomous agent that lives on a device **as its
-body** — camera, mic, speaker, shell, and ADB reach into other devices. It talks
-to its owner over chat (Telegram) and, later, voice with a wake word.
+<p align="center">
+  <img src="brand/logo.svg" alt="Caelza" width="128" />
+</p>
 
-"Lite" because it's the small build: one phone, one owner, a Python agent + an
-immutable supervisor. The reference agent is named **Niba**.
+<h1 align="center">CAELZA</h1>
 
-## Why "airframe"
+<p align="center"><strong>The embodied agent runtime.</strong><br/>
+An agent that lives on your own hardware, remembers across months, and acts on the devices around it.</p>
 
-The airframe is the load-bearing structure everything else bolts onto. This repo
-is that structure for an embodied agent: the part that stays put and keeps the
-agent alive and recoverable while everything above it — identity, tools, skills —
-changes.
+<p align="center"><sub>Built by <a href="https://www.enlightenedrepublic.tech">Enlightened Republic</a>, the lab behind SharpWave and xanima. · EST. 2026</sub></p>
 
-## How it holds together
+---
 
-```
-supervisor.py  (immutable — you cannot edit it, the agent cannot edit it)
-  └─ spawns the agent, and on every restart request:
-       git-commits → probes the new build → promotes it, or rolls back to
-       the last-good commit and reports what broke. Crash-loop guard with a
-       terminal halt. Heartbeat on its own thread.
+Caelza is three layers shipped as one product (`bundle/manifest.toml`):
 
-niba/agent/
-  loop.py        chat long-poll → context assembly → model → tool dispatch loop
-  model.py       MiniMax M3 (OpenAI-compatible); retries transient transport errors
-  context.py     system prompt + recent turns + retrieved memory + the new message
-  memory.py      adapter over a SharpWave MCP server (long-term memory)
-  session.py     SQLite transcript + token/usage accounting
-  telegram.py    the chat transport
-  heartbeat.py   liveness file the supervisor watches
-  redact.py      strips secrets from anything that could be logged or sent
-  proc.py        one hardened subprocess runner (own process group, SIGKILL on
-                 timeout — a backgrounded child can't wedge the agent)
-  tools/
-    selfmod.py   self_read_file / self_write_file / self_run_tests / self_commit /
-                 self_request_restart  (deny-list: supervisor.py, .git/, secrets)
-    memtools.py  memory_remember / memory_recall
-    shell.py     shell_run
-    sensors.py   sensors_camera_photo / _mic_record / _location / _notifications /
-                 _tts_speak / _clipboard_* / _battery / _torch   (termux-api)
-    device.py    device_shell / _screencap / _ui_dump / _packages / _logcat /
-                 _settings / _input, and dangerous ops (uninstall / disable /
-                 settings_put / appops / pair) that require a reason, are
-                 audit-logged, and snapshot the package list before any removal
-    media.py     image tools reach the model as images, not file paths
-  adb.py         resolve device name → serial, run adb, connect-self, pair
-  devices.py     JSON registry of paired devices ($NIBA_HOME/devices.json)
-```
+| Layer | What | Where |
+|---|---|---|
+| **Runtime** | the engine: agent loop, 20+ model providers, 30+ channels, tools, security policy, SOP engine, cron, gateway + web dashboard, WASM plugins, hardware peripherals. A rebranded build of [ZeroClaw](https://github.com/zeroclaw-labs/zeroclaw), regenerated from a pinned commit. | [`runtime/`](runtime/) |
+| **Mind** | autonomic long-term memory: a graph with a real forgetting curve and a sleep system. [xanima](https://github.com/Enlightened-Republic/openwave) (formerly openwave) on the [sharpwave-core](https://github.com/Enlightened-Republic/sharpwave) engine. | [`mind/`](mind/) |
+| **Body** | the device layer: camera, mic, location, notifications and TTS through termux-api; ADB control of its own phone and paired phones with audit logging and pre-removal snapshots; an immutable supervisor that probes self-modified builds and rolls back. Formerly **Airframe Lite**. | [`niba/`](niba/) |
 
-Target runtime: **Termux on non-root Android**. Python 3.11+, Node (for the
-SharpWave memory server). `adb` via `pkg install android-tools`.
+Read [`docs/design/caelza-vision.md`](docs/design/caelza-vision.md) for the
+architecture, the roadmap, what we are borrowing from
+[OpenClaw](https://github.com/openclaw/openclaw), and the UI redesign.
+Brand: [`brand/BRAND.md`](brand/BRAND.md). Caelza uses the Enlightened Republic
+Build Lab design system (Inter Tight, JetBrains Mono, teal on void) with its own
+mark: the Republic's neon ring opened into a C.
 
-## Quickstart (on the device, in Termux)
+## Runtime
 
 ```bash
-git clone https://github.com/Enlightened-Republic/airframe-lite ~/niba
+./runtime/build.sh                  # fetch the pinned upstream, rebrand, cargo build --release
+./runtime/dist/caelza quickstart    # pick a provider, write ~/.caelza/config.toml
+./runtime/dist/caelza agent -a main # chat
+```
+
+`./runtime/build.sh --check-only` is the fast gate (cargo check). The pipeline
+renames everything a user can see (`zeroclaw` → `caelza`, the TUI `zerocode` →
+`caelcode`, the relay → `caelrelay`, config at `~/.caelza/`), swaps in the
+Caelza palette and mark, and keeps the WASM plugin ABI namespace so upstream
+plugins load unchanged. Details and the upstream pin: [`runtime/README.md`](runtime/README.md).
+
+## Mind
+
+```bash
+npm i -g sharpwave                       # the memory engine's MCP server
+# then merge mind/caelza-mind.example.toml into ~/.caelza/config.toml
+```
+
+That is the tools path. The service path (`sharpwave-server`, one brain per
+agent plus a shared one, same endpoint xanima's remote mode uses) and the
+native `Memory` backend that makes recall automatic per turn are described in
+[`mind/README.md`](mind/README.md).
+
+## Body (the Airframe Lite layer)
+
+A supervised, self-modifying Python agent that treats a phone as its body.
+Target runtime: **Termux on non-root Android**, Python 3.11+. The reference
+agent is named **Niba** and runs on a T-Mobile REVVL 7 5G.
+
+```
+niba/supervisor.py   immutable: git-commits → probes the new build → promotes it
+                     or rolls back to last-good; crash-loop guard; heartbeat
+niba/agent/
+  loop.py            chat long-poll → context → model → tool dispatch
+  model.py           MiniMax M3 (OpenAI-compatible)
+  memory.py          sharpwave over MCP (same engine as the Mind)
+  tools/
+    sensors.py       camera / mic / location / notifications / tts / clipboard / battery / torch
+    device.py        ADB: shell, screencap, ui_dump, packages, logcat, settings, input;
+                     dangerous ops require a reason, are audit-logged, snapshot first
+    selfmod.py       self_read_file / self_write_file / self_run_tests / self_commit / self_request_restart
+    web.py           Firecrawl search / read / map / crawl / extract, multi-provider search
+    shell.py         shell_run
+```
+
+On the phone, in Termux:
+
+```bash
+git clone https://github.com/Enlightened-Republic/caelza ~/niba
 cd ~/niba
-cp niba/agent/prompt.example.md niba/agent/prompt.md   # then edit it — name, owner, purpose
+cp niba/agent/prompt.example.md niba/agent/prompt.md   # name, owner, purpose
 python scripts/setup.py                                  # walks every bring-up step
 ```
 
-`scripts/setup.py` runs: package installs, the SharpWave + `mcp` installs,
-`termux-api` permission grants, battery-optimisation exemption, model login,
-self-ADB pairing, `~/.niba/config.toml`, the Termux:Boot script, and a final
-"message me on Telegram" check. `--dry-run` prints the plan without doing
-anything.
-
-## Config
-
-`~/.niba/config.toml` (written by setup; never committed):
-
-```toml
-[telegram]
-bot_token = "..."
-owner_chat_id = 0            # setup captures this from your first message
-[openrouter]
-api_key = "..."             # embeddings for memory; FTS fallback if absent
-[minimax]
-mmx_config_path = "~/.mmx/config.json"
-[limits]
-model_calls_per_hour = 120
-monthly_token_budget = 1600000000
-[model]                      # optional — cellular-friendly defaults shown
-timeout_seconds = 180
-max_attempts = 3
-```
-
-The model uses the `mmx` CLI's OAuth token (`mmx auth login`). No API key needed.
-
-## Self-modification
-
-The agent can rewrite any of its own code except `niba/supervisor.py`. The loop
-is: `self_write_file` → `self_run_tests` → `self_commit` → `self_request_restart`.
-The supervisor probes the new build in a separate process before promoting it; a
-build that doesn't boot is rolled back to the last-good commit and the owner is
-told what broke.
-
-## Tests
+Config lives in `~/.niba/config.toml` (never committed). Tests run on a dev box
+or on-device:
 
 ```bash
 pip install -e ".[dev]"
 python -m pytest -q
 ```
 
-The suite runs on a dev box (Windows/macOS/Linux) — subprocess-based tests fall
-back through `sh` and skip real `termux-api`/`adb`. It also runs green on-device.
+The Body's roadmap is to become `caelza-body`, an MCP server the Runtime spawns,
+so the Python loop retires and the sensors, ADB tools and supervisor stay
+(vision doc §3.1).
 
 ## Design docs
 
-- [`docs/design/agent-design.md`](docs/design/agent-design.md) — the full spec
-- [`docs/design/plan-1-core.md`](docs/design/plan-1-core.md) — core agent + supervisor
-- [`docs/design/plan-2-device-tools.md`](docs/design/plan-2-device-tools.md) — device/sensor/ADB tools
+- [`docs/design/caelza-vision.md`](docs/design/caelza-vision.md) — Caelza: architecture, roadmap, borrow list, UI
+- [`docs/design/agent-design.md`](docs/design/agent-design.md) — Body spec (written as Airframe Lite / Niba)
+- [`docs/design/plan-1-core.md`](docs/design/plan-1-core.md), [`plan-2-device-tools.md`](docs/design/plan-2-device-tools.md) — Body implementation plans
 - [`docs/examples/revvl-7-debloat/`](docs/examples/revvl-7-debloat/) — worked example: debloating a carrier phone for an agent
 
 ## Status
 
-Reference agent ("Niba") is deployed and running on a T-Mobile REVVL 7 5G.
-Private while it's early. Dependency: [SharpWave](https://github.com/Enlightened-Republic/sharpwave) (memory).
+Reference Body ("Niba") is deployed and running. Runtime pipeline builds from
+upstream `c473221` (v0.8.6). Private while it's early.

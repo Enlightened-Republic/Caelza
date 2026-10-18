@@ -1,0 +1,26 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 100 100" width="256" height="256" role="img" aria-label="Caelza">
+  <defs>
+    <!-- Enlightened Republic gradient: cyan at the lower end, purple, pink at the upper end. -->
+    <linearGradient id="er" gradientUnits="userSpaceOnUse" x1="78" y1="78" x2="78" y2="22">
+      <stop offset="0" stop-color="#22e6ff"/>
+      <stop offset="0.5" stop-color="#b44fff"/>
+      <stop offset="1" stop-color="#ff4fb8"/>
+    </linearGradient>
+    <filter id="glow" x="-30%" y="-30%" width="160%" height="160%">
+      <feGaussianBlur stdDeviation="2.5"/>
+    </filter>
+  </defs>
+  <!-- Neon glow under the ring. -->
+  <circle cx="50" cy="50" r="33" fill="none" stroke="url(#er)" stroke-width="11.5" opacity="0.45"
+          stroke-linecap="round" pathLength="360" stroke-dasharray="276 84"
+          transform="rotate(42 50 50)" filter="url(#glow)"/>
+  <!-- Open ring: the ER ring opened into a C. Gap of 84° centred on the right. -->
+  <circle cx="50" cy="50" r="33" fill="none" stroke="url(#er)" stroke-width="11.5"
+          stroke-linecap="round" pathLength="360" stroke-dasharray="276 84"
+          transform="rotate(42 50 50)"/>
+  <!-- Signal star in the gap. -->
+  <polygon fill="#ffe600" opacity="0.35" filter="url(#glow)"
+           points="83.7,39.5 86.2,47.5 94.2,50 86.2,52.5 83.7,60.5 81.2,52.5 73.2,50 81.2,47.5"/>
+  <polygon fill="#ffe600"
+           points="83.7,39.5 86.2,47.5 94.2,50 86.2,52.5 83.7,60.5 81.2,52.5 73.2,50 81.2,47.5"/>
+</svg>

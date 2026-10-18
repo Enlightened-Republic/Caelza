@@ -2,6 +2,12 @@
 
 **Status:** Reference (the design the reference agent "Niba" was built from)
 
+> **Caelza note (2026-10-18):** Airframe Lite is now the **Body** layer of
+> Caelza. This spec stays accurate for the Body (supervisor, sensors, ADB,
+> self-modification); the agent loop, model wrapper and Telegram transport it
+> describes are superseded by the Caelza Runtime, and memory by the Mind. See
+> [`caelza-vision.md`](caelza-vision.md).
+
 > This is the original design doc. It uses "Niba" as the agent's name and a
 > T-Mobile REVVL 7 5G as the target device throughout — read those as the
 > reference instance; the framework is device- and name-agnostic.

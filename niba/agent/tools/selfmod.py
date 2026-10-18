@@ -28,7 +28,7 @@ def _ensure_identity():
     attributed to it on every machine, and so a host's global identity can't
     mask a repo that still needs one."""
     for key, val in (("user.name", "Niba"),
-                     ("user.email", "niba@airframe.local")):
+                     ("user.email", "niba@caelza.local")):
         cur = subprocess.run(["git", "config", "--local", key], cwd=_REPO,
                              capture_output=True, text=True).stdout.strip()
         if not cur:

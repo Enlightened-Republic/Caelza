@@ -1,0 +1,9 @@
+# Literal tokens that the rename must leave untouched. They are swapped for
+# sentinels before the rename map runs and restored afterwards.
+#
+# The WASM plugin ABI namespace. It is embedded in prebuilt `.component`
+# fixtures and in every third-party ZeroClaw plugin, so renaming it would
+# break plugin compatibility for no user-visible gain. wit-bindgen derives
+# the Rust module path `zeroclaw::plugin` from it, so that is protected too.
+zeroclaw:plugin
+zeroclaw::plugin

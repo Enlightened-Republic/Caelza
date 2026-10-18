@@ -11,3 +11,10 @@ niba.egg-info/
 # The owner's real system prompt — copy prompt.example.md to prompt.md and
 # customize. The runtime prefers prompt.md when present.
 /niba/agent/prompt.md
+
+# Caelza runtime build pipeline outputs (runtime/build.sh)
+/runtime/.cache/
+/runtime/.build/
+/runtime/dist/
+# Rendered brand assets (regenerate with brand/make_assets.py)
+/brand/out/
