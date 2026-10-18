@@ -57,3 +57,27 @@ path = "niba/"
 python = ">=3.11"
 runtime_target = "Termux on non-root Android"
 state_dir = "~/.niba"
+privilege_path = "loopback-adb"   # the Android app replaces this with Shizuku (see components.app)
+
+# ---------------------------------------------------------------------------
+# App — the Caelza Android app + web app (PWA of the Runtime dashboard).
+# Planned (vision doc §3.3, milestone M7). Shizuku provides shell-level
+# privileges to the app without root or Termux.
+[components.app]
+kind = "android-app"
+status = "planned"
+web = "pwa"                       # the Runtime dashboard, installable
+privilege = "shizuku"             # https://github.com/RikkaApps/Shizuku (Apache-2.0); Sui on rooted devices
+hosts = ["runtime", "body", "model"]
+
+# ---------------------------------------------------------------------------
+# Default model — free and local, no key, no account. Users can bring their
+# own provider/key instead (any provider the Runtime supports).
+[defaults.model]
+family = "deepseek-r1"            # MIT-licensed, including distilled sizes
+guide = "deepseek-r1:1.5b"        # always-available explainer; runs on any device
+hub = "deepseek-r1:14b"           # 16 GB+ hosts (8b on 8–12 GB), via Ollama
+phone_8gb = "DeepSeek-R1-Distill-Qwen-7B-Q4_K_M"   # via llama.cpp
+phone_5gb = "DeepSeek-R1-Distill-Qwen-1.5B-Q4_K_M" # chat + explain only
+embeddings = "ollama/qwen3-embedding:0.6b"          # xanima default, local
+byo = ["anthropic", "openai", "openrouter", "minimax", "ollama", "openai-compatible"]

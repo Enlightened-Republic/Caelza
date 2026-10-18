@@ -101,7 +101,84 @@ See `mind/README.md`. Short version: tools path now (`sharpwave` MCP), service
 path for shared brains (`sharpwave-server`), then a native `SharpwaveMemory`
 backend in the Runtime so recall is automatic per turn.
 
-### 3.3 Self-modification, generalised
+### 3.3 The Caelza app (Android + web) and Shizuku
+
+The product people install is an **app**, not a Termux session. Two surfaces,
+one Runtime:
+
+- **Web app**: the Runtime's dashboard, phone-first (§7), installable as a PWA.
+  It already exists; the redesign makes it the primary surface.
+- **Android app**: a native companion that owns the Body. It replaces the
+  Termux:API + loopback-ADB bring-up with things an app can do properly:
+  a foreground service that survives Doze, a notification listener, an
+  accessibility service for on-screen control, camera/mic/location through the
+  normal Android APIs, and a WebView/PWA shell for the dashboard. It also
+  supervises the Runtime binary (`aarch64-linux-android`) and the local model
+  runner (§3.4), and packages the first-run wizard.
+
+**Shizuku** is the privilege layer for that app. [Shizuku](https://github.com/RikkaApps/Shizuku)
+(Apache-2.0) runs a small server with shell (`adb`) privileges, started once
+per boot from Android's wireless-debugging pairing on-device (or from root /
+the Sui Magisk module on rooted devices), and lets apps call system APIs
+through it over Binder. That is exactly the reach the Body gets today by
+pairing `adb` to `127.0.0.1` from Termux (`pm`, `settings`, `appops`, `input`,
+`dumpsys`, `screencap`), without a terminal, without root, and with the
+standard Shizuku permission prompt the user already understands from other
+apps. The Body's `device_*` tools map onto it one to one:
+
+| Body tool today (Termux + loopback ADB) | Caelza app + Shizuku |
+|---|---|
+| `device_shell` / `device_logcat` / `device_packages` | Shizuku `newProcess` / `IPackageManager` |
+| `device_uninstall` / `device_disable` / `device_appops` / `device_settings` | `IPackageManager`, `IAppOpsService`, `Settings` via Shizuku binder |
+| `device_input` / `device_screencap` / `device_ui_dump` | accessibility service + MediaProjection, Shizuku `input` as fallback |
+| self-ADB pairing in `scripts/setup.py` | Shizuku's own pairing flow (one dialog) |
+| paired remote phones over ADB | unchanged: the app runs `adb` against remotes, or each remote runs the app |
+
+Shizuku needs re-starting after every reboot unless the device is rooted, so
+the app's first-run wizard explains the "start Shizuku" step and the
+supervisor treats a missing Shizuku server as a degraded Body (sensors still
+work, privileged device ops report "needs Shizuku"). Termux stays supported as
+the headless path for devices without the app.
+
+### 3.4 A free local model by default, bring your own to customise
+
+Caelza should work with **no account and no API key**. Quickstart offers two
+doors:
+
+1. **Free, local**: DeepSeek R1 (MIT-licensed, including the distilled sizes).
+   The Runtime already speaks Ollama and any OpenAI-compatible endpoint, so this
+   is a default, not new plumbing.
+2. **Bring your own**: any provider the Runtime supports (Anthropic, OpenAI,
+   OpenRouter, MiniMax, Ollama, a custom endpoint) with the user's key, routed
+   per agent with fallback chains.
+
+The honest size ladder, by where the Runtime runs:
+
+| Where | Runner | Default model | Notes |
+|---|---|---|---|
+| Hub / laptop / VPS (16 GB+) | Ollama | `deepseek-r1:14b` (8b on 8–12 GB) | tool use is usable; reasoning tokens are visible in the dashboard |
+| Phone, 6–8 GB RAM | llama.cpp (Termux package or bundled in the app) | `DeepSeek-R1-Distill-Qwen-7B` Q4 | tight; keep context short |
+| Phone, ≤ 5 GB RAM (the REVVL) | llama.cpp | `DeepSeek-R1-Distill-Qwen-1.5B` Q4 (~1.1 GB) | chat and explanation only; not reliable for multi-step tool calls |
+
+So the local model has two jobs and one job it does not get by default:
+
+- **Guide**: the in-app helper that explains what an API key is, what a
+  provider is, what Shizuku does, why an approval prompt appeared, and walks
+  through setup in plain language. This is the "super user friendly" layer:
+  a Marley-style assistant inside the product, running free and offline.
+  Even the 1.5B model is good at this.
+- **Offline reasoning**: when the phone has no network, the local model
+  handles the Airframe "offline mode" cases (queued device actions, simple
+  questions) instead of the canned "offline, will process later" reply.
+- **The working brain** of a fully autonomous agent only when the hardware
+  can run 8B+ well. Below that, the Guide suggests bringing a cloud model for
+  the agent loop and keeps the local one for help and offline. The Runtime's
+  per-agent provider routing makes "local Guide + cloud agent" one config.
+
+Embeddings for the Mind stay local too: xanima defaults to
+`ollama/qwen3-embedding:0.6b`.
+
+### 3.5 Self-modification, generalised
 
 Airframe Lite's loop was edit → test → commit → restart → probe → promote or
 roll back, all on the phone. In Caelza the mutable surface splits:
@@ -117,6 +194,10 @@ The step after that is **Forge**: the agent proposes Runtime changes as pull
 requests to this repo over the git channel (upstream has `channel-git`); CI
 builds the binary; the supervisor pulls the release. The agent then improves
 its own engine without ever holding the compiler.
+
+Deployment shape 1 (phone-only) therefore becomes: the Caelza app hosts the
+Body (via Shizuku), supervises the Runtime binary and the local model, and
+shows the web app. No Termux required; Termux remains the headless option.
 
 ## 4. From Airframe Lite to Caelza: what carries over
 
@@ -186,7 +267,8 @@ priority, and where it lands in Caelza:
 
 | OpenClaw | Caelza equivalent |
 |---|---|
-| **Native apps** (`apps/android`, `apps/ios`, `apps/macos`) | a Caelza Android companion app would replace Termux:API for sensors with a proper foreground service: more reliable wake, notification access, accessibility service for UI control without ADB |
+| **Native apps** (`apps/android`, `apps/ios`, `apps/macos`) | the Caelza Android app (§3.3): OpenClaw's `apps/android` is the reference for structure (foreground service, node pairing, camera/screen/canvas surfaces); Caelza adds Shizuku for privileged device ops and hosts the Runtime + local model on-device. Promoted from "later" to a milestone (M7) |
+| **Onboarding wizard** (`openclaw onboard`, the setup wizard with provider choice and safe defaults) | the Guide-led first run (§3.4): "free local" vs "bring your own key", Shizuku step, approvals explained in plain language |
 | **Team gateway** (multi-human sessions, co-author credit) | household/fleet mode: several owners, one Caelza |
 | **imessage, whatsapp, signal, matrix…** | upstream Runtime already has most; enable per deployment |
 | **ClawHub provenance / vetted publishers** | a plugin registry for Caelza skill bundles |
@@ -275,7 +357,11 @@ Grouped, unranked inside each group. ★ = cheap given what we already have.
 - ★ QR pairing of a new body from the dashboard.
 - Dashboard "Body" live view: camera, screen, location, battery, notifications.
 - Caelza relay (`caelrelay`) hosted by us as an optional service for bodies on carrier NAT.
-- A Caelza Android app (P2 in §6) to retire Termux:API.
+- The Caelza Android app with Shizuku (§3.3) and the web app as a PWA.
+- **Free by default**: DeepSeek R1 local, no key, no account (§3.4); "bring your own" for everything else.
+- **The Guide**: the local model as an always-available explainer (what is an API key, what did that approval mean, how do I pair a phone), in the Republic's voice, offline. Could share a name and prompt lineage with Marley on `enlightenedrepublic.tech`.
+- Model picker that shows the honest ladder: what runs on *this* device, what it is good for, and when to bring a cloud model.
+- One-tap "explain this screen" anywhere in the app, answered by the Guide.
 
 ## 9. Roadmap
 
@@ -285,9 +371,11 @@ Grouped, unranked inside each group. ★ = cheap given what we already have.
 | **M1 Runtime on the phone** | `caelza` built for `aarch64-linux-android`, running in Termux beside Niba; Telegram via the Runtime; sharpwave MCP (Mind path A) | NDK cross-build |
 | **M2 Body as MCP** | `caelza-body` stdio MCP server exposing sensors/device/shell with the Airframe safety semantics; Runtime risk profile for it; Python loop retired | M1 |
 | **M3 Mind native** | `SharpwaveMemory` backend in the Runtime over `sharpwave-server`; auto-provisioned per-agent brains; noise filtering ported | xanima rename shipped; service published |
-| **M4 UI phases 1–2** | Caelza themes as default, Bodies page, Memory page | M2, M3 |
+| **M1.5 Free local default** | Quickstart door 1: DeepSeek R1 via Ollama (hub) or llama.cpp (phone) with the size ladder; the Guide persona; "bring your own" as door 2 | M1 |
+| **M4 UI phases 1–2** | Caelza themes as default, Bodies page, Memory page; web app installable as a PWA | M2, M3 |
 | **M5 SOP playbooks** | debloat / malware / new-phone / diagnostics as SOPs with approvals; evals on an emulator | M2 |
 | **M6 Fleet + Forge** | hub + bodies deployment; supervisor guards the Runtime binary; agent-authored PRs | M2–M5 |
+| **M7 Caelza Android app** | native companion: Body via Shizuku, foreground service, accessibility + notification access, hosts Runtime + local model, WebView/PWA dashboard, Guide-led first run | M2, M1.5, M4 |
 
 ## 10. Open decisions
 
@@ -306,3 +394,11 @@ Grouped, unranked inside each group. ★ = cheap given what we already have.
 6. **Dashboard build**: upstream needs Node 24+ to rebuild `web/dist`; the
    pipeline rebrands the source and assets but does not rebuild the bundle.
    Decide whether release CI builds it or we vendor a built `dist`.
+7. **Shizuku as the primary privilege path**: in the Android app, Shizuku
+   replaces loopback ADB. Keep the Termux/ADB path as the headless fallback,
+   or drop it once the app ships?
+8. **Local model ladder**: which DeepSeek R1 sizes to ship as defaults per RAM
+   tier, and whether the app downloads weights on first run (1–9 GB) or ships
+   only the 1.5B Guide model and offers the rest as a download.
+9. **The Guide's name and voice**: reuse Marley (the `.tech` chatbot) inside
+   Caelza, or a sibling persona with the same prompt lineage?

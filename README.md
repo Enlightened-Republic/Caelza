@@ -98,7 +98,18 @@ python -m pytest -q
 
 The Body's roadmap is to become `caelza-body`, an MCP server the Runtime spawns,
 so the Python loop retires and the sensors, ADB tools and supervisor stay
-(vision doc §3.1).
+(vision doc §3.1). After that comes the **Caelza Android app**, which hosts the
+Body natively and uses [Shizuku](https://github.com/RikkaApps/Shizuku) for
+shell-level device control without root or Termux (§3.3).
+
+## Models
+
+Caelza works with no account and no API key: quickstart offers **DeepSeek R1,
+free and local** (Ollama on a hub, llama.cpp on the phone, sized to the
+device) and a **bring your own** door for any provider the Runtime supports
+(Anthropic, OpenAI, OpenRouter, MiniMax, Ollama, any OpenAI-compatible
+endpoint). The local model also powers the in-app **Guide**, which explains
+keys, providers, approvals and pairing in plain language, offline (§3.4).
 
 ## Design docs
 
