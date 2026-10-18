@@ -20,6 +20,7 @@ asyncio_mode = "auto"
 testpaths = ["tests"]
 
 [tool.setuptools.packages.find]
-# The reference agent package is `niba`. Clone this repo, customize
-# `niba/agent/prompt.md` + `~/.niba/config.toml`, and run `python -m niba.supervisor`.
-include = ["niba*"]
+# The Body package. Clone this repo, customize `caelza_body/agent/prompt.md`
+# + `~/.caelza-body/config.toml`, and run `python -m caelza_body.supervisor`.
+# (The reference agent persona is still named Niba; only the package moved.)
+include = ["caelza_body*"]

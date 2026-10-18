@@ -139,7 +139,8 @@ The Republic's voice, in product form: short declaratives, section labels in
 caps, dry confidence. "We build things that actually work." "Signal in the
 noise." Caelza copy says what happened and what to do next. The irreverence
 and profanity of `enlightenedrepublic.online` stay on the broadcast side; the
-product is plain.
+product is plain. **Cael**, the in-app guide, speaks in exactly this register;
+the persona and prompt are in `guide/CAEL.md`.
 
 Always `ENLIGHTENED REPUBLIC™` (caps, with ™) when the parent is named in UI
 chrome; `Enlightened Republic` in prose; `EST. 2026` where the Republic signs

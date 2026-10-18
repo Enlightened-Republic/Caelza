@@ -2,8 +2,8 @@ import json
 
 import pytest
 
-from niba.agent import tools
-from niba.agent.tools import web
+from caelza_body.agent import tools
+from caelza_body.agent.tools import web
 
 
 @pytest.fixture(autouse=True)

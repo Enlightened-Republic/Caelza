@@ -4,8 +4,8 @@ import os
 import re
 from pathlib import Path
 
-from niba.agent import proc
-from niba.agent.devices import DeviceRegistry
+from caelza_body.agent import proc
+from caelza_body.agent.devices import DeviceRegistry
 
 #: A loopback serial in `adb devices` output that is actually connected
 #: (state column == "device", not "offline"/"unauthorized").
@@ -14,7 +14,7 @@ _LOOPBACK_ONLINE = re.compile(r"^(127\.0\.0\.1:\d+)\s+device\b", re.M)
 _MAX_SCAN_CANDIDATES = 3
 
 #: Niba home dir, set by configure(). Used to locate run/adb-self-port.
-_NIBA_HOME: Path | None = None
+_BODY_HOME: Path | None = None
 
 #: Merged-output cap (~8 KB) for a single adb invocation.
 CAP = 8000
@@ -22,10 +22,10 @@ CAP = 8000
 DEFAULT_SELF_PORT = 5555
 
 
-def configure(niba_home) -> None:
-    """Point the module at <niba_home> (for run/adb-self-port lookup)."""
-    global _NIBA_HOME
-    _NIBA_HOME = Path(niba_home)
+def configure(body_home) -> None:
+    """Point the module at <body_home> (for run/adb-self-port lookup)."""
+    global _BODY_HOME
+    _BODY_HOME = Path(body_home)
     _ensure_tmpdir()
 
 
@@ -48,9 +48,9 @@ def _ensure_tmpdir() -> None:
 
 
 def _self_port() -> int:
-    """Self-ADB port: $NIBA_HOME/run/adb-self-port if present, else 5555."""
-    if _NIBA_HOME is not None:
-        f = Path(_NIBA_HOME) / "run" / "adb-self-port"
+    """Self-ADB port: $CAELZA_BODY_HOME/run/adb-self-port if present, else 5555."""
+    if _BODY_HOME is not None:
+        f = Path(_BODY_HOME) / "run" / "adb-self-port"
         if f.exists():
             try:
                 return int(f.read_text().strip())
@@ -86,7 +86,7 @@ class Adb:
         self._self_override = self_serial
         #: A port connect_self() rediscovered from `adb devices` when the
         #: recorded one was dead. Kept separate from the override so a fresh
-        #: run/adb-self-port (niba setup re-run) still takes precedence.
+        #: run/adb-self-port (setup.py re-run) still takes precedence.
         self._discovered_serial: str | None = None
 
     @property
@@ -153,7 +153,7 @@ class Adb:
 
         file_serial = f"127.0.0.1:{_self_port()}"
         tried: set[str] = set()
-        # File port first when it differs from a past discovery — a niba-setup
+        # File port first when it differs from a past discovery — a setup.py
         # re-run must be able to supersede a stale adopted port.
         order = [file_serial, self._discovered_serial] \
             if file_serial != self._discovered_serial \

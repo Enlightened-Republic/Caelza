@@ -20,7 +20,7 @@ Three layers, three words, and the product name for the whole:
 |---|---|---|
 | **Runtime** | agent loop, 20+ model providers, 30+ channels, tools, security policy, SOP engine, cron, gateway, dashboard, WASM plugins, hardware peripherals | rebranded ZeroClaw build (`runtime/`) |
 | **Mind** | autonomic long-term memory: graph + forgetting curve + sleep | xanima (openwave) on sharpwave-core (`mind/`) |
-| **Body** | the device: termux-api sensors, ADB control of self and paired phones, the immutable supervisor with git-backed self-modification and rollback | Airframe Lite (`niba/`) |
+| **Body** | the device: termux-api sensors, ADB control of self and paired phones, the immutable supervisor with git-backed self-modification and rollback | Airframe Lite (`caelza_body/`) |
 
 ## 2. Why rebuild on ZeroClaw (decision record)
 
@@ -84,7 +84,7 @@ Deployment shapes, all from the same bundle:
 
 ### 3.1 The Body becomes an MCP server
 
-`niba/agent/tools/*` already have the shape of MCP tools (name, JSON schema,
+`caelza_body/agent/tools/*` already have the shape of MCP tools (name, JSON schema,
 handler) and `mcp` is already a dependency. `caelza-body` wraps them as a stdio
 MCP server the Runtime spawns (or an `http` one it reaches over Tailscale).
 Dangerous-op semantics stay in the Body: `reason` required, audit log, package
@@ -137,8 +137,21 @@ apps. The Body's `device_*` tools map onto it one to one:
 Shizuku needs re-starting after every reboot unless the device is rooted, so
 the app's first-run wizard explains the "start Shizuku" step and the
 supervisor treats a missing Shizuku server as a degraded Body (sensors still
-work, privileged device ops report "needs Shizuku"). Termux stays supported as
-the headless path for devices without the app.
+work, privileged device ops report "needs Shizuku").
+
+**Decision (2026-10-18): Termux + loopback ADB stays the primary path** for
+the current test device, and Shizuku is an *optional permission*, granted the
+way the Runtime's risk profiles grant capabilities rather than a different
+product. Concretely:
+
+- `body.privilege = "adb" | "shizuku"` in the Body config, default `adb`. The
+  `device_*` tools are the same either way; only the transport underneath
+  changes, so SOPs and approvals do not care which one is active.
+- Two one-line installs, same Body: `curl … install.sh | sh` in Termux (ships
+  now, `install.sh` at the repo root) and the app's installer when the app
+  exists. Both end in the same Cael-led setup.
+- A phone can run both: Termux for the headless agent, the app for the screen,
+  Shizuku granted to whichever asks. Nothing is retired.
 
 ### 3.4 A free local model by default, bring your own to customise
 
@@ -162,11 +175,11 @@ The honest size ladder, by where the Runtime runs:
 
 So the local model has two jobs and one job it does not get by default:
 
-- **Guide**: the in-app helper that explains what an API key is, what a
-  provider is, what Shizuku does, why an approval prompt appeared, and walks
-  through setup in plain language. This is the "super user friendly" layer:
-  a Marley-style assistant inside the product, running free and offline.
-  Even the 1.5B model is good at this.
+- **Cael, the Guide** (`guide/CAEL.md`): the in-app helper that explains what
+  an API key is, what a provider is, what Shizuku does, why an approval prompt
+  appeared, and walks through setup in plain language. This is the "super user
+  friendly" layer: a sibling of Marley inside the product, running free and
+  offline. Even the 1.5B model is good at this.
 - **Offline reasoning**: when the phone has no network, the local model
   handles the Airframe "offline mode" cases (queued device actions, simple
   questions) instead of the canned "offline, will process later" reply.
@@ -187,7 +200,7 @@ roll back, all on the phone. In Caelza the mutable surface splits:
 |---|---|---|
 | Runtime binary | CI, from this repo | last-good binary kept; supervisor swaps and probes (`caelza --version`, gateway health) and rolls back |
 | Runtime config, prompts, skills, SOPs | the agent, through its own tools | config validation fails closed; the supervisor snapshots `~/.caelza` before each self-change |
-| Body code (`niba/`) | the agent | unchanged: pytest → commit → restart → probe → promote/rollback |
+| Body code (`caelza_body/`) | the agent | unchanged: pytest → commit → restart → probe → promote/rollback |
 | `supervisor.py` | nobody | deny-listed, as today |
 
 The step after that is **Forge**: the agent proposes Runtime changes as pull
@@ -362,7 +375,7 @@ Grouped, unranked inside each group. ★ = cheap given what we already have.
 - Caelza relay (`caelrelay`) hosted by us as an optional service for bodies on carrier NAT.
 - The Caelza Android app with Shizuku (§3.3) and the web app as a PWA.
 - **Free by default**: DeepSeek R1 local, no key, no account (§3.4); "bring your own" for everything else.
-- **The Guide**: the local model as an always-available explainer (what is an API key, what did that approval mean, how do I pair a phone), in the Republic's voice, offline. Could share a name and prompt lineage with Marley on `enlightenedrepublic.tech`.
+- **Cael**: the local model as an always-available explainer (what is an API key, what did that approval mean, how do I pair a phone), in the Republic's voice, offline. Sibling of Marley on `enlightenedrepublic.tech`; persona in `guide/CAEL.md`.
 - Model picker that shows the honest ladder: what runs on *this* device, what it is good for, and when to bring a cloud model.
 - One-tap "explain this screen" anywhere in the app, answered by the Guide.
 
@@ -380,28 +393,23 @@ Grouped, unranked inside each group. ★ = cheap given what we already have.
 | **M6 Fleet + Forge** | hub + bodies deployment; supervisor guards the Runtime binary; agent-authored PRs | M2–M5 |
 | **M7 Caelza Android app** | native companion: Body via Shizuku, foreground service, accessibility + notification access, hosts Runtime + local model, WebView/PWA dashboard, Guide-led first run | M2, M1.5, M4 |
 
-## 10. Open decisions
+## 10. Decisions (taken 2026-10-18) and what is still open
 
-1. **xanima packaging**: npm name, plugin id and ClawHub slug all `xanima`?
-   The Mind docs assume yes (table in `mind/README.md`).
-2. **Repo rename**: `airframe-lite` → `caelza` on GitHub (redirects keep old
-   links working). Everything in this PR already points at the new name.
-3. **Body package name**: keep `niba` as the reference agent (`~/.niba`,
-   `NIBA_HOME`, unchanged on the deployed phone) or rename to `caelza_body`?
-   This PR keeps `niba` to avoid touching the running device.
-4. **Licence for this repo**: Airframe Lite has no LICENSE file ("private while
-   early"). The Runtime is MIT OR Apache-2.0 and the Mind is MIT; the Body
-   needs a licence before the bundle is public.
-5. **Public URLs**: the rename map points docs/site/Discord at the GitHub repo
-   for now. Swap in real domains in `runtime/rename-map.txt` when they exist.
-6. **Dashboard build**: upstream needs Node 24+ to rebuild `web/dist`; the
-   pipeline rebrands the source and assets but does not rebuild the bundle.
-   Decide whether release CI builds it or we vendor a built `dist`.
-7. **Shizuku as the primary privilege path**: in the Android app, Shizuku
-   replaces loopback ADB. Keep the Termux/ADB path as the headless fallback,
-   or drop it once the app ships?
-8. **Local model ladder**: which DeepSeek R1 sizes to ship as defaults per RAM
-   tier, and whether the app downloads weights on first run (1–9 GB) or ships
-   only the 1.5B Guide model and offers the rest as a download.
-9. **The Guide's name and voice**: reuse Marley (the `.tech` chatbot) inside
-   Caelza, or a sibling persona with the same prompt lineage?
+| # | Question | Decision |
+|---|---|---|
+| 1 | xanima naming | **xanima everywhere**: npm package, plugin id, ClawHub slug, config entry, cron id, env var. One clean break; the openwave repo update carries it. |
+| 2 | Repo rename | **Rename `airframe-lite` → `caelza` now** (GitHub Settings, redirects keep old links). Every URL in this repo already assumes it. |
+| 3 | Body package | **`caelza_body`**, state in `~/.caelza-body`, env `CAELZA_BODY_HOME`. The reference agent persona stays "Niba". The legacy `~/.niba` / `NIBA_HOME` are honoured until `python scripts/setup.py --migrate` runs on the phone. |
+| 4 | Licence | **MIT** for this repo (Body, pipeline, brand, docs). Runtime stays MIT OR Apache-2.0 from upstream; fonts OFL. |
+| 5 | Public URLs | Pointed at `enlightenedrepublic.tech` and the GitHub repo in `runtime/rename-map.txt`; swap in a product domain if one appears. |
+| 6 | Dashboard bundle | **GitHub Actions builds it on release** (`.github/workflows/release.yml`: `cargo web build` with Node 24, shipped in each tarball). Nothing generated is committed. |
+| 7 | Privilege path | **Termux + loopback ADB is primary** for the current test device. Shizuku is an *optional permission*, the way the Runtime's risk profiles grant capabilities: `body.privilege = "adb" \| "shizuku"`. Both ship as one-line installs: `install.sh` for Termux now, the app's installer when the app exists. |
+| 8 | Local model | **Bundle the 1.5B Guide model; offer 7B/14B as a download** sized to RAM at quickstart; bring-your-own key is the other door. |
+| 9 | The Guide | **Cael**, short for Caelza: a sibling of Marley with the same prompt lineage. Persona and prompt in `guide/CAEL.md`. |
+| 10 | The mark | Bolt alone is the default; the leaning C stays opt-in. Still being sat with. |
+
+Still open:
+
+- The openwave → xanima rename itself (separate repo; checklist in `mind/README.md`).
+- Whether the Body's `caelza-body-last-good` git tag should replace `niba-last-good` on deployed phones (left as is so the phone's rollback pointer survives the rename).
+- A product domain for Caelza, if any.

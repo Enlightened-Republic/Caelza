@@ -14,13 +14,13 @@ class Config:
     openrouter_api_key: str
     model_calls_per_hour: int
     monthly_token_budget: int
-    niba_home: Path
+    body_home: Path
     repo_root: Path
     mmx_config_path: Path
     # Model HTTP retry/timeout knobs. Defaults are conservative for cellular:
     # 180s per call, up to 3 attempts total, 1s base exponential backoff
     # (1s + 2s = 3s of wait between attempts). Tunable per-deployment via
-    # the [model] section of ~/.niba/config.toml.
+    # the [model] section of ~/.caelza-body/config.toml.
     model_timeout_seconds: int = 180
     model_max_attempts: int = 3
     model_retry_base_seconds: float = 1.0
@@ -36,14 +36,37 @@ class MmxToken:
     resource_url: str = ""
 
 
-def _home(niba_home: Path | None) -> Path:
-    if niba_home is not None:
-        return Path(niba_home)
-    return Path(os.environ.get("NIBA_HOME", Path.home() / ".niba"))
+HOME_ENV = "CAELZA_BODY_HOME"
+LEGACY_HOME_ENV = "NIBA_HOME"          # Airframe Lite name, still honoured
+DEFAULT_HOME_NAME = ".caelza-body"
+LEGACY_HOME_NAME = ".niba"             # Airframe Lite state dir, used until migrated
 
 
-def load_config(niba_home: Path | None = None) -> Config:
-    home = _home(niba_home)
+def resolve_home() -> Path:
+    """The Body's state directory.
+
+    Precedence: $CAELZA_BODY_HOME, then the legacy $NIBA_HOME, then
+    ~/.caelza-body, then a legacy ~/.niba that still exists (so a phone that
+    has not run `setup.py` since the rename keeps booting), else ~/.caelza-body.
+    """
+    for var in (HOME_ENV, LEGACY_HOME_ENV):
+        val = os.environ.get(var)
+        if val:
+            return Path(val)
+    new, old = Path.home() / DEFAULT_HOME_NAME, Path.home() / LEGACY_HOME_NAME
+    if not new.exists() and old.is_dir():
+        return old
+    return new
+
+
+def _home(body_home: Path | None) -> Path:
+    if body_home is not None:
+        return Path(body_home)
+    return resolve_home()
+
+
+def load_config(body_home: Path | None = None) -> Config:
+    home = _home(body_home)
     data = tomllib.loads((home / "config.toml").read_text())
     tg = data["telegram"]
     limits = data.get("limits", {})
@@ -57,7 +80,7 @@ def load_config(niba_home: Path | None = None) -> Config:
         openrouter_api_key=data.get("openrouter", {}).get("api_key", ""),
         model_calls_per_hour=int(limits.get("model_calls_per_hour", 120)),
         monthly_token_budget=int(limits.get("monthly_token_budget", 1_600_000_000)),
-        niba_home=home,
+        body_home=home,
         repo_root=Path(__file__).resolve().parents[2],
         mmx_config_path=mmx_path,
         model_timeout_seconds=int(model.get("timeout_seconds", 180)),

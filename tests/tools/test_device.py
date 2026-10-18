@@ -4,8 +4,8 @@ import stat
 
 import pytest
 
-from niba.agent import tools
-from niba.agent.tools import device, media
+from caelza_body.agent import tools
+from caelza_body.agent.tools import device, media
 
 
 @pytest.fixture
@@ -48,7 +48,7 @@ def test_configure_connects_self_on_start(tmp_path, monkeypatch):
     """I1: device.configure() must best-effort `adb connect` this phone —
     off the calling thread (Imp-2: it must not block the supervisor probe)."""
     import time as _t
-    from niba.agent.adb import Adb
+    from caelza_body.agent.adb import Adb
     calls = []
     monkeypatch.setattr(Adb, "connect_self", lambda self: calls.append(1) or True)
     device.configure(tmp_path)
@@ -60,7 +60,7 @@ def test_configure_connects_self_on_start(tmp_path, monkeypatch):
 
 
 def test_configure_survives_connect_self_failure(tmp_path, monkeypatch):
-    from niba.agent.adb import Adb
+    from caelza_body.agent.adb import Adb
     def boom(self):
         raise RuntimeError("no wireless debugging")
     monkeypatch.setattr(Adb, "connect_self", boom)

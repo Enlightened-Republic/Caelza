@@ -7,7 +7,7 @@ a graph memory with an FSRS forgetting curve, typed edges, supersession, and a
 sleep system (slow-wave / REM consolidation, awake replay, LLM fact extraction)
 that improves the graph between sessions.
 
-Airframe Lite already used sharpwave over MCP (`niba/agent/memory.py`). Caelza
+Airframe Lite already used sharpwave over MCP (`caelza_body/agent/memory.py`). Caelza
 keeps the same engine and the same brain databases (`~/.sharpwave/<agent>/brain.db`,
 schema v17), so nothing migrates; what changes is how the runtime reaches it.
 
@@ -24,12 +24,24 @@ schema v17), so nothing migrates; what changes is how the runtime reaches it.
 | brain db path | `~/.sharpwave/<agent>/brain.db` | unchanged (engine-owned) |
 | engine | `sharpwave-core ^0.4.5` | unchanged |
 
-The rename lands in the openwave repo (the "xanima update"). Until it ships,
-every reference here that says xanima resolves to openwave 0.2.0; the bundle
-manifest records both names. Things the rename must keep working: the
-`openwave:consolidation` host cron that existing gateways already registered
-(remove the old id on `gateway_start`, as the legacy-cleanup code already does
-for older job names), and `brainTokenFile` paths users have on disk.
+**Decided (2026-10-18): xanima everywhere.** The rename lands in the openwave
+repo as one clean break; until that ships, every reference here that says
+xanima resolves to openwave 0.2.0, and the bundle manifest records both names.
+Checklist for the openwave-side change:
+
+1. `package.json` → `"name": "xanima"`, repo URL, keywords; publish `xanima`
+   to npm and ClawHub (`clawhub:xanima`); deprecate `openwave` on npm with a
+   pointer.
+2. `openclaw.plugin.json` → `"id": "xanima"`, `"name": "xanima"`.
+3. Config entry `plugins.entries.xanima`; allowlist entries; the `[xanima]`
+   log prefix; `XANIMA_BRAIN_TOKEN` env (read `OPENWAVE_BRAIN_TOKEN` as a
+   fallback for one release).
+4. Host cron id `xanima:consolidation`; on `gateway_start` remove a leftover
+   `openwave:consolidation`, the way the legacy-cleanup code already drops
+   older job names.
+5. Leave `brainTokenFile` paths and `~/.sharpwave/<agent>/brain.db` alone;
+   they are engine-owned and users have them on disk.
+6. README, HAILEY.md, the `.tech` site card and the sharpwave README pointer.
 
 ## How the Runtime talks to the Mind
 

@@ -1,7 +1,7 @@
 import sys
 import time
 from pathlib import Path
-from niba.supervisor import Child
+from caelza_body.supervisor import Child
 
 
 def _child(tmp_path, name, code):

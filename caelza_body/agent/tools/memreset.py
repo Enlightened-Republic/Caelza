@@ -1,7 +1,7 @@
 from __future__ import annotations
 
-from niba.agent import tools
-from niba.agent.memory import NIBA_AGENT_ID
+from caelza_body.agent import tools
+from caelza_body.agent.memory import NIBA_AGENT_ID
 
 _MEM = None
 _AGENT_ID = NIBA_AGENT_ID

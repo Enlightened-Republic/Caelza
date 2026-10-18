@@ -10,8 +10,8 @@ __all__ = ["beat", "start_daemon", "DEFAULT_INTERVAL"]
 DEFAULT_INTERVAL = 15.0
 
 
-def beat(niba_home: Path) -> None:
-    run = Path(niba_home) / "run"
+def beat(body_home: Path) -> None:
+    run = Path(body_home) / "run"
     run.mkdir(parents=True, exist_ok=True)
     # Atomic: a reader must never catch the file mid-truncate and parse "".
     tmp = run / "heartbeat.tmp"
@@ -29,7 +29,7 @@ def beat(niba_home: Path) -> None:
     os.replace(tmp, dst)  # last attempt — let it raise if it truly can't
 
 
-def start_daemon(niba_home: Path, interval: float = DEFAULT_INTERVAL,
+def start_daemon(body_home: Path, interval: float = DEFAULT_INTERVAL,
                  stop: threading.Event | None = None) -> threading.Thread:
     """Beat every `interval` seconds from a daemon thread, and return it.
 
@@ -45,16 +45,16 @@ def start_daemon(niba_home: Path, interval: float = DEFAULT_INTERVAL,
     `stop` is an optional Event that ends the thread when set; the wait is done
     on the Event rather than `time.sleep` so the interval is interruptible.
     """
-    beat(niba_home)
+    beat(body_home)
     stop = stop if stop is not None else threading.Event()
 
     def _loop() -> None:
         while not stop.wait(interval):
             try:
-                beat(niba_home)
+                beat(body_home)
             except OSError:  # a transient FS error must not kill the heartbeat
                 pass
 
-    t = threading.Thread(target=_loop, name="niba-heartbeat", daemon=True)
+    t = threading.Thread(target=_loop, name="caelza-body-heartbeat", daemon=True)
     t.start()
     return t

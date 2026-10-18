@@ -4,7 +4,7 @@ import time
 
 import pytest
 
-from niba.agent import proc
+from caelza_body.agent import proc
 
 
 def test_exit_code_and_output_are_returned():

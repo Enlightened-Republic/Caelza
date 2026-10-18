@@ -1,5 +1,5 @@
-from niba.agent import tools
-from niba.agent.tools import memtools
+from caelza_body.agent import tools
+from caelza_body.agent.tools import memtools
 
 
 class FakeMem:

@@ -1,16 +1,16 @@
 import httpx, json
 import pytest
 from pathlib import Path
-from niba.agent import tools
-from niba.agent import loop as loop_mod
-from niba.agent.loop import handle_turn
-from niba.agent.telegram import Telegram, Update
-from niba.agent.session import Session
-from niba.agent.redact import Redactor
+from caelza_body.agent import tools
+from caelza_body.agent import loop as loop_mod
+from caelza_body.agent.loop import handle_turn
+from caelza_body.agent.telegram import Telegram, Update
+from caelza_body.agent.session import Session
+from caelza_body.agent.redact import Redactor
 
 
 class _Cfg:
-    def __init__(self, home): self.niba_home = home; self.owner_chat_id = 42
+    def __init__(self, home): self.body_home = home; self.owner_chat_id = 42
 
 
 def _batch(*, updates, tmp_path, sent, consec_errors=0, offset=0):
@@ -45,7 +45,7 @@ def _tg(capture):
 
 
 def test_handle_turn_text_only(tmp_path):
-    from niba.agent.model import Assistant
+    from caelza_body.agent.model import Assistant
     tools.reset()
 
     @tools.tool("ping", "d", {"type": "object", "properties": {}})
@@ -53,7 +53,7 @@ def test_handle_turn_text_only(tmp_path):
 
     sent = []
     model = ScriptedModel([
-        Assistant(content=None, tool_calls=[__import__("niba.agent.model", fromlist=["ToolCall"]).ToolCall("c1", "ping", {})], raw={"role": "assistant", "tool_calls": [{"id": "c1", "type": "function", "function": {"name": "ping", "arguments": "{}"}}]}),
+        Assistant(content=None, tool_calls=[__import__("caelza_body.agent.model", fromlist=["ToolCall"]).ToolCall("c1", "ping", {})], raw={"role": "assistant", "tool_calls": [{"id": "c1", "type": "function", "function": {"name": "ping", "arguments": "{}"}}]}),
         Assistant(content="pong to you", tool_calls=[], raw={"role": "assistant", "content": "pong to you"}),
     ])
     prompt = tmp_path / "p.md"; prompt.write_text("You are Niba.")
@@ -70,7 +70,7 @@ def test_handle_turn_text_only(tmp_path):
 
 
 def test_tool_result_is_redacted(tmp_path):
-    from niba.agent.model import Assistant, ToolCall
+    from caelza_body.agent.model import Assistant, ToolCall
     tools.reset()
 
     @tools.tool("leak", "d", {"type": "object", "properties": {}})
@@ -231,7 +231,7 @@ def test_run_starts_the_heartbeat_daemon(tmp_path, monkeypatch):
 def test_live_user_message_is_not_duplicated_in_the_prompt(tmp_path):
     """Regression: session.append ran before build_messages, so the newest
     message appeared both in session.recent() history and as the tail."""
-    from niba.agent.model import Assistant
+    from caelza_body.agent.model import Assistant
     tools.reset()
     sent = []
     model = ScriptedModel([Assistant("hi", [], {"role": "assistant", "content": "hi"})])

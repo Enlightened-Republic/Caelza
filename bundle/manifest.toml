@@ -52,12 +52,15 @@ integration = "mind/README.md"
 # immutable supervisor with git-backed self-modification rollback.
 [components.body]
 kind = "python-package"
-package = "niba"                  # reference agent package name
-path = "niba/"
+package = "caelza_body"           # the reference agent persona is still "Niba"
+path = "caelza_body/"
 python = ">=3.11"
 runtime_target = "Termux on non-root Android"
-state_dir = "~/.niba"
-privilege_path = "loopback-adb"   # the Android app replaces this with Shizuku (see components.app)
+state_dir = "~/.caelza-body"      # a legacy ~/.niba is used until setup migrates it
+env_home = "CAELZA_BODY_HOME"     # NIBA_HOME is still honoured as a fallback
+privilege = "adb"                 # "adb" (Termux loopback ADB, primary) or "shizuku" (optional permission; see components.app)
+install = "install.sh"            # one-line Termux install: curl -fsSL <repo>/main/install.sh | sh
+migrate = "python scripts/setup.py --migrate"   # existing Airframe Lite phones, once
 
 # ---------------------------------------------------------------------------
 # App — the Caelza Android app + web app (PWA of the Runtime dashboard).
@@ -67,15 +70,18 @@ privilege_path = "loopback-adb"   # the Android app replaces this with Shizuku (
 kind = "android-app"
 status = "planned"
 web = "pwa"                       # the Runtime dashboard, installable
-privilege = "shizuku"             # https://github.com/RikkaApps/Shizuku (Apache-2.0); Sui on rooted devices
+privilege = "shizuku"             # optional: https://github.com/RikkaApps/Shizuku (Apache-2.0); Sui on rooted devices
 hosts = ["runtime", "body", "model"]
+install = "app"                   # the app's own one-line installer, when it exists
 
 # ---------------------------------------------------------------------------
 # Default model — free and local, no key, no account. Users can bring their
 # own provider/key instead (any provider the Runtime supports).
 [defaults.model]
 family = "deepseek-r1"            # MIT-licensed, including distilled sizes
-guide = "deepseek-r1:1.5b"        # always-available explainer; runs on any device
+guide = "deepseek-r1:1.5b"        # always-available explainer; runs on any device; bundled
+guide_name = "Cael"               # the Guide persona (guide/CAEL.md); sibling of Marley
+bigger = "download"               # 7B/14B offered as a download sized to RAM at quickstart
 hub = "deepseek-r1:14b"           # 16 GB+ hosts (8b on 8–12 GB), via Ollama
 phone_8gb = "DeepSeek-R1-Distill-Qwen-7B-Q4_K_M"   # via llama.cpp
 phone_5gb = "DeepSeek-R1-Distill-Qwen-1.5B-Q4_K_M" # chat + explain only

@@ -1,6 +1,6 @@
 """Read-only device tools: inspect paired phones and this phone over adb.
 
-`configure()` wires up a `DeviceRegistry` + `Adb` for `$NIBA_HOME/devices.json`.
+`configure()` wires up a `DeviceRegistry` + `Adb` for `$CAELZA_BODY_HOME/devices.json`.
 `register()` registers the read tools. More `@tools.tool` defs (write/UI actions)
 are appended to `register()` by a later task — keep each one self-contained and
 use `_unknown(device)` for the "is this device known?" guard.
@@ -13,15 +13,15 @@ import time
 from datetime import datetime, timezone
 from pathlib import Path
 
-from niba.agent import adb as _adb_mod
-from niba.agent import proc
-from niba.agent import tools
-from niba.agent.adb import Adb
-from niba.agent.devices import DeviceRegistry
-from niba.agent.tools.media import emit_image
+from caelza_body.agent import adb as _adb_mod
+from caelza_body.agent import proc
+from caelza_body.agent import tools
+from caelza_body.agent.adb import Adb
+from caelza_body.agent.devices import DeviceRegistry
+from caelza_body.agent.tools.media import emit_image
 
 #: Set by configure().
-_NIBA_HOME: Path | None = None
+_BODY_HOME: Path | None = None
 _TMP: Path | None = None
 registry: DeviceRegistry | None = None
 adb: Adb | None = None
@@ -29,7 +29,7 @@ adb: Adb | None = None
 #: adb screencap can be slow on a cold device.
 SCREENCAP_TIMEOUT = 30
 
-#: I10: keep $NIBA_HOME/tmp and $NIBA_HOME/snapshots from growing without bound.
+#: I10: keep $CAELZA_BODY_HOME/tmp and $CAELZA_BODY_HOME/snapshots from growing without bound.
 TMP_MAX_AGE_S = 24 * 3600
 KEEP_SNAPSHOTS = 20
 
@@ -37,7 +37,7 @@ KEEP_SNAPSHOTS = 20
 def _prune() -> None:
     """Best-effort: drop tmp captures older than 24h and old package snapshots.
     A prune failure must never break startup."""
-    if _TMP is None or _NIBA_HOME is None:
+    if _TMP is None or _BODY_HOME is None:
         return  # configure() hasn't run — never touch the cwd
     try:
         cutoff = time.time() - TMP_MAX_AGE_S
@@ -47,7 +47,7 @@ def _prune() -> None:
     except Exception:  # noqa: BLE001
         pass
     try:
-        snaps = sorted((_NIBA_HOME / "snapshots").glob("*"),
+        snaps = sorted((_BODY_HOME / "snapshots").glob("*"),
                        key=lambda p: p.stat().st_mtime, reverse=True)
         for f in snaps[KEEP_SNAPSHOTS:]:
             f.unlink()
@@ -55,21 +55,21 @@ def _prune() -> None:
         pass
 
 
-def configure(niba_home) -> None:
-    """Wire the module to <niba_home>: registry, Adb, and a tmp dir for captures."""
-    global _NIBA_HOME, _TMP, registry, adb
-    _NIBA_HOME = Path(niba_home)
-    _adb_mod.configure(_NIBA_HOME)  # so the self-port file is found
-    registry = DeviceRegistry(_NIBA_HOME / "devices.json")
+def configure(body_home) -> None:
+    """Wire the module to <body_home>: registry, Adb, and a tmp dir for captures."""
+    global _BODY_HOME, _TMP, registry, adb
+    _BODY_HOME = Path(body_home)
+    _adb_mod.configure(_BODY_HOME)  # so the self-port file is found
+    registry = DeviceRegistry(_BODY_HOME / "devices.json")
     adb = Adb(registry)
-    _TMP = _NIBA_HOME / "tmp"
+    _TMP = _BODY_HOME / "tmp"
     _TMP.mkdir(parents=True, exist_ok=True)
     _prune()
     # Spec §5.5: on start, device.py runs `adb connect 127.0.0.1:<port>` so the
     # first self-targeting tool call after a reboot works. Off the calling
     # thread: connect_self() can spend tens of seconds scanning, and configure()
     # runs inside the supervisor's 60s probe budget on the --probe path.
-    threading.Thread(target=_connect_self_quietly, name="niba-adb-self",
+    threading.Thread(target=_connect_self_quietly, name="caelza-body-adb-self",
                      daemon=True).start()
 
 
@@ -91,7 +91,7 @@ def _unknown(device: str) -> str | None:
 
 def _log_action(device: str, tool: str, detail: str, reason: str) -> None:
     """Append one audit line for a state-changing device action."""
-    log = _NIBA_HOME / "logs" / "device-actions.log"
+    log = _BODY_HOME / "logs" / "device-actions.log"
     log.parent.mkdir(parents=True, exist_ok=True)
     ts = datetime.now(timezone.utc).isoformat()
     with log.open("a", encoding="utf-8") as fh:
@@ -99,13 +99,13 @@ def _log_action(device: str, tool: str, detail: str, reason: str) -> None:
 
 
 def _snapshot(device: str) -> tuple[str, str]:
-    """Dump the FULL (uncapped) package list to $NIBA_HOME/snapshots/ before a
+    """Dump the FULL (uncapped) package list to $CAELZA_BODY_HOME/snapshots/ before a
     removal. Returns ``(snapshot_path, snapshot_text)`` so the caller can check
     the snapshot actually captured something before removing anything.
     """
     out = adb.run_uncapped(device, "shell", "pm", "list", "packages", "-f",
                            timeout=30)
-    snap = _NIBA_HOME / "snapshots" / f"{device}-{time.time_ns()}.txt"
+    snap = _BODY_HOME / "snapshots" / f"{device}-{time.time_ns()}.txt"
     snap.parent.mkdir(parents=True, exist_ok=True)
     snap.write_text(out, encoding="utf-8")
     return str(snap), out

@@ -1,7 +1,7 @@
 import json
 from pathlib import Path
 import pytest
-from niba.agent import config
+from caelza_body.agent import config
 
 
 CONFIG_TOML = """
@@ -25,7 +25,7 @@ def test_load_config(tmp_path):
     assert cfg.owner_chat_id == 42
     assert cfg.openrouter_api_key == "or-secret"
     assert cfg.model_calls_per_hour == 90
-    assert cfg.niba_home == tmp_path
+    assert cfg.body_home == tmp_path
 
 
 def test_load_mmx_token_roundtrip(tmp_path):
@@ -68,7 +68,7 @@ def test_load_mmx_token_nested_oauth(tmp_path):
 
 
 def test_firecrawl_key_loads_and_is_a_secret(tmp_path):
-    from niba.agent import config as c
+    from caelza_body.agent import config as c
     (tmp_path / "mmx.json").write_text('{"oauth":{"access_token":"A","refresh_token":"R"}}')
     (tmp_path / "config.toml").write_text(
         "[telegram]\nbot_token='T'\nowner_chat_id=1\n"
@@ -79,13 +79,13 @@ def test_firecrawl_key_loads_and_is_a_secret(tmp_path):
 
 
 def test_firecrawl_key_defaults_empty(tmp_path):
-    from niba.agent import config as c
+    from caelza_body.agent import config as c
     (tmp_path / "config.toml").write_text("[telegram]\nbot_token='T'\nowner_chat_id=1\n")
     assert c.load_config(tmp_path).firecrawl_api_key == ""
 
 
 def test_tavily_and_searchapi_keys_load_and_redact(tmp_path):
-    from niba.agent import config as c
+    from caelza_body.agent import config as c
     (tmp_path / "config.toml").write_text(
         "[telegram]\nbot_token='T'\nowner_chat_id=1\n"
         "[tavily]\napi_key='tvly-abc'\n[searchapi]\napi_key='sa-abc'\n")

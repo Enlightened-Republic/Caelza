@@ -8,10 +8,10 @@ from pathlib import Path
 
 import httpx
 
-from niba.agent import heartbeat
-from niba.agent import telegram as telegram_mod
-from niba.agent.context import build_messages
-from niba.agent.model import ModelAuthError, ModelPaused, ModelQuotaExhausted
+from caelza_body.agent import heartbeat
+from caelza_body.agent import telegram as telegram_mod
+from caelza_body.agent.context import build_messages
+from caelza_body.agent.model import ModelAuthError, ModelPaused, ModelQuotaExhausted
 
 MAX_ROUNDS = 12
 #: Long-poll window. Kept under the supervisor's HEARTBEAT_MAX_AGE (60s) so a
@@ -143,8 +143,8 @@ def _process_batch(*, updates, offset, offset_file, consec_errors, telegram, mod
     return offset, consec_errors
 
 
-def _seed_offset(niba_home) -> int:
-    offset_file = Path(niba_home) / "run" / "offset"
+def _seed_offset(body_home) -> int:
+    offset_file = Path(body_home) / "run" / "offset"
     if offset_file.exists():
         try:
             return int(offset_file.read_text())
@@ -155,13 +155,13 @@ def _seed_offset(niba_home) -> int:
 
 def run(*, cfg, telegram, model, memory, session, tools_mod, prompt_path, redactor,
         heartbeat_interval=HEARTBEAT_INTERVAL):
-    offset_file = Path(cfg.niba_home) / "run" / "offset"
-    offset = _seed_offset(cfg.niba_home)
-    tmp_dir = Path(cfg.niba_home) / "tmp"
+    offset_file = Path(cfg.body_home) / "run" / "offset"
+    offset = _seed_offset(cfg.body_home)
+    tmp_dir = Path(cfg.body_home) / "tmp"
     tmp_dir.mkdir(parents=True, exist_ok=True)
     # The heartbeat runs on its own thread: neither the long poll nor a
     # multi-round turn can starve it (see heartbeat.start_daemon).
-    heartbeat.start_daemon(cfg.niba_home, interval=heartbeat_interval)
+    heartbeat.start_daemon(cfg.body_home, interval=heartbeat_interval)
     consec_errors = 0
     while True:
         try:
@@ -181,12 +181,12 @@ def run(*, cfg, telegram, model, memory, session, tools_mod, prompt_path, redact
 
 
 def probe(cfg) -> int:
-    from niba.agent import config as _c
-    from niba.agent.redact import Redactor
+    from caelza_body.agent import config as _c
+    from caelza_body.agent.redact import Redactor
 
     # Build the redactor first, before anything can fail: httpx puts the full
     # request URL — including /bot<token>/ — into its error strings, and this
-    # stdout lands in ~/.niba/logs/probe.log and then in a Telegram alert.
+    # stdout lands in ~/.caelza-body/logs/probe.log and then in a Telegram alert.
     # A missing mmx token file must not stop us redacting the Telegram token.
     token = None
     try:
@@ -196,8 +196,8 @@ def probe(cfg) -> int:
     redactor = Redactor(_c.secret_values(cfg, token))
 
     try:
-        import niba.agent.loop, niba.agent.model, niba.agent.telegram, niba.agent.memory  # noqa: F401
-        from niba.agent import tools as _tools
+        import caelza_body.agent.loop, caelza_body.agent.model, caelza_body.agent.telegram, caelza_body.agent.memory  # noqa: F401
+        from caelza_body.agent import tools as _tools
         missing = [n for n in ("shell_run", "sensors_battery", "device_list", "web_search")
                    if n not in _tools.REGISTRY]
         if missing:
@@ -208,8 +208,8 @@ def probe(cfg) -> int:
         with telegram_mod.api_client() as client:
             telegram_mod.Telegram(cfg.telegram_token, client).get_me()
         _c.load_mmx_token(cfg.mmx_config_path)  # re-read so a bad token file fails the probe
-        (Path(cfg.niba_home) / "run").mkdir(parents=True, exist_ok=True)
-        (Path(cfg.niba_home) / "run" / "probe-ok").write_text("ok")
+        (Path(cfg.body_home) / "run").mkdir(parents=True, exist_ok=True)
+        (Path(cfg.body_home) / "run" / "probe-ok").write_text("ok")
         return 0
     except Exception as e:  # noqa: BLE001
         print(redactor.scrub(f"probe failed: {type(e).__name__}: {e}"))

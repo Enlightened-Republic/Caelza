@@ -10,7 +10,7 @@ the machine-readable pin list; this file is the human version.
 │   ┌──────────────┐    ┌──────────────┐    ┌────────────────────┐    │
 │   │   Runtime    │    │     Mind     │    │        Body        │    │
 │   │              │◀──▶│              │    │                    │    │
-│   │ caelza (Rust)│    │ xanima       │    │ niba (Python)      │    │
+│   │ caelza (Rust)│    │ xanima       │    │ caelza_body (Py)   │    │
 │   │ loop·tools·  │    │ sharpwave-   │◀──▶│ supervisor·sensors·│    │
 │   │ channels·    │    │ core engine  │    │ ADB·self-mod       │    │
 │   │ gateway·UI   │    │ brain service│    │ (Termux/Android)   │    │
@@ -24,7 +24,7 @@ the machine-readable pin list; this file is the human version.
 |---|---|---|---|
 | **Runtime** | the agent engine, a rebranded ZeroClaw build | `runtime/` → binary `caelza` | upstream `c473221` (v0.8.6) |
 | **Mind** | autonomic long-term memory: xanima (formerly openwave) on the sharpwave-core engine | [Enlightened-Republic/openwave](https://github.com/Enlightened-Republic/openwave) | 0.2.0 / core 0.4.5 |
-| **Body** | the device layer: termux-api sensors, ADB device control, the immutable supervisor with git-backed rollback | `niba/` in this repo | this repo |
+| **Body** | the device layer: termux-api sensors, ADB device control, the immutable supervisor with git-backed rollback | `caelza_body/` in this repo | this repo |
 
 How they connect today and where that is going is in
 [`../mind/README.md`](../mind/README.md) (Mind ↔ Runtime) and

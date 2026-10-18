@@ -1,7 +1,7 @@
 from __future__ import annotations
 
-from niba.agent import proc
-from niba.agent import tools
+from caelza_body.agent import proc
+from caelza_body.agent import tools
 
 CAP = 8000
 

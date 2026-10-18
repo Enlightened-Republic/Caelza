@@ -1,5 +1,5 @@
-from niba.agent.context import build_messages, user_text
-from niba.agent.session import Session
+from caelza_body.agent.context import build_messages, user_text
+from caelza_body.agent.session import Session
 
 
 class FakeMem:

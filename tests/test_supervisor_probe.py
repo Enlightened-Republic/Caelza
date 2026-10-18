@@ -3,72 +3,72 @@ import sys
 import subprocess
 from pathlib import Path
 import pytest
-from niba import supervisor
+from caelza_body import supervisor
 
 
 @pytest.fixture
-def niba_home(tmp_path):
+def body_home(tmp_path):
     h = tmp_path / "home"
     (h / "run").mkdir(parents=True)
     return h
 
 
-def _probe_child(tmp_path, niba_home, body):
+def _probe_child(tmp_path, body_home, body):
     script = tmp_path / "probe.py"
     script.write_text(body)
     logs = tmp_path / "logs"; logs.mkdir(exist_ok=True)
     return lambda: supervisor.Child(
         "probe", [sys.executable, str(script)], cwd=tmp_path, log_dir=logs,
-        env={"NIBA_HOME": str(niba_home)},
+        env={"CAELZA_BODY_HOME": str(body_home)},
     )
 
 
-def test_restart_request_roundtrip(niba_home):
-    assert supervisor.read_restart_request(niba_home) is None
-    (niba_home / "run" / "restart-request").write_text(
+def test_restart_request_roundtrip(body_home):
+    assert supervisor.read_restart_request(body_home) is None
+    (body_home / "run" / "restart-request").write_text(
         json.dumps({"reason": "x", "commit": "abc"})
     )
-    assert supervisor.read_restart_request(niba_home)["reason"] == "x"
-    supervisor.clear_restart_request(niba_home)
-    assert supervisor.read_restart_request(niba_home) is None
+    assert supervisor.read_restart_request(body_home)["reason"] == "x"
+    supervisor.clear_restart_request(body_home)
+    assert supervisor.read_restart_request(body_home) is None
 
 
-def test_probe_ok(tmp_path, niba_home):
+def test_probe_ok(tmp_path, body_home):
     spawn = _probe_child(
-        tmp_path, niba_home,
+        tmp_path, body_home,
         "import os\n"
-        "open(os.path.join(os.environ['NIBA_HOME'], 'run', 'probe-ok'), 'w').close()\n",
+        "open(os.path.join(os.environ['CAELZA_BODY_HOME'], 'run', 'probe-ok'), 'w').close()\n",
     )
-    ok, _ = supervisor.run_probe(tmp_path, niba_home, spawn, timeout=10)
+    ok, _ = supervisor.run_probe(tmp_path, body_home, spawn, timeout=10)
     assert ok is True
 
 
-def test_probe_fails_on_nonzero_exit(tmp_path, niba_home):
-    spawn = _probe_child(tmp_path, niba_home, "import sys; sys.exit(1)")
-    ok, detail = supervisor.run_probe(tmp_path, niba_home, spawn, timeout=10)
+def test_probe_fails_on_nonzero_exit(tmp_path, body_home):
+    spawn = _probe_child(tmp_path, body_home, "import sys; sys.exit(1)")
+    ok, detail = supervisor.run_probe(tmp_path, body_home, spawn, timeout=10)
     assert ok is False
 
 
-def test_probe_fails_on_timeout(tmp_path, niba_home):
-    spawn = _probe_child(tmp_path, niba_home, "import time\nwhile True: time.sleep(1)")
-    ok, _ = supervisor.run_probe(tmp_path, niba_home, spawn, timeout=1)
+def test_probe_fails_on_timeout(tmp_path, body_home):
+    spawn = _probe_child(tmp_path, body_home, "import time\nwhile True: time.sleep(1)")
+    ok, _ = supervisor.run_probe(tmp_path, body_home, spawn, timeout=1)
     assert ok is False
 
 
-def test_rollback_restores_last_good(git_repo, niba_home):
+def test_rollback_restores_last_good(git_repo, body_home):
     good = supervisor.current_commit(git_repo)
     supervisor.set_last_good(git_repo, good)
     (git_repo / "a.txt").write_text("bad\n")
     subprocess.run(["git", "add", "-A"], cwd=git_repo, check=True)
     subprocess.run(["git", "commit", "-qm", "bad"], cwd=git_repo, check=True)
-    diff = supervisor.rollback(git_repo, niba_home, "boom")
+    diff = supervisor.rollback(git_repo, body_home, "boom")
     assert "bad" in diff
     assert (git_repo / "a.txt").read_text() == "one\n"
 
 
 # --- I1: reset --hard leaves untracked files behind ------------------------
 
-def test_rollback_removes_untracked_files(git_repo, niba_home):
+def test_rollback_removes_untracked_files(git_repo, body_home):
     """self_write_file never commits, so a *new* file survives reset --hard.
 
     `sitecustomize.py` and a root `conftest.py` are both auto-imported by
@@ -80,14 +80,14 @@ def test_rollback_removes_untracked_files(git_repo, niba_home):
     (git_repo / "newdir").mkdir()
     (git_repo / "newdir" / "conftest.py").write_text("boom\n")
 
-    supervisor.rollback(git_repo, niba_home, "boom")
+    supervisor.rollback(git_repo, body_home, "boom")
 
     assert not (git_repo / "sitecustomize.py").exists()
     assert not (git_repo / "newdir").exists()
     assert supervisor.current_commit(git_repo) == good
 
 
-def test_rollback_keeps_gitignored_files(git_repo, niba_home):
+def test_rollback_keeps_gitignored_files(git_repo, body_home):
     """`git clean -fd` (no -x) must not wipe ignored dev state (the sdd workspace)."""
     (git_repo / ".gitignore").write_text("keepme/\n")
     subprocess.run(["git", "add", "-A"], cwd=git_repo, check=True)
@@ -97,7 +97,7 @@ def test_rollback_keeps_gitignored_files(git_repo, niba_home):
     (git_repo / "keepme").mkdir()
     (git_repo / "keepme" / "notes.md").write_text("valuable\n")
 
-    supervisor.rollback(git_repo, niba_home, "boom")
+    supervisor.rollback(git_repo, body_home, "boom")
 
     assert (git_repo / "keepme" / "notes.md").read_text() == "valuable\n"
 

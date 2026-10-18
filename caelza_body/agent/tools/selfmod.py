@@ -6,17 +6,17 @@ import sys
 import time
 from pathlib import Path
 
-from niba.agent import tools
+from caelza_body.agent import tools
 
 _REPO: Path | None = None
 _HOME: Path | None = None
 DENY_SUFFIXES = ("supervisor.py",)
 
 
-def configure(repo_root, niba_home):
+def configure(repo_root, body_home):
     global _REPO, _HOME
     _REPO = Path(repo_root).resolve()
-    _HOME = Path(niba_home).resolve()
+    _HOME = Path(body_home).resolve()
     _ensure_identity()
 
 
@@ -46,7 +46,7 @@ def _resolve(path: str) -> Path:
     p = (_REPO / path).resolve()
     if _REPO not in p.parents and p != _REPO:
         raise PermissionError(f"outside repo: {path}")
-    if p == (_REPO / "niba" / "supervisor.py"):
+    if p == (_REPO / "caelza_body" / "supervisor.py"):
         raise PermissionError("immutable file: supervisor.py")
     if any(str(p).casefold().endswith(s.casefold()) for s in DENY_SUFFIXES):
         raise PermissionError(f"immutable file: {path}")

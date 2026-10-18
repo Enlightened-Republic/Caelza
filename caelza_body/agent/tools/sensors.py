@@ -5,9 +5,9 @@ from pathlib import Path
 
 import httpx
 
-from niba.agent import proc
-from niba.agent import tools
-from niba.agent.tools.media import emit_image
+from caelza_body.agent import proc
+from caelza_body.agent import tools
+from caelza_body.agent.tools.media import emit_image
 
 #: Where camera / mic captures are written. Set by configure().
 _TMP: Path = Path(".")
@@ -19,10 +19,10 @@ CAP = 6000
 TMP_MAX_AGE_S = 24 * 3600
 
 
-def configure(niba_home) -> None:
-    """Point captures at <niba_home>/tmp (the test passes a tmp dir directly)."""
+def configure(body_home) -> None:
+    """Point captures at <body_home>/tmp (the test passes a tmp dir directly)."""
     global _TMP
-    p = Path(niba_home)
+    p = Path(body_home)
     # Accept either a home dir or an explicit tmp dir; keep captures out of the root.
     _TMP = p if p.name == "tmp" else p / "tmp"
     _TMP.mkdir(parents=True, exist_ok=True)

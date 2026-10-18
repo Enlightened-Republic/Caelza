@@ -17,7 +17,7 @@ Caelza is three layers shipped as one product (`bundle/manifest.toml`):
 |---|---|---|
 | **Runtime** | the engine: agent loop, 20+ model providers, 30+ channels, tools, security policy, SOP engine, cron, gateway + web dashboard, WASM plugins, hardware peripherals. A rebranded build of [ZeroClaw](https://github.com/zeroclaw-labs/zeroclaw), regenerated from a pinned commit. | [`runtime/`](runtime/) |
 | **Mind** | autonomic long-term memory: a graph with a real forgetting curve and a sleep system. [xanima](https://github.com/Enlightened-Republic/openwave) (formerly openwave) on the [sharpwave-core](https://github.com/Enlightened-Republic/sharpwave) engine. | [`mind/`](mind/) |
-| **Body** | the device layer: camera, mic, location, notifications and TTS through termux-api; ADB control of its own phone and paired phones with audit logging and pre-removal snapshots; an immutable supervisor that probes self-modified builds and rolls back. Formerly **Airframe Lite**. | [`niba/`](niba/) |
+| **Body** | the device layer: camera, mic, location, notifications and TTS through termux-api; ADB control of its own phone and paired phones with audit logging and pre-removal snapshots; an immutable supervisor that probes self-modified builds and rolls back. Formerly **Airframe Lite**. | [`caelza_body/`](caelza_body/) |
 
 Read [`docs/design/caelza-vision.md`](docs/design/caelza-vision.md) for the
 architecture, the roadmap, what we are borrowing from
@@ -61,9 +61,9 @@ Target runtime: **Termux on non-root Android**, Python 3.11+. The reference
 agent is named **Niba** and runs on a T-Mobile REVVL 7 5G.
 
 ```
-niba/supervisor.py   immutable: git-commits → probes the new build → promotes it
+caelza_body/supervisor.py   immutable: git-commits → probes the new build → promotes it
                      or rolls back to last-good; crash-loop guard; heartbeat
-niba/agent/
+caelza_body/agent/
   loop.py            chat long-poll → context → model → tool dispatch
   model.py           MiniMax M3 (OpenAI-compatible)
   memory.py          sharpwave over MCP (same engine as the Mind)
@@ -76,16 +76,26 @@ niba/agent/
     shell.py         shell_run
 ```
 
-On the phone, in Termux:
+On the phone, in Termux (Termux, Termux:API and Termux:Boot from F-Droid), one line:
 
 ```bash
-git clone https://github.com/Enlightened-Republic/caelza ~/niba
-cd ~/niba
-cp niba/agent/prompt.example.md niba/agent/prompt.md   # name, owner, purpose
+curl -fsSL https://raw.githubusercontent.com/Enlightened-Republic/caelza/main/install.sh | sh
+```
+
+That installs packages, clones to `~/caelza`, installs the package and hands
+off to `python scripts/setup.py`, which walks the steps that need you. By hand:
+
+```bash
+git clone https://github.com/Enlightened-Republic/caelza ~/caelza
+cd ~/caelza
+cp caelza_body/agent/prompt.example.md caelza_body/agent/prompt.md   # name, owner, purpose
 python scripts/setup.py                                  # walks every bring-up step
 ```
 
-Config lives in `~/.niba/config.toml` (never committed). Tests run on a dev box
+Config lives in `~/.caelza-body/config.toml` (never committed). A phone that
+ran Airframe Lite needs one migration after pulling this: `python
+scripts/setup.py --migrate` moves `~/.niba` to `~/.caelza-body` and replaces
+the boot script. Until then the legacy paths still boot. Tests run on a dev box
 or on-device:
 
 ```bash
@@ -105,8 +115,9 @@ Caelza works with no account and no API key: quickstart offers **DeepSeek R1,
 free and local** (Ollama on a hub, llama.cpp on the phone, sized to the
 device) and a **bring your own** door for any provider the Runtime supports
 (Anthropic, OpenAI, OpenRouter, MiniMax, Ollama, any OpenAI-compatible
-endpoint). The local model also powers the in-app **Guide**, which explains
-keys, providers, approvals and pairing in plain language, offline (§3.4).
+endpoint). The local model also powers **Cael**, the in-app guide, who explains
+keys, providers, approvals and pairing in plain language, offline (§3.4,
+[`guide/CAEL.md`](guide/CAEL.md)).
 
 ## Design docs
 
@@ -119,3 +130,9 @@ keys, providers, approvals and pairing in plain language, offline (§3.4).
 
 Reference Body ("Niba") is deployed and running. Runtime pipeline builds from
 upstream `c473221` (v0.8.6). Private while it's early.
+
+## License
+
+MIT for this repository (the Body, the pipeline, the brand and the docs). The
+Runtime binary is built from ZeroClaw under MIT OR Apache-2.0; the pipeline
+writes the upstream notices into every build. Fonts are SIL OFL 1.1.

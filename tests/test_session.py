@@ -1,6 +1,6 @@
 import time
 from datetime import datetime, timezone
-from niba.agent.session import Session
+from caelza_body.agent.session import Session
 
 
 def test_append_and_recent(tmp_path):

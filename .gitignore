@@ -3,14 +3,14 @@ __pycache__/
 .venv/
 venv/
 /config.toml
-.niba/
+.caelza-body/
 *.log
-niba.egg-info/
+caelza_body.egg-info/
 *.egg-info/
 
 # The owner's real system prompt — copy prompt.example.md to prompt.md and
 # customize. The runtime prefers prompt.md when present.
-/niba/agent/prompt.md
+/caelza_body/agent/prompt.md
 
 # Caelza runtime build pipeline outputs (runtime/build.sh)
 /runtime/.cache/

@@ -179,8 +179,8 @@ class CrashLoop:
         self._exits.clear()
 
 
-def heartbeat_age(niba_home: Path, now: float) -> float:
-    hb = Path(niba_home) / "run" / "heartbeat"
+def heartbeat_age(body_home: Path, now: float) -> float:
+    hb = Path(body_home) / "run" / "heartbeat"
     if not hb.exists():
         return float("inf")
     return now - hb.stat().st_mtime
@@ -192,14 +192,14 @@ import time
 RUN = "run"
 
 
-def _run_dir(niba_home: Path) -> Path:
-    d = Path(niba_home) / RUN
+def _run_dir(body_home: Path) -> Path:
+    d = Path(body_home) / RUN
     d.mkdir(parents=True, exist_ok=True)
     return d
 
 
-def read_restart_request(niba_home: Path):
-    f = _run_dir(niba_home) / "restart-request"
+def read_restart_request(body_home: Path):
+    f = _run_dir(body_home) / "restart-request"
     if not f.exists():
         return None
     try:
@@ -211,12 +211,12 @@ def read_restart_request(niba_home: Path):
     return None
 
 
-def clear_restart_request(niba_home: Path):
-    (_run_dir(niba_home) / "restart-request").unlink(missing_ok=True)
+def clear_restart_request(body_home: Path):
+    (_run_dir(body_home) / "restart-request").unlink(missing_ok=True)
 
 
-def run_probe(repo, niba_home, spawn_probe, timeout=PROBE_TIMEOUT):
-    ok_marker = _run_dir(niba_home) / "probe-ok"
+def run_probe(repo, body_home, spawn_probe, timeout=PROBE_TIMEOUT):
+    ok_marker = _run_dir(body_home) / "probe-ok"
     ok_marker.unlink(missing_ok=True)
     child = spawn_probe()
     child.start()
@@ -277,12 +277,12 @@ def build_alert(chat_id, token, secrets, post=None):
     return alert
 
 
-def promote(repo, niba_home, commit):
+def promote(repo, body_home, commit):
     set_last_good(repo, commit)
-    clear_restart_request(niba_home)
+    clear_restart_request(body_home)
 
 
-def rollback(repo, niba_home, reason):
+def rollback(repo, body_home, reason):
     good = last_good(repo)
     diff = ""
     if good:
@@ -295,18 +295,18 @@ def rollback(repo, niba_home, reason):
         # never commits. A new file the agent wrote (`sitecustomize.py`, a root
         # `conftest.py` — both auto-imported by Python) would otherwise survive
         # every rollback and leave the repo structurally unrecoverable.
-        # No -x: all runtime state lives under ~/.niba/ (spec §146), and the
+        # No -x: all runtime state lives under ~/.caelza-body/ (spec §146), and the
         # ignored dev files in the repo (the sdd workspace) must be kept.
         git(repo, "clean", "-fd")
-    clear_restart_request(niba_home)
+    clear_restart_request(body_home)
     return diff
 
 
 class Supervisor:
-    def __init__(self, repo, niba_home, *, alert, spawn_agent, spawn_probe,
+    def __init__(self, repo, body_home, *, alert, spawn_agent, spawn_probe,
                  spawn_sidecar, clock=time.monotonic, sleep=time.sleep):
         self.repo = Path(repo)
-        self.niba_home = Path(niba_home)
+        self.body_home = Path(body_home)
         self.alert = alert
         self._spawn_agent = spawn_agent
         self._spawn_probe = spawn_probe
@@ -332,7 +332,7 @@ class Supervisor:
             return  # backing off — a dead sidecar shouldn't spin-respawn every tick
         self._sidecar_next_try = self._clock() + self.SIDECAR_RETRY_BACKOFF
         child = self._spawn_sidecar()
-        if child is None:  # sidecar disabled (e.g. NIBA_NO_SHARPWAVE)
+        if child is None:  # sidecar disabled (e.g. CAELZA_BODY_NO_SHARPWAVE)
             self.sidecar = None
             return
         self.sidecar = child
@@ -351,16 +351,16 @@ class Supervisor:
             self._start_agent()
             return
 
-        req = read_restart_request(self.niba_home)
+        req = read_restart_request(self.body_home)
         if req and commit_exists(self.repo, req["commit"]):
             self.agent.stop()
-            ok, detail = run_probe(self.repo, self.niba_home, self._spawn_probe)
+            ok, detail = run_probe(self.repo, self.body_home, self._spawn_probe)
             if ok:
-                promote(self.repo, self.niba_home, req["commit"])
+                promote(self.repo, self.body_home, req["commit"])
                 self.alert(f"updated: {req['reason']}")
                 self._last_good_looping = False
             else:
-                diff = rollback(self.repo, self.niba_home, req["reason"])
+                diff = rollback(self.repo, self.body_home, req["reason"])
                 self.alert(
                     f"change '{req['reason']}' failed probe, rolled back.\n"
                     f"{detail}\n\n{diff[:3000]}"
@@ -376,7 +376,7 @@ class Supervisor:
                     self.alert("last-good is crash-looping. stopping. manual fix needed.")
                     self._halted = True
                     return
-                diff = rollback(self.repo, self.niba_home, "crash loop")
+                diff = rollback(self.repo, self.body_home, "crash loop")
                 self.alert(f"agent crash-looped, rolled back to last-good.\n{diff[:3000]}")
                 self.crashes.reset()
                 self._last_good_looping = True
@@ -388,7 +388,7 @@ class Supervisor:
         # agent happens to be alive on a tick made the terminal `halted` state
         # unreachable for any agent that survived a single 2s tick.
         if (self._real_now() - self._agent_started_at > HEARTBEAT_MAX_AGE
-                and heartbeat_age(self.niba_home, self._real_now()) > HEARTBEAT_MAX_AGE):
+                and heartbeat_age(self.body_home, self._real_now()) > HEARTBEAT_MAX_AGE):
             self.agent.stop()
             self._start_agent()
 
@@ -409,11 +409,11 @@ class Supervisor:
 
 def main():  # pragma: no cover - wiring, exercised in staging
     import os
-    from niba.agent import config as _config
+    from caelza_body.agent import config as _config
 
     repo = Path(__file__).resolve().parent.parent
-    niba_home = Path(os.environ.get("NIBA_HOME", Path.home() / ".niba"))
-    os.environ["NIBA_HOME"] = str(niba_home)
+    body_home = _config.resolve_home()   # honours the legacy NIBA_HOME / ~/.niba
+    os.environ["CAELZA_BODY_HOME"] = str(body_home)
     cfg = _config.load_config()
 
     secrets = [cfg.telegram_token, cfg.openrouter_api_key]
@@ -424,8 +424,8 @@ def main():  # pragma: no cover - wiring, exercised in staging
         pass
     alert = build_alert(cfg.owner_chat_id, cfg.telegram_token, secrets)
 
-    logs = niba_home / "logs"
-    env = {"NIBA_HOME": str(niba_home)}
+    logs = body_home / "logs"
+    env = {"CAELZA_BODY_HOME": str(body_home)}
     run_sh = str(repo / "scripts" / "run-agent.sh")
 
     def spawn_agent():
@@ -440,7 +440,7 @@ def main():  # pragma: no cover - wiring, exercised in staging
         # fights it for the SQLite lock. No sidecar.
         return None
 
-    Supervisor(repo, niba_home, alert=alert, spawn_agent=spawn_agent,
+    Supervisor(repo, body_home, alert=alert, spawn_agent=spawn_agent,
                spawn_probe=spawn_probe, spawn_sidecar=spawn_sidecar).run()
 
 

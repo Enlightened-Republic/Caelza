@@ -1,6 +1,6 @@
 import httpx
 from pathlib import Path
-from niba.agent.telegram import Telegram
+from caelza_body.agent.telegram import Telegram
 
 
 def _client(handler):

@@ -8,12 +8,12 @@ import json
 
 import httpx
 
-from niba.agent import loop as loop_mod
-from niba.agent import telegram as telegram_mod
-from niba.agent.config import Config
-from niba.agent.model import Model
-from niba.agent.session import Session
-from niba.agent.telegram import TELEGRAM_API_BASE, Telegram
+from caelza_body.agent import loop as loop_mod
+from caelza_body.agent import telegram as telegram_mod
+from caelza_body.agent.config import Config
+from caelza_body.agent.model import Model
+from caelza_body.agent.session import Session
+from caelza_body.agent.telegram import TELEGRAM_API_BASE, Telegram
 
 
 def _cfg(tmp_path, token="BOT-TOKEN-123456"):
@@ -26,7 +26,7 @@ def _cfg(tmp_path, token="BOT-TOKEN-123456"):
         openrouter_api_key="OR-KEY-123456",
         model_calls_per_hour=100,
         monthly_token_budget=10**12,
-        niba_home=tmp_path,
+        body_home=tmp_path,
         repo_root=tmp_path,
         mmx_config_path=tmp_path / "mmx.json",
     )
@@ -99,7 +99,7 @@ def _patch_api_client(monkeypatch, handler):
 
 
 def test_probe_ok_calls_get_me_through_a_real_telegram(tmp_path, monkeypatch):
-    from niba.agent import main as main_mod
+    from caelza_body.agent import main as main_mod
     cfg = _cfg(tmp_path)
     seen = []
 
@@ -108,27 +108,27 @@ def test_probe_ok_calls_get_me_through_a_real_telegram(tmp_path, monkeypatch):
         return httpx.Response(200, json={"ok": True, "result": {"id": 1}})
 
     _patch_api_client(monkeypatch, handler)
-    main_mod._register_tools(cfg.repo_root, cfg.niba_home)
+    main_mod._register_tools(cfg.repo_root, cfg.body_home)
     assert loop_mod.probe(cfg) == 0
     assert seen == [f"https://api.telegram.org/bot{cfg.telegram_token}/getMe"]
     assert (tmp_path / "run" / "probe-ok").read_text() == "ok"
 
 
 def test_probe_fails_when_telegram_call_fails(tmp_path, monkeypatch):
-    from niba.agent import main as main_mod
+    from caelza_body.agent import main as main_mod
     cfg = _cfg(tmp_path)
     _patch_api_client(monkeypatch, lambda req: httpx.Response(500, text="boom"))
-    main_mod._register_tools(cfg.repo_root, cfg.niba_home)
+    main_mod._register_tools(cfg.repo_root, cfg.body_home)
     assert loop_mod.probe(cfg) == 1
     assert not (tmp_path / "run" / "probe-ok").exists()
 
 
 def test_probe_fails_when_the_mmx_token_file_is_missing(tmp_path, monkeypatch):
-    from niba.agent import main as main_mod
+    from caelza_body.agent import main as main_mod
     cfg = _cfg(tmp_path)
     (tmp_path / "mmx.json").unlink()
     _patch_api_client(monkeypatch, lambda req: httpx.Response(200, json={"ok": True, "result": {}}))
-    main_mod._register_tools(cfg.repo_root, cfg.niba_home)
+    main_mod._register_tools(cfg.repo_root, cfg.body_home)
     assert loop_mod.probe(cfg) == 1
     assert not (tmp_path / "run" / "probe-ok").exists()
 
@@ -136,10 +136,10 @@ def test_probe_fails_when_the_mmx_token_file_is_missing(tmp_path, monkeypatch):
 # --- I2: the bot token must never reach probe.log --------------------------
 
 def test_probe_failure_output_redacts_the_bot_token(tmp_path, monkeypatch, capsys):
-    from niba.agent import main as main_mod
+    from caelza_body.agent import main as main_mod
     cfg = _cfg(tmp_path)
     _patch_api_client(monkeypatch, lambda req: httpx.Response(401, text="Unauthorized"))
-    main_mod._register_tools(cfg.repo_root, cfg.niba_home)
+    main_mod._register_tools(cfg.repo_root, cfg.body_home)
     assert loop_mod.probe(cfg) == 1
     out = capsys.readouterr().out
     assert "probe failed" in out
@@ -149,11 +149,11 @@ def test_probe_failure_output_redacts_the_bot_token(tmp_path, monkeypatch, capsy
 
 def test_probe_redacts_even_when_the_mmx_token_file_is_missing(tmp_path, monkeypatch, capsys):
     """The Redactor must be built before anything can fail, tolerating no token file."""
-    from niba.agent import main as main_mod
+    from caelza_body.agent import main as main_mod
     cfg = _cfg(tmp_path)
     (tmp_path / "mmx.json").unlink()
     _patch_api_client(monkeypatch, lambda req: httpx.Response(401, text="Unauthorized"))
-    main_mod._register_tools(cfg.repo_root, cfg.niba_home)
+    main_mod._register_tools(cfg.repo_root, cfg.body_home)
     assert loop_mod.probe(cfg) == 1
     out = capsys.readouterr().out
     assert cfg.telegram_token not in out
@@ -163,8 +163,8 @@ def test_probe_redacts_even_when_the_mmx_token_file_is_missing(tmp_path, monkeyp
 # --- tool registration via _register_tools + probe --------------------------
 
 def test_all_v1_and_plan2_a_tools_register():
-    from niba.agent import tools
-    from niba.agent.tools import selfmod, shell, sensors, memtools, web
+    from caelza_body.agent import tools
+    from caelza_body.agent.tools import selfmod, shell, sensors, memtools, web
     tools.reset()
     selfmod.register(); shell.register(); sensors.register(); web.register()
     memtools.configure(object()); memtools.register()
@@ -177,9 +177,9 @@ def test_memory_reset_absent_from_probe_then_registers_and_dispatches(tmp_path):
     """memory_reset needs the live Memory built in main(), so _register_tools
     (the probe path — no backend) must never register it. Once wired with a
     real Memory it registers AND dispatches."""
-    from niba.agent import main as main_mod, tools
-    from niba.agent.tools import memreset
-    from niba.agent.memory import Memory
+    from caelza_body.agent import main as main_mod, tools
+    from caelza_body.agent.tools import memreset
+    from caelza_body.agent.memory import Memory
     tools.reset()
     main_mod._register_tools(tmp_path, tmp_path)
     assert "memory_reset" not in tools.REGISTRY

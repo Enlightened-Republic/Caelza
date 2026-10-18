@@ -1,4 +1,4 @@
-from niba.supervisor import CrashLoop, heartbeat_age
+from caelza_body.supervisor import CrashLoop, heartbeat_age
 
 
 def test_crashloop_trips_after_n_in_window():

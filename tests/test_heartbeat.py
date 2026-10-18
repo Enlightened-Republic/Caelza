@@ -7,11 +7,11 @@ A daemon thread keeps beating regardless.
 import threading
 import time
 
-from niba.agent import heartbeat
+from caelza_body.agent import heartbeat
 
 
-def _hb(niba_home):
-    return niba_home / "run" / "heartbeat"
+def _hb(body_home):
+    return body_home / "run" / "heartbeat"
 
 
 def test_beat_writes_the_file(tmp_path):

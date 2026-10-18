@@ -3,9 +3,9 @@ import stat
 
 import pytest
 
-from niba.agent import adb as adb_mod
-from niba.agent.adb import Adb
-from niba.agent.devices import DeviceRegistry
+from caelza_body.agent import adb as adb_mod
+from caelza_body.agent.adb import Adb
+from caelza_body.agent.devices import DeviceRegistry
 
 
 @pytest.fixture
@@ -67,7 +67,7 @@ def test_self_port_file_overrides_default(tmp_path, monkeypatch):
     home = tmp_path / "home"
     (home / "run").mkdir(parents=True)
     (home / "run" / "adb-self-port").write_text("41337\n")
-    monkeypatch.setattr(adb_mod, "_NIBA_HOME", home)
+    monkeypatch.setattr(adb_mod, "_BODY_HOME", home)
     a = Adb(DeviceRegistry(tmp_path / "d.json"))
     assert a.serial("self") == "127.0.0.1:41337"
 
@@ -77,7 +77,7 @@ def test_self_serial_is_reread_after_construction(tmp_path, monkeypatch):
     port-file written after the Adb is built must take effect with no restart."""
     home = tmp_path / "home"
     (home / "run").mkdir(parents=True)
-    monkeypatch.setattr(adb_mod, "_NIBA_HOME", home)
+    monkeypatch.setattr(adb_mod, "_BODY_HOME", home)
     a = Adb(DeviceRegistry(tmp_path / "d.json"))
     assert a.serial("self") == "127.0.0.1:5555"  # no file yet -> default
     (home / "run" / "adb-self-port").write_text("52000\n")

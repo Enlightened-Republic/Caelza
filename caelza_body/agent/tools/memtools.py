@@ -1,6 +1,6 @@
 from __future__ import annotations
 
-from niba.agent import tools
+from caelza_body.agent import tools
 
 _MEM = None
 

@@ -35,8 +35,8 @@ def dispatch(name, arguments):
 def reset():
     REGISTRY.clear()
     _SCHEMAS.clear()
-    from niba.agent.tools import media  # local import: avoids a circular import at load
+    from caelza_body.agent.tools import media  # local import: avoids a circular import at load
     media.PENDING_MEDIA.clear()
 
 
-from niba.agent.tools.media import PENDING_MEDIA, drain, emit_image  # noqa: E402,F401
+from caelza_body.agent.tools.media import PENDING_MEDIA, drain, emit_image  # noqa: E402,F401

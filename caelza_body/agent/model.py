@@ -7,7 +7,7 @@ from dataclasses import dataclass, field
 
 import httpx
 
-from niba.agent import config as _config
+from caelza_body.agent import config as _config
 
 _THINK_RE = re.compile(r"<think>.*?</think>\s*", re.DOTALL)
 
