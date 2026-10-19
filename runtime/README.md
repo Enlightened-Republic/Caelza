@@ -70,7 +70,9 @@ export ANDROID_NDK_HOME=/path/to/android-ndk-r27c    # or put its llvm bin dir o
 
 `--target` passes the triple to cargo, points the `cc` crate at the NDK clang
 for the bundled sqlite and `ring`, and names the output after the target so it
-never clobbers the host binary. Building natively inside Termux
+never clobbers the host binary. Verified with NDK r27c against the current pin:
+a 34 MB `aarch64` PIE linked against Bionic (`/system/bin/linker64`; only
+`libc`, `libm`, `libdl`), 14 minutes on a laptop-class box. Building natively inside Termux
 (`pkg install rust`) also works but takes hours on a phone; the release build
 is the intended path. The TUI (`caelcode`, upstream `zerocode`) does not build
 for Android, so the Android archive carries `caelza` only.
