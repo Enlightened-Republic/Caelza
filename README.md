@@ -42,6 +42,16 @@ renames everything a user can see (`zeroclaw` → `caelza`, the TUI `zerocode` �
 Caelza palette and mark, and keeps the WASM plugin ABI namespace so upstream
 plugins load unchanged. Details and the upstream pin: [`runtime/README.md`](runtime/README.md).
 
+On the phone, in Termux, the release build installs with one line
+(`export GITHUB_TOKEN=…` first while the repo is private):
+
+```bash
+curl -fsSL https://raw.githubusercontent.com/Enlightened-Republic/caelza/main/runtime/termux-install.sh | sh
+caelza quickstart                    # provider + first agent
+# then merge runtime/caelza.phone.example.toml: Telegram, Mind, Body, risk profile
+caelza daemon                        # gateway on http://127.0.0.1:42617 + channels
+```
+
 ## Mind
 
 ```bash

@@ -28,7 +28,12 @@ upstream = "https://github.com/zeroclaw-labs/zeroclaw"
 upstream_commit = "c473221313341a853e04122f93bb9bd26b5e6c47"
 upstream_version = "0.8.6"
 config = "~/.caelza/config.toml"
-targets = ["x86_64-unknown-linux-gnu", "aarch64-unknown-linux-gnu", "aarch64-linux-android", "aarch64-apple-darwin", "x86_64-pc-windows-msvc"]
+targets = ["x86_64-unknown-linux-gnu", "aarch64-unknown-linux-gnu", "aarch64-linux-android"]   # what release.yml builds; Android is marked experimental there
+cross_build = "./runtime/build.sh --target aarch64-linux-android"   # NDK on PATH or $ANDROID_NDK_HOME
+termux_install = "runtime/termux-install.sh"   # one line in Termux: latest release → $PREFIX/bin/caelza + dashboard
+phone_config = "runtime/caelza.phone.example.toml"   # Telegram + Mind + Body + risk profile, merged after `caelza quickstart`
+dashboard_dir = "~/.local/share/caelza/web/dist"   # one of the gateway's auto-detected locations
+daemon = "caelza daemon"          # gateway (127.0.0.1:42617) + channels + cron; Termux:Boot script via CAELZA_BOOT=1
 
 # ---------------------------------------------------------------------------
 # Mind — autonomic long-term memory. xanima is the renamed openwave plugin;

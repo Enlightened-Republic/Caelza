@@ -96,6 +96,30 @@ def test_example_runtime_config_names_real_tools_and_gates_every_destructive_one
     assert not (auto & ask)
     assert "body" in cfg["mcp_bundles"] and cfg["mcp_bundles"]["body"]["servers"] == ["body"]
     assert "body" in cfg["agents"]["main"]["mcp_bundles"]
+    # A risk profile applies only to agents that name it.
+    assert cfg["agents"]["main"]["risk_profile"] == "main"
+
+
+def test_phone_example_carries_the_same_body_policy(body):
+    """runtime/caelza.phone.example.toml repeats the Body blocks so one merge is
+    enough; it must not drift from body/caelza-body.example.toml."""
+    _, names = body
+    body_cfg = tomllib.loads((REPO_ROOT / "body" / "caelza-body.example.toml").read_text())
+    phone = tomllib.loads((REPO_ROOT / "runtime" / "caelza.phone.example.toml").read_text())
+    # Without the version line the runtime treats the file as the legacy v1
+    # layout and folds `[channels.telegram.home]` into the `default` alias.
+    assert phone["schema_version"] == 3 == body_cfg["schema_version"]
+    body_server = next(s for s in phone["mcp"]["servers"] if s["name"] == "body")
+    assert body_server["command"] == "caelza-body" and body_server["args"] == ["serve"]
+    assert phone["mcp_bundles"]["body"]["servers"] == ["body"]
+    agent = phone["agents"]["main"]
+    assert "body" in agent["mcp_bundles"] and agent["risk_profile"] in phone["risk_profiles"]
+    profile = phone["risk_profiles"][agent["risk_profile"]]
+    body_only = lambda entries: {e for e in entries if e.startswith("body__")}  # noqa: E731
+    assert body_only(profile["auto_approve"]) == set(body_cfg["risk_profiles"]["main"]["auto_approve"])
+    assert body_only(profile["always_ask"]) == set(body_cfg["risk_profiles"]["main"]["always_ask"])
+    for entry in body_only(profile["auto_approve"]) | body_only(profile["always_ask"]):
+        assert entry.removeprefix("body__") in names, entry
 
 
 # --- calls: text, errors, images --------------------------------------------
