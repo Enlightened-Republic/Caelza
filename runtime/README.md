@@ -72,7 +72,16 @@ export ANDROID_NDK_HOME=/path/to/android-ndk-r27c    # or put its llvm bin dir o
 for the bundled sqlite and `ring`, and names the output after the target so it
 never clobbers the host binary. Verified with NDK r27c against the current pin:
 a 34 MB `aarch64` PIE linked against Bionic (`/system/bin/linker64`; only
-`libc`, `libm`, `libdl`), 14 minutes on a laptop-class box. Building natively inside Termux
+`libc`, `libm`, `libdl`), 14 minutes on a laptop-class box.
+
+The release profile is `opt-level = "z"`, `lto = "fat"`, `codegen-units = 1`,
+so the final link of the `caelza` crate is the expensive step: measured at a
+**12 GB peak** of resident memory for the Android target. A hosted GitHub
+runner has 7 GB, which is why `release.yml` gives the two aarch64 legs an
+8 GiB swapfile (on the runner's `/mnt` scratch disk) and `--jobs 2`, the same
+recipe upstream uses for its aarch64 Linux releases. It is also why building
+natively on the phone is not the intended path: the REVVL's 8 GB would hit the
+same wall at the link. Build on a box, ship the archive. Building natively inside Termux
 (`pkg install rust`) also works but takes hours on a phone; the release build
 is the intended path. The TUI (`caelcode`, upstream `zerocode`) does not build
 for Android, so the Android archive carries `caelza` only.
