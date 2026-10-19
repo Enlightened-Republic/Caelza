@@ -67,6 +67,11 @@ env_home = "CAELZA_BODY_HOME"     # NIBA_HOME is still honoured as a fallback
 privilege = "adb"                 # "adb" (Termux loopback ADB, primary) or "shizuku" (optional permission; see components.app)
 install = "install.sh"            # one-line Termux install: curl -fsSL <repo>/main/install.sh | sh
 migrate = "python scripts/setup.py --migrate"   # existing Airframe Lite phones, once
+mcp_server = "caelza-body"        # `caelza-body serve`: the Body's tools over MCP for the Runtime (caelza_body/mcp_server.py)
+mcp_transport = "stdio"           # http over Tailscale is the hub+bodies follow-up
+mcp_config = "body/caelza-body.example.toml"   # Runtime wiring + risk profile; tool names arrive as body__<tool>
+tools = 35                        # selfmod 6, sensors 9, shell 1, device 14, web 5; memory_* are the Mind's now
+probe = "caelza-body probe"       # exit 0 when every group registered
 
 # ---------------------------------------------------------------------------
 # App — the Caelza Android app + web app (PWA of the Runtime dashboard).
