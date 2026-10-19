@@ -91,9 +91,20 @@ Dangerous-op semantics stay in the Body: `reason` required, audit log, package
 snapshot before any removal. The Runtime's approval policy adds a second gate on
 top (`always_ask = ["body__device_uninstall", …]`).
 
+**Shipped (M2, first half):** `caelza-body` (`caelza_body/mcp_server.py`,
+console script from `pip install -e .`) serves the registry's 35 tools over
+stdio with the schemas passed through untouched; each tool is classified
+read-only / destructive / neutral and carries the matching MCP annotations;
+screenshots and photos come back as image content, which the Runtime attaches
+to the reply; `caelza-body probe` is the health check. `body/caelza-body.example.toml`
+is the Runtime wiring with the risk profile derived from those classes, and
+`body/README.md` the operator doc. The memory tools are not served (the Mind
+owns memory).
+
 The Python agent loop, model wrapper, Telegram transport and SQLite session go
-away once the Runtime owns the turn. The supervisor stays, and now guards the
-Body's own code plus the Runtime binary (§3.3).
+away once the Runtime owns the turn (the second half of M2, a per-phone switch
+after M1). The supervisor stays, and now guards the Body's own code plus the
+Runtime binary (§3.3).
 
 ### 3.2 The Mind
 
@@ -385,7 +396,7 @@ Grouped, unranked inside each group. ★ = cheap given what we already have.
 |---|---|---|
 | **M0 Rebrand** | this PR: Caelza identity, `runtime/` pipeline producing a `caelza` binary from the pin, brand assets, Mind wiring docs, this doc | — |
 | **M1 Runtime on the phone** | `caelza` built for `aarch64-linux-android`, running in Termux beside Niba; Telegram via the Runtime; the engine's MCP server (Mind path A) | NDK cross-build |
-| **M2 Body as MCP** | `caelza-body` stdio MCP server exposing sensors/device/shell with the Airframe safety semantics; Runtime risk profile for it; Python loop retired | M1 |
+| **M2 Body as MCP** | **Shipped:** `caelza-body` stdio MCP server (`caelza_body/mcp_server.py`) exposing the 35 sensors/device/shell/web/selfmod tools with the Airframe safety semantics, every tool classified read-only / destructive / neutral, images returned as MCP image content; the Runtime wiring + risk profile (`body/caelza-body.example.toml`). **Open:** the Python loop retired per phone once the Runtime runs there | M1 for the retirement |
 | **M3 Mind native** | `XanimaMemory` backend in the Runtime over `xanima-server`; auto-provisioned per-agent brains; noise filtering ported | xanima rename shipped; service published |
 | **M1.5 Free local default** | Quickstart door 1: DeepSeek R1 via Ollama (hub) or llama.cpp (phone) with the size ladder; the Guide persona; "bring your own" as door 2 | M1 |
 | **M4 UI phases 1–2** | Caelza themes as default, Bodies page, Memory page; web app installable as a PWA | M2, M3 |
@@ -410,6 +421,7 @@ Grouped, unranked inside each group. ★ = cheap given what we already have.
 
 Still open:
 
-- The published `xanima-openclaw` README body, which still carries the old `clawhub:openwave` / `npm:openwave` install commands under the new banner.
+- The `xanima-openclaw` README is rewritten on `main` (PR #12, 2026-10-19) and reaches npm/ClawHub at the next publish. Left there: `package.json` repository URLs still say `openwave`, the plugin manifest's token/server descriptions, and the `brain-docs/*.md` the agent reads through `brain_docs` still describe openwave on sharpwave-core 0.4.2.
+- Both upstream repos were renamed on GitHub (`openwave` → `xanima-openclaw`, `sharpwave` → `xanima`); links in this repo still use the old names, which redirect.
 - Whether the Body's `caelza-body-last-good` git tag should replace `niba-last-good` on deployed phones (left as is so the phone's rollback pointer survives the rename).
 - A product domain for Caelza, if any.

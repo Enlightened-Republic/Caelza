@@ -17,7 +17,7 @@ Caelza is three layers shipped as one product (`bundle/manifest.toml`):
 |---|---|---|
 | **Runtime** | the engine: agent loop, 20+ model providers, 30+ channels, tools, security policy, SOP engine, cron, gateway + web dashboard, WASM plugins, hardware peripherals. A rebranded build of [ZeroClaw](https://github.com/zeroclaw-labs/zeroclaw), regenerated from a pinned commit. | [`runtime/`](runtime/) |
 | **Mind** | autonomic long-term memory: a graph with a real forgetting curve and a sleep system. [xanima](https://github.com/Enlightened-Republic/openwave) (formerly openwave) on the [xanima-core](https://github.com/Enlightened-Republic/sharpwave) engine (formerly sharpwave-core), both on npm at 0.5.0. | [`mind/`](mind/) |
-| **Body** | the device layer: camera, mic, location, notifications and TTS through termux-api; ADB control of its own phone and paired phones with audit logging and pre-removal snapshots; an immutable supervisor that probes self-modified builds and rolls back. Formerly **Airframe Lite**. | [`caelza_body/`](caelza_body/) |
+| **Body** | the device layer: camera, mic, location, notifications and TTS through termux-api; ADB control of its own phone and paired phones with audit logging and pre-removal snapshots; an immutable supervisor that probes self-modified builds and rolls back. Served to the Runtime as the `caelza-body` MCP server. Formerly **Airframe Lite**. | [`caelza_body/`](caelza_body/), [`body/`](body/) |
 
 Read [`docs/design/caelza-vision.md`](docs/design/caelza-vision.md) for the
 architecture, the roadmap, what we are borrowing from
@@ -103,11 +103,17 @@ pip install -e ".[dev]"
 python -m pytest -q
 ```
 
-The Body's roadmap is to become `caelza-body`, an MCP server the Runtime spawns,
-so the Python loop retires and the sensors, ADB tools and supervisor stay
-(vision doc §3.1). After that comes the **Caelza Android app**, which hosts the
-Body natively and uses [Shizuku](https://github.com/RikkaApps/Shizuku) for
-shell-level device control without root or Termux (§3.3).
+The Body is also an MCP server. `caelza-body serve` (installed with the
+package) exposes the same 35 tools to the Runtime over stdio with the safety
+semantics intact: `reason` required on dangerous ops, the audit log, package
+snapshots before any removal. [`body/caelza-body.example.toml`](body/caelza-body.example.toml)
+is the Runtime wiring, including a risk profile that auto-approves the reads
+and asks before anything irreversible; [`body/README.md`](body/README.md) has
+the details. Retiring the Python loop in favour of the Runtime is a per-phone
+switch once the Runtime runs there (vision doc §3.1). After that comes the
+**Caelza Android app**, which hosts the Body natively and uses
+[Shizuku](https://github.com/RikkaApps/Shizuku) for shell-level device control
+without root or Termux (§3.3).
 
 ## Models
 

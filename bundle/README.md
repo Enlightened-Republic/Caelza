@@ -39,8 +39,10 @@ picture, the roadmap, the UI redesign).
    alias bin) and register it as an MCP server in the runtime config
    (`mind/caelza-mind.example.toml`). For the autonomic path run
    `xanima-server` from a sharpwave checkout and point xanima's remote mode at it.
-3. **Body**: on the phone, `python scripts/setup.py` (unchanged from Airframe
-   Lite; see the top-level README).
+3. **Body**: on the phone, `install.sh` or `python scripts/setup.py` (see the
+   top-level README). Then merge `body/caelza-body.example.toml` into the
+   runtime config so the Runtime spawns `caelza-body serve` and gets the
+   Body's tools as `body__<tool>` ([`../body/README.md`](../body/README.md)).
 
 A one-command installer that does all three is on the roadmap; the manifest is
 what it will read.

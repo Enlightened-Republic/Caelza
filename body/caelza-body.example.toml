@@ -1,0 +1,68 @@
+# Caelza Body — wiring the Body's MCP server into the Caelza runtime.
+# Merge these blocks into ~/.caelza/config.toml, next to the Mind blocks from
+# mind/caelza-mind.example.toml. Where both files define the same table
+# ([agents.main], [risk_profiles.main]) combine the lists.
+#
+# The Body is `caelza-body`, installed by `pip install -e .` in the Body
+# checkout (install.sh does this). It serves the same tools the Python agent
+# loop uses, so the two can run side by side on one phone while the Runtime
+# takes over the turn. State stays in $CAELZA_BODY_HOME (~/.caelza-body):
+# devices.json, the audit log, package snapshots, tmp captures.
+#
+# Tool names reach the agent prefixed with the server name: body__device_list.
+
+[[mcp.servers]]
+name = "body"
+transport = "stdio"
+command = "caelza-body"
+args = ["serve"]
+# Expose fewer groups with e.g. args = ["serve", "--tools", "sensors,device,shell"]
+# (groups: selfmod, sensors, shell, device, web).
+tool_timeout_secs = 120           # sensors_mic_record blocks for its whole recording;
+                                  # shell_run allows up to 300 s — raise this if you use that
+# env = { CAELZA_BODY_HOME = "/data/data/com.termux/files/home/.caelza-body" }  # only if not the default
+
+[mcp_bundles.body]
+servers = ["body"]
+
+[agents.main]
+mcp_bundles = ["mind", "body"]    # "mind" comes from mind/caelza-mind.example.toml
+
+# The Body already requires a `reason` on every DANGEROUS op, audit-logs it to
+# ~/.caelza-body/logs/device-actions.log and snapshots the package list before
+# a removal. This is the Runtime's second gate on top of that: pure reads run
+# without a prompt; anything irreversible, privileged or arbitrary asks the
+# owner first. Everything else (captures, taps, TTS, self_run_tests, web_crawl)
+# follows the profile's normal risk policy.
+[risk_profiles.main]
+auto_approve = [
+  "body__device_list",
+  "body__device_packages",
+  "body__device_logcat",
+  "body__device_settings",
+  "body__device_ui_dump",
+  "body__device_screencap",
+  "body__sensors_battery",
+  "body__sensors_notifications",
+  "body__sensors_clipboard_get",
+  "body__sensors_location",
+  "body__self_read_file",
+  "body__self_list_tree",
+  "body__web_search",
+  "body__web_read",
+  "body__web_map",
+  "body__web_crawl_result",
+]
+always_ask = [
+  "body__device_uninstall",
+  "body__device_disable",
+  "body__device_settings_put",
+  "body__device_appops",
+  "body__device_pair",
+  "body__device_unpair",
+  "body__device_shell",
+  "body__shell_run",
+  "body__self_write_file",
+  "body__self_commit",
+  "body__self_request_restart",
+]
