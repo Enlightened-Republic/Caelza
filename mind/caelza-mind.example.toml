@@ -14,6 +14,8 @@
 #      xanima's remote mode speaks, so one brain service serves an OpenClaw
 #      gateway (via xanima) and a Caelza runtime.
 
+schema_version = 3   # already present in a quickstart-written config; keep it if you copy this file whole
+
 # ---------------------------------------------------------------------------
 # A. Tools path (stdio). Requires: npm i -g xanima   (Node 20+)
 [[mcp.servers]]
@@ -45,6 +47,7 @@ servers = ["brain"]          # or ["brain-service"]
 
 [agents.main]
 mcp_bundles = ["mind"]
+risk_profile = "main"        # a profile applies only to the agents that name it
 
 # Recall is cheap and read-only; approve it without prompting. Writes and the
 # destructive tools keep the normal approval policy.

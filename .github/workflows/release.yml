@@ -55,20 +55,35 @@ jobs:
           path: runtime/.build/src/web/dist/
           if-no-files-found: error
 
+  # The release profile is opt-level z + fat LTO + codegen-units 1, so the
+  # final link of the `caelza` crate needs more memory than a hosted 7 GB
+  # runner has; the aarch64 legs died there with "runner received a shutdown
+  # signal" (exit 143) on 2026-10-19 while x86_64 passed. Upstream's release
+  # workflow handles the same with an 8 GiB swap file plus `--jobs 2` for the
+  # aarch64 Linux legs (scripts/ci/dist_runner_memory.sh, staged with the
+  # tree), and keeps Android experimental. Same recipe here, Android included.
+  # Linux GNU legs build on ubuntu-22.04 to link against glibc 2.35, as
+  # upstream does, so a hub on an older Debian/Raspberry Pi OS still runs them.
   build:
     name: ${{ matrix.target }}
     needs: dashboard
-    runs-on: ubuntu-latest
+    runs-on: ${{ matrix.os || 'ubuntu-latest' }}
     timeout-minutes: 120
     strategy:
       fail-fast: false
       matrix:
         include:
           - target: x86_64-unknown-linux-gnu
+            os: ubuntu-22.04
           - target: aarch64-unknown-linux-gnu
+            os: ubuntu-22.04
             cross_compiler: gcc-aarch64-linux-gnu
+            swap: true
+            jobs: 2
           - target: aarch64-linux-android
             ndk: true
+            swap: true
+            jobs: 2
             experimental: true
     continue-on-error: ${{ matrix.experimental || false }}
     steps:
@@ -95,12 +110,46 @@ jobs:
         with:
           name: web-dist
           path: runtime/.build/src/web/dist/
+      # Upstream's scripts/ci/dist_runner_memory.sh does this on the root disk and
+      # insists on 16 GiB free there; these images leave ~13 GB, so it refused
+      # (dry run 39304971850). The runner's scratch disk at /mnt has room, so the
+      # swapfile lives there (RUNNER_TEMP if /mnt is missing). The runner already
+      # carries 3 GiB of swap; this adds 8 GiB on top.
+      - name: Bounded build memory (8 GiB swap for the fat-LTO link)
+        id: dist_memory
+        if: matrix.swap
+        timeout-minutes: 5
+        run: |
+          set -euo pipefail
+          dir=/mnt
+          [ -d "$dir" ] || dir="$RUNNER_TEMP"
+          avail=$(df --output=avail -B1 -- "$dir" | tail -n1)
+          if [ "$avail" -lt $((9 * 1024 * 1024 * 1024)) ]; then
+            echo "only $((avail / 1024 / 1024)) MiB free on $dir; need 9 GiB for the swapfile" >&2
+            exit 1
+          fi
+          f="$dir/caelza-swap"
+          sudo fallocate -l 8G -- "$f"
+          sudo chmod 0600 -- "$f"
+          sudo mkswap -- "$f" >/dev/null
+          sudo swapon -- "$f"
+          echo "swap_file=$f" >> "$GITHUB_OUTPUT"
+          free -h; swapon --show; df -h -- "$dir"
       - name: cargo build --release
         working-directory: runtime/.build/src
         env:
           CARGO_TARGET_DIR: ${{ github.workspace }}/runtime/.build/target
           CAELZA_BUILD_ID: ${{ github.ref_name }}
-        run: cargo build --release --locked -p caelza --target ${{ matrix.target }}
+        run: cargo build --release --locked -p caelza --target ${{ matrix.target }} ${{ matrix.jobs && format('--jobs {0}', matrix.jobs) || '' }}
+      - name: Release the build memory
+        if: always() && matrix.swap && steps.dist_memory.outputs.swap_file
+        timeout-minutes: 5
+        run: |
+          f="${{ steps.dist_memory.outputs.swap_file }}"
+          sudo swapoff -- "$f" || true
+          sudo rm -f -- "$f"
+          free -h
+          sudo dmesg --color=never 2>/dev/null | grep -iE 'oom-kill|out of memory|killed process' || echo "no OOM events in the kernel log"
       - name: Package
         id: pack
         run: |

@@ -5,6 +5,7 @@
 #   ./runtime/build.sh --check-only    # fetch pin, rebrand, cargo check (fast CI gate)
 #   ./runtime/build.sh --no-build      # just produce the rebranded tree
 #   ./runtime/build.sh --from ~/src/zeroclaw   # reuse an existing checkout at the pin
+#   ./runtime/build.sh --target aarch64-linux-android   # cross-build (NDK on PATH or $ANDROID_NDK_HOME)
 #
 # Pipeline: fetch → stage → rename paths → rename contents → theme map →
 #           overlay → brand assets → patches → NOTICE → residual check → build.
@@ -26,11 +27,11 @@ THEME_FILES=(
   web/src/contexts/themes.json
 )
 
-usage() { sed -n '2,12p' "${BASH_SOURCE[0]}"; }
+usage() { sed -n '2,13p' "${BASH_SOURCE[0]}"; }
 log()   { printf '\033[1;36m[caelza]\033[0m %s\n' "$*"; }
 die()   { printf '\033[1;31m[caelza] error:\033[0m %s\n' "$*" >&2; exit 1; }
 
-FROM=""; MODE="build"; JOBS=""; FEATURES=""; ALLOW_RESIDUAL=0; SKIP_ASSETS=0
+FROM=""; MODE="build"; JOBS=""; FEATURES=""; ALLOW_RESIDUAL=0; SKIP_ASSETS=0; TARGET=""
 while [[ $# -gt 0 ]]; do
   case "$1" in
     --from) FROM="$2"; shift 2 ;;
@@ -38,6 +39,7 @@ while [[ $# -gt 0 ]]; do
     --no-build) MODE="none"; shift ;;
     --jobs) JOBS="$2"; shift 2 ;;
     --features) FEATURES="$2"; shift 2 ;;
+    --target) TARGET="$2"; shift 2 ;;
     --allow-residual) ALLOW_RESIDUAL=1; shift ;;
     --skip-assets) SKIP_ASSETS=1; shift ;;
     -h|--help) usage; exit 0 ;;
@@ -214,24 +216,58 @@ check_residual() {
 }
 
 # --- 11. build ----------------------------------------------------------------
+# Cross targets: cargo needs the target's linker (upstream's .cargo/config.toml
+# names it) and the `cc` crate needs a C compiler for the bundled sqlite / ring.
+# For Android both come from the NDK: put its llvm bin dir on PATH, or set
+# ANDROID_NDK_HOME and this does it. The Rust std for the target must be
+# installed (`rustup target add <triple>`).
+prepare_target() {
+  [[ -n "$TARGET" ]] || return 0
+  rustup target list --installed 2>/dev/null | grep -qx "$TARGET" \
+    || die "Rust target $TARGET is not installed: rustup target add $TARGET"
+  case "$TARGET" in
+    *-linux-android*)
+      local api=21 arch="${TARGET%%-*}" clang
+      [[ "$TARGET" == armv7-* ]] && arch="armv7a" && TARGET_EABI="eabi"
+      clang="${arch}-linux-android${TARGET_EABI:-}${api}-clang"
+      if ! command -v "$clang" >/dev/null && [[ -n "${ANDROID_NDK_HOME:-${ANDROID_NDK:-}}" ]]; then
+        export PATH="${ANDROID_NDK_HOME:-$ANDROID_NDK}/toolchains/llvm/prebuilt/linux-x86_64/bin:$PATH"
+      fi
+      command -v "$clang" >/dev/null \
+        || die "$clang not found: put the NDK's toolchains/llvm/prebuilt/*/bin on PATH or set ANDROID_NDK_HOME"
+      local env_target="${TARGET//-/_}"
+      export "CC_${env_target}=$clang" "CXX_${env_target}=${clang}++" "AR_${env_target}=llvm-ar"
+      log "android toolchain: $clang"
+      ;;
+  esac
+}
+
 build() {
-  export CAELZA_BUILD_ID="v${UP_VERSION}+zeroclaw.${UP_SHA:0:10}"
-  local jobs=() feat=()
+  export CAELZA_BUILD_ID="${CAELZA_BUILD_ID:-v${UP_VERSION}+zeroclaw.${UP_SHA:0:10}}"
+  local jobs=() feat=() tgt=() outdir="$CARGO_TARGET_DIR/release" out="$CAELZA_BIN"
   [[ -n "$JOBS" ]] && jobs=(--jobs "$JOBS")
   [[ -n "$FEATURES" ]] && feat=(--features "$FEATURES")
+  if [[ -n "$TARGET" ]]; then
+    tgt=(--target "$TARGET"); outdir="$CARGO_TARGET_DIR/$TARGET/release"; out="$CAELZA_BIN-$TARGET"
+  fi
+  [[ "$MODE" == none ]] || prepare_target
   cd "$WORK"
   case "$MODE" in
     check)
-      log "cargo check --locked -p $CAELZA_BIN"
-      cargo check --locked -p "$CAELZA_BIN" ${jobs[@]+"${jobs[@]}"} ${feat[@]+"${feat[@]}"}
+      log "cargo check --locked -p $CAELZA_BIN ${tgt[*]:-}"
+      cargo check --locked -p "$CAELZA_BIN" ${tgt[@]+"${tgt[@]}"} ${jobs[@]+"${jobs[@]}"} ${feat[@]+"${feat[@]}"}
       ;;
     build)
-      log "cargo build --release --locked -p $CAELZA_BIN"
-      cargo build --release --locked -p "$CAELZA_BIN" ${jobs[@]+"${jobs[@]}"} ${feat[@]+"${feat[@]}"}
+      log "cargo build --release --locked -p $CAELZA_BIN ${tgt[*]:-}"
+      cargo build --release --locked -p "$CAELZA_BIN" ${tgt[@]+"${tgt[@]}"} ${jobs[@]+"${jobs[@]}"} ${feat[@]+"${feat[@]}"}
       mkdir -p "$DIST"
-      cp "$CARGO_TARGET_DIR/release/$CAELZA_BIN" "$DIST/$CAELZA_BIN"
-      log "binary → $DIST/$CAELZA_BIN"
-      "$DIST/$CAELZA_BIN" --version || true
+      cp "$outdir/$CAELZA_BIN" "$DIST/$out"
+      log "binary → $DIST/$out"
+      if [[ -z "$TARGET" ]]; then
+        "$DIST/$out" --version || true
+      else
+        command -v file >/dev/null && file "$DIST/$out" || true
+      fi
       ;;
     none) log "skipping compile (--no-build)" ;;
   esac

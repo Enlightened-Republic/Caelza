@@ -11,6 +11,8 @@
 #
 # Tool names reach the agent prefixed with the server name: body__device_list.
 
+schema_version = 3                # already present in a quickstart-written config; keep it if you copy this file whole
+
 [[mcp.servers]]
 name = "body"
 transport = "stdio"
@@ -27,6 +29,7 @@ servers = ["body"]
 
 [agents.main]
 mcp_bundles = ["mind", "body"]    # "mind" comes from mind/caelza-mind.example.toml
+risk_profile = "main"             # a profile applies only to the agents that name it
 
 # The Body already requires a `reason` on every DANGEROUS op, audit-logs it to
 # ~/.caelza-body/logs/device-actions.log and snapshots the package list before

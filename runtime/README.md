@@ -40,20 +40,51 @@ when you want a fresh `web/dist`.
 Outputs are git-ignored: `.cache/` (upstream checkout), `.build/` (staged tree
 + cargo target dir, kept warm between runs), `dist/` (the binary).
 
-### Android / Termux
+### Android / Termux (the phone)
 
-Upstream publishes an experimental `aarch64-linux-android` binary and documents
-the NDK cross-build; the same applies here:
+On the phone, install the release build in Termux with one line (the Body has
+its own installer, `../install.sh`):
+
+```bash
+curl -fsSL https://raw.githubusercontent.com/Enlightened-Republic/caelza/main/runtime/termux-install.sh | sh
+```
+
+[`termux-install.sh`](termux-install.sh) finds the latest release (or
+`CAELZA_VERSION=v0.1.0`), downloads `caelza-<ver>-aarch64-linux-android.tar.gz`,
+checks its `.sha256`, puts `caelza` in `$PREFIX/bin` and the dashboard in
+`~/.local/share/caelza/web/dist` (the gateway finds it there), and prints the
+next steps. While the repo is private, export `GITHUB_TOKEN` first.
+`CAELZA_BOOT=1` also writes a Termux:Boot script that starts `caelza daemon`
+after a reboot. Then [`caelza.phone.example.toml`](caelza.phone.example.toml)
+is the config to merge after `caelza quickstart`: Telegram through the Runtime,
+the Mind and the Body as MCP servers, and the risk profile for them.
+
+To cross-build the Android binary yourself (the release workflow does this on
+every `v*` tag; the target is marked experimental there):
 
 ```bash
 rustup target add aarch64-linux-android
-export ANDROID_NDK_HOME=/path/to/ndk
-export PATH=$ANDROID_NDK_HOME/toolchains/llvm/prebuilt/linux-x86_64/bin:$PATH
-./runtime/build.sh --no-build
-(cd runtime/.build/src && cargo build --release --target aarch64-linux-android -p caelza)
+export ANDROID_NDK_HOME=/path/to/android-ndk-r27c    # or put its llvm bin dir on PATH
+./runtime/build.sh --target aarch64-linux-android      # → runtime/dist/caelza-aarch64-linux-android
 ```
 
-The TUI (`caelcode`, upstream `zerocode`) does not build for Android.
+`--target` passes the triple to cargo, points the `cc` crate at the NDK clang
+for the bundled sqlite and `ring`, and names the output after the target so it
+never clobbers the host binary. Verified with NDK r27c against the current pin:
+a 34 MB `aarch64` PIE linked against Bionic (`/system/bin/linker64`; only
+`libc`, `libm`, `libdl`), 14 minutes on a laptop-class box.
+
+The release profile is `opt-level = "z"`, `lto = "fat"`, `codegen-units = 1`,
+so the final link of the `caelza` crate is the expensive step: measured at a
+**12 GB peak** of resident memory for the Android target. A hosted GitHub
+runner has 7 GB, which is why `release.yml` gives the two aarch64 legs an
+8 GiB swapfile (on the runner's `/mnt` scratch disk) and `--jobs 2`, the same
+recipe upstream uses for its aarch64 Linux releases. It is also why building
+natively on the phone is not the intended path: the REVVL's 8 GB would hit the
+same wall at the link. Build on a box, ship the archive. Building natively inside Termux
+(`pkg install rust`) also works but takes hours on a phone; the release build
+is the intended path. The TUI (`caelcode`, upstream `zerocode`) does not build
+for Android, so the Android archive carries `caelza` only.
 
 ## What gets renamed
 

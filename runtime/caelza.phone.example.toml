@@ -1,0 +1,129 @@
+# Caelza on a phone — deployment shape 1: Runtime, Mind and Body all in Termux.
+#
+# Start with `caelza quickstart`: it writes ~/.caelza/config.toml with a model
+# provider and a first agent. Then merge these blocks in, renaming `main` to the
+# alias quickstart created (`caelza agents list`). Secrets never live in this
+# file: `caelza config set <path>` stores them encrypted.
+#
+#   caelza config set channels.telegram.home.bot_token     # masked prompt
+#   caelza daemon                                          # gateway + Telegram + cron
+#
+# The Mind blocks come from mind/caelza-mind.example.toml and the Body blocks
+# from body/caelza-body.example.toml, repeated here so one merge is enough.
+
+# quickstart writes this line too. A config without it is read as the legacy
+# v1 layout and migrated, which folds `[channels.telegram.home]` into the
+# `default` alias; keep it when you copy this file whole.
+schema_version = 3
+
+# ---------------------------------------------------------------------------
+# Gateway + dashboard. Loopback only: open http://127.0.0.1:42617 in the phone's
+# browser, or reach it over Tailscale. runtime/termux-install.sh puts the
+# dashboard in ~/.local/share/caelza/web/dist, which the gateway auto-detects.
+[gateway]
+host = "127.0.0.1"
+port = 42617
+
+# ---------------------------------------------------------------------------
+# Telegram through the Runtime (long polling; no public URL). The Body's own
+# Telegram loop can keep running beside this until it is retired on this phone.
+[channels.telegram.home]
+enabled = true
+# bot_token: never here. `caelza config set channels.telegram.home.bot_token`
+
+# Who may talk to the bot: your numeric Telegram user id (stable across
+# renames). Leave the list empty for the one-time `/bind <code>` pairing flow.
+# Never use ["*"] on a phone whose agent holds shell and ADB tools.
+[peer_groups.telegram_home]
+channel = "telegram.home"
+external_peers = ["111111111"]
+
+# ---------------------------------------------------------------------------
+# The agent. quickstart set model_provider; this adds the channel, the two MCP
+# bundles and the phone risk profile. A profile applies only to agents that
+# name it.
+[agents.main]
+channels = ["telegram.home"]
+mcp_bundles = ["mind", "body"]
+risk_profile = "phone"
+
+# ---------------------------------------------------------------------------
+# Mind: xanima, the memory engine's stdio MCP server (npm i -g xanima). Brains
+# live in ~/.xanima/<agent>/brain.db. mind/README.md has the brain-service path.
+[[mcp.servers]]
+name = "brain"
+transport = "stdio"
+command = "xanima"
+env = { SHARPWAVE_AGENT_ID = "main" }
+tool_timeout_secs = 20
+
+# Body: caelza-body (pip install -e ~/caelza), the phone's sensors, ADB, shell,
+# web and self-modification tools. body/README.md has the details.
+[[mcp.servers]]
+name = "body"
+transport = "stdio"
+command = "caelza-body"
+args = ["serve"]
+tool_timeout_secs = 120
+
+[mcp_bundles.mind]
+servers = ["brain"]
+
+[mcp_bundles.body]
+servers = ["body"]
+
+# ---------------------------------------------------------------------------
+# Risk profile for an agent that holds a phone. Supervised: pure reads run
+# without a prompt, anything irreversible or arbitrary asks the owner on
+# Telegram, everything else follows the supervised defaults. The Body already
+# requires a `reason` on its DANGEROUS ops and audit-logs them; this is the
+# second gate on top.
+[risk_profiles.phone]
+level = "supervised"
+require_approval_for_medium_risk = true
+block_high_risk_commands = true
+auto_approve = [
+  # Mind: recall is cheap and read-only
+  "brain__brain_query",
+  "brain__brain_stats",
+  "brain__brain_history",
+  "brain__brain_expand",
+  "brain__brain_edges",
+  "brain__brain_status",
+  "brain__brain_briefing",
+  # Body: reads
+  "body__device_list",
+  "body__device_packages",
+  "body__device_logcat",
+  "body__device_settings",
+  "body__device_ui_dump",
+  "body__device_screencap",
+  "body__sensors_battery",
+  "body__sensors_notifications",
+  "body__sensors_clipboard_get",
+  "body__sensors_location",
+  "body__self_read_file",
+  "body__self_list_tree",
+  "body__web_search",
+  "body__web_read",
+  "body__web_map",
+  "body__web_crawl_result",
+]
+always_ask = [
+  # Mind: forgetting is forever
+  "brain__brain_reset",
+  "brain__brain_forget",
+  "brain__brain_retract",
+  # Body: irreversible, privileged or arbitrary
+  "body__device_uninstall",
+  "body__device_disable",
+  "body__device_settings_put",
+  "body__device_appops",
+  "body__device_pair",
+  "body__device_unpair",
+  "body__device_shell",
+  "body__shell_run",
+  "body__self_write_file",
+  "body__self_commit",
+  "body__self_request_restart",
+]
