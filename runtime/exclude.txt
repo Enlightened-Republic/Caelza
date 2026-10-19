@@ -1,0 +1,11 @@
+# Paths (relative to the staged tree, as printed by `grep -rl`, i.e. with a
+# leading ./) whose CONTENTS are never rewritten. Fixed-string prefix match.
+# Upstream licence/notice text must stay verbatim; the changelog is history.
+./LICENSE-APACHE
+./LICENSE-MIT
+./NOTICE
+./UPSTREAM.md
+./CHANGELOG-next.md
+./vendor/
+./.pr-evidence/
+./memory/

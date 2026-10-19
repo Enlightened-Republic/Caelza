@@ -1,5 +1,5 @@
-from niba.agent import tools
-from niba.agent.tools import memreset
+from caelza_body.agent import tools
+from caelza_body.agent.tools import memreset
 
 _RESET_OK = ('Brain reset for "niba".\n'
              'Backup: /data/.sharpwave/niba/brain.db.20260831-120000.bak\n'

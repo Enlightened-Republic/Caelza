@@ -1,6 +1,6 @@
 import subprocess
 import pytest
-from niba import supervisor
+from caelza_body import supervisor
 
 
 def test_current_commit_matches_git(git_repo):

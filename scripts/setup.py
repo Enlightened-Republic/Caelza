@@ -1,5 +1,5 @@
 #!/data/data/com.termux/files/usr/bin/python
-"""`niba setup` — first-boot bring-up for a fresh Termux install (spec §12 / §14.0 Phase C).
+"""`setup.py` — first-boot bring-up for a fresh Termux install (spec §12 / §14.0 Phase C).
 
 Run inside Termux on the phone that will host Niba::
 
@@ -20,15 +20,19 @@ from pathlib import Path
 
 import httpx
 
-# --- niba home resolution -------------------------------------------------
+# --- body home resolution -------------------------------------------------
 
-DEFAULT_NIBA_HOME = Path.home() / ".niba"
+DEFAULT_BODY_HOME = Path.home() / ".caelza-body"
+LEGACY_BODY_HOME = Path.home() / ".niba"          # Airframe Lite
+LEGACY_BOOT_NAME = "niba"                          # old ~/.termux/boot/ script
+BOOT_NAME = "caelza-body"
 
 
-def _home(niba_home=None) -> Path:
-    if niba_home is not None:
-        return Path(niba_home)
-    return Path(os.environ.get("NIBA_HOME", DEFAULT_NIBA_HOME))
+def _home(body_home=None) -> Path:
+    if body_home is not None:
+        return Path(body_home)
+    env = os.environ.get("CAELZA_BODY_HOME") or os.environ.get("NIBA_HOME")
+    return Path(env) if env else DEFAULT_BODY_HOME
 
 
 def sh(cmd, **kwargs):
@@ -58,10 +62,10 @@ def mcp_install():
 
 # --- side-effecting steps ------------------------------------------------
 
-def grant_perms(niba_home=None):
+def grant_perms(body_home=None):
     """Set up shared storage and grant runtime perms to Termux:API via adb if available."""
     sh("termux-setup-storage")
-    port = _home(niba_home) / "run" / "adb-self-port"
+    port = _home(body_home) / "run" / "adb-self-port"
     p = port.read_text().strip() if port.exists() else ""
     if p.isdigit():
         results = []
@@ -89,9 +93,9 @@ def grant_perms(niba_home=None):
 
 
 def write_config(telegram_token, owner_chat_id, openrouter_key, firecrawl_key="",
-                 tavily_key="", searchapi_key="", niba_home=None):
-    """Write `<niba_home>/config.toml` in the exact shape `niba.agent.config` loads."""
-    home = _home(niba_home)
+                 tavily_key="", searchapi_key="", body_home=None):
+    """Write `<body_home>/config.toml` in the exact shape `caelza_body.agent.config` loads."""
+    home = _home(body_home)
     home.mkdir(parents=True, exist_ok=True)
     # TOML *literal* strings (single-quoted): no escaping, so a token that
     # contains a backslash or double-quote can't produce an unparseable config.
@@ -128,14 +132,14 @@ def mmx_login():
         print(f"WARNING: {mmx_cfg} not found — `mmx auth login` may not have completed")
 
 
-def pair_self_adb(niba_home=None):
+def pair_self_adb(body_home=None):
     """Pair Termux's adb to this phone over Wireless debugging; store the port.
 
     Wireless debugging shows a *pairing* host:port + code under "Pair device with
     pairing code", and a separate always-on debug port on the main screen. We
-    pair with the former and persist the latter for `niba.agent.adb`.
+    pair with the former and persist the latter for `caelza_body.agent.adb`.
     """
-    home = _home(niba_home)
+    home = _home(body_home)
     print(
         "\nOn this phone: Settings -> Developer options -> Wireless debugging -> ON.\n"
         "Open 'Pair device with pairing code' and keep that dialog visible.\n"
@@ -156,24 +160,39 @@ def pair_self_adb(niba_home=None):
 
 def boot_script() -> str:
     """The Termux:Boot script, with this checkout's absolute path baked in so a
-    reboot doesn't depend on the repo living at exactly `~/niba`."""
+    reboot doesn't depend on the repo living at exactly `~/caelza`."""
     repo = Path(__file__).resolve().parents[1]
     return (
         "#!/data/data/com.termux/files/usr/bin/sh\n"
         "termux-wake-lock\n"
-        "export NIBA_HOME=$HOME/.niba\n"
+        "export CAELZA_BODY_HOME=$HOME/.caelza-body\n"
         # adb needs a writable TMPDIR for its server socket/logs; Termux:Boot's
         # env doesn't set one.
         "export TMPDIR=$PREFIX/tmp\n"
-        "mkdir -p $HOME/.niba/logs $TMPDIR\n"
+        "mkdir -p $HOME/.caelza-body/logs $TMPDIR\n"
         f'cd "{repo}" || exit 1\n'
-        "exec python -m niba.supervisor >> $HOME/.niba/logs/supervisor.out 2>&1\n"
+        "exec python -m caelza_body.supervisor >> $HOME/.caelza-body/logs/supervisor.out 2>&1\n"
     )
 
 
+def migrate_legacy_home(body_home=None):
+    """[auto] Airframe Lite kept state in ~/.niba and booted from
+    ~/.termux/boot/niba. Move the state dir once and drop the old boot script so
+    a reboot can't start the Body twice. Idempotent; a no-op on a fresh phone."""
+    new = _home(body_home)
+    old = LEGACY_BODY_HOME
+    if old.is_dir() and not new.exists():
+        old.rename(new)
+        print(f"migrated {old} -> {new}")
+    old_boot = Path.home() / ".termux" / "boot" / LEGACY_BOOT_NAME
+    if old_boot.exists():
+        old_boot.unlink()
+        print(f"removed legacy boot script {old_boot}")
+
+
 def install_boot_script():
-    """Write `~/.termux/boot/niba` — Termux:Boot runs it on device boot."""
-    boot = Path.home() / ".termux" / "boot" / "niba"
+    """Write `~/.termux/boot/caelza-body` — Termux:Boot runs it on device boot."""
+    boot = Path.home() / ".termux" / "boot" / BOOT_NAME
     boot.parent.mkdir(parents=True, exist_ok=True)
     boot.write_text(boot_script())
     try:
@@ -207,7 +226,7 @@ def capture_owner_chat_id(telegram_token, *, attempts=150, delay=2.0):
     raise TimeoutError("no message reached the bot — check the token and try again")
 
 
-def configure_niba(niba_home=None):
+def configure_body(body_home=None):
     """[prompt] Collect the secrets and write config.toml."""
     telegram_token = input("Telegram bot token: ").strip()
     openrouter_key = input("OpenRouter API key (blank to skip): ").strip()
@@ -216,7 +235,7 @@ def configure_niba(niba_home=None):
     searchapi_key = input("SearchAPI.io key (blank to skip): ").strip()
     owner_chat_id = capture_owner_chat_id(telegram_token)
     write_config(telegram_token, owner_chat_id, openrouter_key, firecrawl_key,
-                 tavily_key, searchapi_key, niba_home=niba_home)
+                 tavily_key, searchapi_key, body_home=body_home)
 
 
 def battery_unrestrict():
@@ -239,7 +258,7 @@ def verify():
     """[prompt] Final step (spec §12 step 11): prove the thing we configured runs."""
     print(
         "\nSetup complete. Now start the supervisor and confirm it works:\n"
-        "  python -m niba.supervisor        (or just reboot the phone)\n"
+        "  python -m caelza_body.supervisor        (or just reboot the phone)\n"
         "Then send your bot a message on Telegram and check Niba replies.\n"
     )
 
@@ -257,13 +276,14 @@ def verify():
 # without the clone). See the plan's "Deferred from niba setup" note.
 STEPS = [
     ("pkg_install", "cmds", pkg_install),
+    ("migrate_legacy_home", "auto", migrate_legacy_home),
     ("sharpwave_install", "cmds", sharpwave_install),
     ("mcp_install", "cmds", mcp_install),
     ("battery_unrestrict", "prompt", battery_unrestrict),
     ("mmx_login", "prompt", mmx_login),
     ("pair_self_adb", "prompt", pair_self_adb),
     ("grant_perms", "auto", grant_perms),
-    ("configure_niba", "prompt", configure_niba),
+    ("configure_body", "prompt", configure_body),
     ("install_boot_script", "auto", install_boot_script),
     ("verify", "prompt", verify),
 ]
@@ -294,5 +314,17 @@ def run(dry_run=False):
     return 0
 
 
+def migrate():
+    """`python scripts/setup.py --migrate`: the one step an existing Airframe
+    Lite phone needs after pulling the Caelza rename. Moves ~/.niba to
+    ~/.caelza-body, replaces the Termux:Boot script, touches nothing else."""
+    migrate_legacy_home()
+    install_boot_script()
+    print("migrated. Reboot, or run: python -m caelza_body.supervisor")
+    return 0
+
+
 if __name__ == "__main__":
+    if "--migrate" in sys.argv[1:]:
+        sys.exit(migrate())
     sys.exit(run(dry_run="--dry-run" in sys.argv[1:]))

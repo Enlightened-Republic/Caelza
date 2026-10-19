@@ -1,5 +1,5 @@
 import pytest
-from niba.agent import tools
+from caelza_body.agent import tools
 
 
 @pytest.fixture(autouse=True)
@@ -35,7 +35,7 @@ def test_dispatch_catches_exceptions():
 
 
 def test_reset_clears_pending_media():
-    from niba.agent.tools import media
+    from caelza_body.agent.tools import media
     media.emit_image("/tmp/x.jpg", "image/jpeg")
     tools.reset()
     assert media.PENDING_MEDIA == []

@@ -1,4 +1,4 @@
-from niba.agent.memory import Memory
+from caelza_body.agent.memory import Memory
 
 
 def test_remember_queues_on_failure_then_flushes():

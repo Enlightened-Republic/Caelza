@@ -1,0 +1,47 @@
+# Ordered, literal, case-sensitive replacements applied to file paths and to
+# the contents of every text file in the staged upstream tree.
+# Format: FROM<TAB>TO. Longest / most specific entries first. Lines starting
+# with # are comments. Tokens listed in protect.txt are never touched.
+
+# --- org, repo, URLs (before the bare product tokens) ---
+github.com/zeroclaw-labs/zeroclaw/graphs/contributors	github.com/Enlightened-Republic/caelza/graphs/contributors
+github.com/zeroclaw-labs/zeroclaw	github.com/Enlightened-Republic/caelza
+raw.githubusercontent.com/zeroclaw-labs/zeroclaw	raw.githubusercontent.com/Enlightened-Republic/caelza
+zeroclaw-labs/zeroclaw	Enlightened-Republic/caelza
+zeroclaw-labs	Enlightened-Republic
+ZeroClaw Labs	Enlightened Republic
+ai.zeroclawlabs.desktop	tech.enlightenedrepublic.caelza
+zeroclawlabs	enlightenedrepublic
+https://docs.zeroclaw.com/master/en	https://github.com/Enlightened-Republic/caelza/tree/main/docs/book/src
+https://docs.zeroclaw.com	https://github.com/Enlightened-Republic/caelza/tree/main/docs/book/src
+https://www.zeroclaw.com	https://www.enlightenedrepublic.tech
+https://zeroclaw.com	https://www.enlightenedrepublic.tech
+docs.zeroclaw.com	github.com/Enlightened-Republic/caelza
+www.zeroclaw.com	www.enlightenedrepublic.tech
+zeroclaw.com	www.enlightenedrepublic.tech
+security@zeroclaw.dev	https://github.com/Enlightened-Republic/caelza/security/advisories/new
+zeroclaw.dev	www.enlightenedrepublic.tech
+https://discord.gg/zeroclaw	https://discord.gg/7EkMB4kBd
+discord.gg/zeroclaw	discord.gg/7EkMB4kBd
+
+# --- taglines ---
+Zero overhead. Zero compromise. 100% Rust. The fastest, smallest AI assistant.	Caelza: the embodied agent runtime. Single Rust binary, your hardware, your rules.
+The fastest, smallest AI assistant.	The embodied agent runtime. Enlightened Republic presents Caelza.
+
+# --- sub-apps (TUI + relay) ---
+ZERORELAY	CAELRELAY
+ZeroRelay	CaelRelay
+Zerorelay	Caelrelay
+zerorelay	caelrelay
+ZEROCODE	CAELCODE
+ZeroCode	CaelCode
+Zerocode	Caelcode
+zerocode	caelcode
+
+# --- product ---
+ZEROCLAW	CAELZA
+ZeroClaw	Caelza
+Zeroclaw	Caelza
+zeroclaw	caelza
+Zero Claw	Caelza
+zero_claw	caelza

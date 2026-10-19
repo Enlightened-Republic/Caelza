@@ -1,0 +1,132 @@
+/* Caelza design tokens. Caelza is an Enlightened Republic product: the Build
+   Lab system (enlightenedrepublic.tech) with Caelza's cosmic tint, the
+   cyan→violet→purple mark gradient and the Orbitron wordmark.
+   Mirrors brand/tokens.json. Dark is the default. */
+
+:root {
+  /* Backgrounds: space black with a violet cast, void → panels */
+  --cz-space:     #050310;   /* hero / banner / login backdrops */
+  --cz-bg:        #06040f;
+  --cz-bg-2:      #0c0918;
+  --cz-bg-3:      #120e22;
+  --cz-bg-4:      #1a1530;
+  --cz-bg-sidebar: rgba(6, 4, 15, 0.95);
+
+  /* Borders */
+  --cz-border:        rgba(255, 255, 255, 0.08);
+  --cz-border-strong: rgba(255, 255, 255, 0.15);
+  --cz-border-soft:   rgba(255, 255, 255, 0.04);
+  --cz-hover:         rgba(255, 255, 255, 0.05);
+
+  /* Text */
+  --cz-text:        #e8e4f0;
+  --cz-text-muted:  #a8a8c0;
+  --cz-text-dim:    #6e6e85;
+  --cz-text-faint:  #4a4a5e;
+
+  /* Primary accent: the mark's cyan (links, focus, primary buttons, status dot) */
+  --cz-primary:       #22e6ff;
+  --cz-primary-light: #7af0ff;
+  --cz-primary-rgb:   34, 230, 255;
+  --cz-primary-dim:   rgba(var(--cz-primary-rgb), 0.3);
+  --cz-primary-glow:  rgba(var(--cz-primary-rgb), 0.1);
+
+  /* The rest of the Republic palette */
+  --cz-teal:         #00f5d4;
+  --cz-violet:       #7b6bff;
+  --cz-purple:       #b44fff;   /* secondary accent: selection, the "™" dot, nebula glows */
+  --cz-purple-light: #c970ff;
+  --cz-pink:         #ff2d78;
+  --cz-yellow:       #ffe600;
+  --cz-green:        #39ff14;
+  --cz-star:         #eafcff;   /* constellation stars */
+
+  /* Gradients */
+  --cz-gradient-mark: linear-gradient(135deg, #22e6ff 0%, #7b6bff 50%, #b44fff 100%);  /* the bolt, the wordmark */
+  --cz-gradient-er:   linear-gradient(90deg, #ff4fb8 0%, #b44fff 50%, #22e6ff 100%);   /* the Republic's own */
+
+  /* Status */
+  --cz-success: #39ff14;
+  --cz-warning: #ffe600;
+  --cz-error:   #ff2d78;
+  --cz-info:    #22e6ff;
+
+  --cz-link:       var(--cz-primary);
+  --cz-link-hover: var(--cz-primary-light);
+
+  /* Type */
+  --cz-font-body:     'Inter Tight', -apple-system, system-ui, 'Segoe UI', sans-serif;
+  --cz-font-display:  'Inter Tight', -apple-system, system-ui, sans-serif;
+  --cz-font-wordmark: 'Orbitron', 'Inter Tight', system-ui, sans-serif;
+  --cz-font-mono:     'JetBrains Mono', 'Fira Code', 'SF Mono', Consolas, 'Courier New', monospace;
+  --cz-fs-xs: 11px; --cz-fs-sm: 13px; --cz-fs-base: 15px; --cz-fs-md: 17px;
+  --cz-fs-lg: 20px; --cz-fs-xl: 24px; --cz-fs-2xl: 32px; --cz-fs-3xl: 44px;
+
+  /* Shape + motion */
+  --cz-radius-sm: 4px; --cz-radius: 6px; --cz-radius-lg: 10px;
+  --cz-radius-xl: 14px; --cz-radius-2xl: 20px; --cz-radius-full: 9999px;
+  --cz-shadow-sm: 0 1px 2px rgba(0, 0, 0, 0.2);
+  --cz-shadow:    0 2px 4px rgba(0, 0, 0, 0.3);
+  --cz-shadow-lg: 0 8px 24px rgba(0, 0, 0, 0.4);
+  --cz-glow:      0 0 0 1px var(--cz-primary-dim), 0 0 24px var(--cz-primary-glow);
+  --cz-transition:      180ms cubic-bezier(0.4, 0, 0.2, 1);
+  --cz-transition-slow: 320ms cubic-bezier(0.4, 0, 0.2, 1);
+
+  /* Cosmic backdrop: nebula glows over the dot matrix (hero, login, empty states) */
+  --cz-hero-bg:
+    radial-gradient(ellipse 70% 55% at 18% 10%, rgba(180, 79, 255, 0.18), transparent 70%),
+    radial-gradient(ellipse 60% 50% at 85% 85%, rgba(180, 79, 255, 0.14), transparent 70%),
+    radial-gradient(ellipse 40% 35% at 80% 15%, rgba(255, 45, 120, 0.08), transparent 70%),
+    radial-gradient(circle at 1px 1px, rgba(34, 230, 255, 0.10) 1px, transparent 0);
+  --cz-hero-bg-size: auto, auto, auto, 14px 14px;
+}
+
+/* Eyebrow / kicker: mono, caps, wide tracking, dim. */
+.cz-eyebrow {
+  font-family: var(--cz-font-mono);
+  font-size: var(--cz-fs-xs);
+  letter-spacing: 0.16em;
+  text-transform: uppercase;
+  color: var(--cz-text-dim);
+  font-weight: 500;
+}
+
+/* The wordmark: Orbitron, caps, gradient fill. */
+.cz-wordmark {
+  font-family: var(--cz-font-wordmark);
+  font-weight: 900;
+  letter-spacing: 0.06em;
+  text-transform: uppercase;
+  background: var(--cz-gradient-mark);
+  -webkit-background-clip: text;
+  background-clip: text;
+  color: transparent;
+}
+
+/* Brand text in nav/footer: "ENLIGHTENED REPUBLIC™" (parent) stays Inter Tight. */
+.cz-brand {
+  font-family: var(--cz-font-display);
+  font-weight: 700;
+  font-size: var(--cz-fs-sm);
+  letter-spacing: 0.06em;
+  color: var(--cz-text);
+}
+
+:root[data-theme="light"] {
+  --cz-bg:        #f6f6fb;
+  --cz-bg-2:      #ffffff;
+  --cz-bg-3:      #efeff6;
+  --cz-bg-4:      #e6e6f0;
+  --cz-bg-sidebar: rgba(246, 246, 251, 0.95);
+  --cz-border:        rgba(10, 10, 18, 0.08);
+  --cz-border-strong: rgba(10, 10, 18, 0.15);
+  --cz-border-soft:   rgba(10, 10, 18, 0.04);
+  --cz-hover:         rgba(10, 10, 18, 0.04);
+  --cz-text:        #0a0a12;
+  --cz-text-muted:  #3f3f55;
+  --cz-text-dim:    #6e6e85;
+  --cz-text-faint:  #a8a8c0;
+  --cz-primary:       #0a8fb0;
+  --cz-primary-light: #22b8dc;
+  --cz-primary-rgb:   10, 143, 176;
+}

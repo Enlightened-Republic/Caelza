@@ -1,7 +1,7 @@
 import os, stat, json
 import pytest
-from niba.agent import tools
-from niba.agent.tools import sensors, media
+from caelza_body.agent import tools
+from caelza_body.agent.tools import sensors, media
 
 
 @pytest.fixture
@@ -71,7 +71,7 @@ def test_mic_record_clamps_to_60s(fake_termux, monkeypatch):
 
 
 def test_location_quick_combines_wifi_and_ipgeo(tmp_path, monkeypatch):
-    import niba.agent.tools.sensors as s
+    import caelza_body.agent.tools.sensors as s
     tools.reset(); s.configure(tmp_path); s.register()
     monkeypatch.setattr(s, "_run", lambda argv, timeout=30:
                         '{"ssid":"HomeNet","ip":"192.168.1.5","rssi":-46}'
@@ -86,7 +86,7 @@ def test_location_quick_combines_wifi_and_ipgeo(tmp_path, monkeypatch):
 
 
 def test_location_gps_mode_uses_termux_location(tmp_path, monkeypatch):
-    import niba.agent.tools.sensors as s
+    import caelza_body.agent.tools.sensors as s
     tools.reset(); s.configure(tmp_path); s.register()
     seen = {}
     monkeypatch.setattr(s, "_run", lambda argv, timeout=30: (seen.setdefault("argv", argv), '{"latitude":1.0}')[1])
@@ -96,7 +96,7 @@ def test_location_gps_mode_uses_termux_location(tmp_path, monkeypatch):
 
 
 def test_location_accuracy_backcompat(tmp_path, monkeypatch):
-    import niba.agent.tools.sensors as s
+    import caelza_body.agent.tools.sensors as s
     tools.reset(); s.configure(tmp_path); s.register()
     seen = {}
     monkeypatch.setattr(s, "_run", lambda argv, timeout=30: (seen.setdefault("argv", argv), "{}")[1])
@@ -105,7 +105,7 @@ def test_location_accuracy_backcompat(tmp_path, monkeypatch):
 
 
 def test_ipgeo_falls_back_to_second_service(monkeypatch):
-    import niba.agent.tools.sensors as s
+    import caelza_body.agent.tools.sensors as s
     import httpx
     def fake(method, url, **kw):
         req = httpx.Request(method, url)

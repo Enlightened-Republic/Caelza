@@ -1,0 +1,73 @@
+name: ci
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+
+concurrency:
+  group: ci-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  body:
+    name: Body tests (python ${{ matrix.python }})
+    runs-on: ubuntu-latest
+    strategy:
+      fail-fast: false
+      matrix:
+        python: ["3.11", "3.13"]
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: ${{ matrix.python }}
+      - run: pip install -e ".[dev]"
+      - run: python -m pytest -q
+
+  brand:
+    name: Brand assets render
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+      - run: pip install pillow
+      - run: python3 brand/make_assets.py
+      - name: SVGs are well-formed
+        run: python3 -c "import xml.dom.minidom as m; [m.parse(f) for f in ('brand/logo.svg','brand/logo-with-c.svg')]"
+      - uses: actions/upload-artifact@v4
+        with:
+          name: brand-out
+          path: brand/out/
+          retention-days: 7
+
+  scripts:
+    name: Shell scripts parse
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - run: bash -n runtime/build.sh && sh -n install.sh && perl -c runtime/lib/rename.pl
+
+  runtime:
+    name: Runtime rebrand + cargo check
+    runs-on: ubuntu-latest
+    timeout-minutes: 60
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+      - run: pip install pillow
+      - uses: dtolnay/rust-toolchain@stable
+      - name: System deps (hardware crate)
+        run: sudo apt-get update -qq && sudo apt-get install -y -qq pkg-config libudev-dev
+      - name: Stage the rebranded tree (residual-token check is the gate)
+        run: ./runtime/build.sh --no-build
+      - uses: Swatinem/rust-cache@v2
+        with:
+          workspaces: runtime/.build/src -> ../target
+          prefix-key: caelza-check
+      - name: cargo check
+        run: ./runtime/build.sh --check-only

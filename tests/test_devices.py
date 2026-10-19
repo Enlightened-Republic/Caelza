@@ -1,7 +1,7 @@
 import json
 from pathlib import Path
 
-from niba.agent.devices import DeviceRegistry
+from caelza_body.agent.devices import DeviceRegistry
 
 
 def test_add_get_all_remove(tmp_path):

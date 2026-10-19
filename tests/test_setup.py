@@ -13,8 +13,8 @@ import setup  # noqa: E402
 
 
 def test_write_config(tmp_path, monkeypatch):
-    monkeypatch.setenv("NIBA_HOME", str(tmp_path))
-    setup.write_config("TG", 42, "OR", niba_home=tmp_path)
+    monkeypatch.setenv("CAELZA_BODY_HOME", str(tmp_path))
+    setup.write_config("TG", 42, "OR", body_home=tmp_path)
     text = (tmp_path / "config.toml").read_text()
     assert "bot_token = 'TG'" in text and "owner_chat_id = 42" in text and "api_key = 'OR'" in text
 
@@ -22,7 +22,7 @@ def test_write_config(tmp_path, monkeypatch):
 def test_write_config_is_valid_toml_the_agent_can_load(tmp_path):
     import tomllib
 
-    setup.write_config("TG", 42, "OR", niba_home=tmp_path)
+    setup.write_config("TG", 42, "OR", body_home=tmp_path)
     data = tomllib.loads((tmp_path / "config.toml").read_text())
     assert data["telegram"]["bot_token"] == "TG"
     assert data["telegram"]["owner_chat_id"] == 42  # unquoted int
@@ -35,7 +35,7 @@ def test_write_config_is_valid_toml_the_agent_can_load(tmp_path):
 def test_write_config_includes_firecrawl(tmp_path):
     import tomllib
 
-    setup.write_config("TG", 42, "OR", "fc-xyz", niba_home=tmp_path)
+    setup.write_config("TG", 42, "OR", "fc-xyz", body_home=tmp_path)
     text = (tmp_path / "config.toml").read_text()
     assert "[firecrawl]" in text and "api_key = 'fc-xyz'" in text
     # still valid TOML the agent can load
@@ -45,14 +45,14 @@ def test_write_config_includes_firecrawl(tmp_path):
 def test_write_config_firecrawl_optional(tmp_path):
     import tomllib
 
-    setup.write_config("TG", 42, "OR", niba_home=tmp_path)  # no firecrawl arg
+    setup.write_config("TG", 42, "OR", body_home=tmp_path)  # no firecrawl arg
     d = tomllib.loads((tmp_path / "config.toml").read_text())
     assert d.get("firecrawl", {}).get("api_key", "") == ""
 
 
 def test_write_config_includes_tavily_and_searchapi(tmp_path):
     import tomllib
-    setup.write_config("TG", 42, "OR", "fc", "tv", "sa", niba_home=tmp_path)
+    setup.write_config("TG", 42, "OR", "fc", "tv", "sa", body_home=tmp_path)
     d = tomllib.loads((tmp_path / "config.toml").read_text())
     assert d["tavily"]["api_key"] == "tv" and d["searchapi"]["api_key"] == "sa"
 
@@ -77,7 +77,7 @@ def test_pair_self_adb_writes_the_self_port_file(tmp_path, monkeypatch):
     ran = []
     monkeypatch.setattr(setup, "sh", lambda cmd, **k: ran.append(cmd))
 
-    setup.pair_self_adb(niba_home=tmp_path)
+    setup.pair_self_adb(body_home=tmp_path)
 
     assert (tmp_path / "run" / "adb-self-port").read_text().strip() == "42585"
     assert any("adb pair 127.0.0.1:37000 123456" in c for c in ran)
@@ -93,7 +93,7 @@ def test_grant_perms_reports_failures(tmp_path, monkeypatch, capsys):
         returncode = 1
 
     monkeypatch.setattr(setup, "sh", lambda cmd, **k: FakeCP())
-    setup.grant_perms(niba_home=tmp_path)
+    setup.grant_perms(body_home=tmp_path)
     out = capsys.readouterr().out
     assert "WARNING" in out
     assert "CAMERA" in out and "ACCESS_FINE_LOCATION" in out
@@ -103,7 +103,7 @@ def test_grant_perms_manual_when_no_self_adb(tmp_path, monkeypatch, capsys):
     """No port file -> print the by-hand instructions, don't touch adb."""
     ran = []
     monkeypatch.setattr(setup, "sh", lambda cmd, **k: ran.append(cmd))
-    setup.grant_perms(niba_home=tmp_path)
+    setup.grant_perms(body_home=tmp_path)
     out = capsys.readouterr().out
     assert "Android Settings" in out and "Camera" in out
     assert not any("pm grant" in c for c in ran)
@@ -116,7 +116,7 @@ def test_grant_perms_manual_when_port_is_not_a_number(tmp_path, monkeypatch, cap
     port.write_text("not-a-port")
     ran = []
     monkeypatch.setattr(setup, "sh", lambda cmd, **k: ran.append(cmd))
-    setup.grant_perms(niba_home=tmp_path)
+    setup.grant_perms(body_home=tmp_path)
     out = capsys.readouterr().out
     assert "Android Settings" in out
     assert not any("pm grant" in c for c in ran)
@@ -127,15 +127,15 @@ def test_install_boot_script_writes_an_executable_boot_file(tmp_path, monkeypatc
 
     setup.install_boot_script()
 
-    boot = tmp_path / ".termux" / "boot" / "niba"
+    boot = tmp_path / ".termux" / "boot" / "caelza-body"
     text = boot.read_text()
     assert text.startswith("#!")
-    assert "niba.supervisor" in text
+    assert "caelza_body.supervisor" in text
     assert "termux-wake-lock" in text
     # I7: bakes this checkout's absolute path + fails loudly if the cd fails
     repo = str(Path(setup.__file__).resolve().parents[1])
     assert f'cd "{repo}" || exit 1' in text
-    assert "export NIBA_HOME=$HOME/.niba" in text
+    assert "export CAELZA_BODY_HOME=$HOME/.caelza-body" in text
     assert "export TMPDIR=$PREFIX/tmp" in text  # adb needs a writable TMPDIR
     # executable-ish: at least one exec bit set (best-effort on Windows)
     import os
@@ -162,7 +162,7 @@ def test_steps_are_ordered_name_kind_callable():
 def test_run_executes_only_real_commands(tmp_path, monkeypatch):
     """C1: run() must never hand a filesystem path to sh() — only the "cmds"
     installer steps return anything executable."""
-    monkeypatch.setenv("NIBA_HOME", str(tmp_path))
+    monkeypatch.setenv("CAELZA_BODY_HOME", str(tmp_path))
     monkeypatch.setattr(setup.Path, "home", staticmethod(lambda: tmp_path))
     monkeypatch.setattr("builtins.input", lambda *a, **k: "")
     monkeypatch.setattr(setup, "capture_owner_chat_id", lambda *a, **k: 42)
@@ -175,7 +175,7 @@ def test_run_executes_only_real_commands(tmp_path, monkeypatch):
     for cmd in ran:
         assert "/.termux/boot/" not in cmd and ".termux\\boot" not in cmd
         assert "adb-self-port" not in cmd
-        assert "niba.supervisor" not in cmd
+        assert "caelza_body.supervisor" not in cmd
         assert str(tmp_path) not in cmd
     # the boot script itself was still written (as a file, not executed)
-    assert (tmp_path / ".termux" / "boot" / "niba").exists()
+    assert (tmp_path / ".termux" / "boot" / "caelza-body").exists()

@@ -1,6 +1,6 @@
 import shutil
 import pytest
-from niba.agent.memory import Memory
+from caelza_body.agent.memory import Memory
 
 
 def test_remember_calls_brain_write():
@@ -27,7 +27,7 @@ def test_recall_swallows_errors():
 
 
 def test_sharpwave_env_pins_agent_and_db_path(tmp_path):
-    from niba.agent.memory import _sharpwave_env, NIBA_AGENT_ID
+    from caelza_body.agent.memory import _sharpwave_env, NIBA_AGENT_ID
     env = _sharpwave_env(tmp_path / "sharpwave" / "db", NIBA_AGENT_ID)
     assert env["SHARPWAVE_AGENT_ID"] == "niba"
     assert env["SHARPWAVE_DB_PATH"].replace("\\", "/").endswith("sharpwave/db/brain.db")
@@ -82,7 +82,7 @@ def test_memory_reset_failure_keeps_queued_writes():
 )
 def test_memory_adapter_roundtrip(tmp_path):
     """Live: Memory -> spawn_sharpwave_session adapter -> sharpwave@0.2.x -> back."""
-    from niba.agent.memory import spawn_sharpwave_session
+    from caelza_body.agent.memory import spawn_sharpwave_session
     call_tool, close = spawn_sharpwave_session(tmp_path / "db")
     try:
         m = Memory(call_tool)

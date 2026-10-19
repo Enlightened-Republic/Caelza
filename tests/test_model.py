@@ -2,9 +2,9 @@ import dataclasses
 import json
 import httpx
 import pytest
-from niba.agent.config import Config, MmxToken
-from niba.agent.session import Session
-from niba.agent.model import Model, ToolCall, ModelPaused, ModelQuotaExhausted
+from caelza_body.agent.config import Config, MmxToken
+from caelza_body.agent.session import Session
+from caelza_body.agent.model import Model, ToolCall, ModelPaused, ModelQuotaExhausted
 
 
 def cfg(tmp_path, cap=100):
@@ -220,7 +220,7 @@ def test_max_attempts_default_is_three(tmp_path):
 def test_retry_backoff_uses_exponential_schedule(tmp_path, monkeypatch):
     """Sleep durations between attempts must follow base * 2^attempt."""
     sleeps: list[float] = []
-    monkeypatch.setattr("niba.agent.model.time.sleep", lambda s: sleeps.append(s))
+    monkeypatch.setattr("caelza_body.agent.model.time.sleep", lambda s: sleeps.append(s))
     calls = {"n": 0}
     def h(req):
         calls["n"] += 1

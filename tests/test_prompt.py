@@ -1,7 +1,7 @@
 from pathlib import Path
 
 # The repo ships a template; the owner's real prompt.md is gitignored.
-TEMPLATE = Path("niba/agent/prompt.example.md")
+TEMPLATE = Path("caelza_body/agent/prompt.example.md")
 
 
 def _text():

@@ -1,11 +1,11 @@
 import base64
-from niba.agent import tools
-from niba.agent.tools import media
-from niba.agent.loop import handle_turn, _drained_image_parts
-from niba.agent.session import Session
-from niba.agent.redact import Redactor
-from niba.agent.telegram import Update
-from niba.agent.model import Assistant, ToolCall
+from caelza_body.agent import tools
+from caelza_body.agent.tools import media
+from caelza_body.agent.loop import handle_turn, _drained_image_parts
+from caelza_body.agent.session import Session
+from caelza_body.agent.redact import Redactor
+from caelza_body.agent.telegram import Update
+from caelza_body.agent.model import Assistant, ToolCall
 
 
 def test_emit_and_drain():
@@ -34,7 +34,7 @@ def test_drained_parts_cap_at_three_images(tmp_path):
 
 
 def test_drained_parts_cap_total_bytes(tmp_path, monkeypatch):
-    import niba.agent.loop as loop_mod
+    import caelza_body.agent.loop as loop_mod
     # one 200-byte png encodes to ~272 chars; cap at 400 -> first fits, second
     # pushes over, so exactly one image survives.
     monkeypatch.setattr(loop_mod, "MAX_DRAIN_ENCODED_BYTES", 400)
@@ -52,7 +52,7 @@ def test_drained_parts_cap_total_bytes(tmp_path, monkeypatch):
 def test_drained_parts_cap_applies_to_the_first_image_too(tmp_path, monkeypatch):
     """Imp-3: a single oversized capture is dropped, not waved through to be
     re-uploaded on every subsequent round."""
-    import niba.agent.loop as loop_mod
+    import caelza_body.agent.loop as loop_mod
     monkeypatch.setattr(loop_mod, "MAX_DRAIN_ENCODED_BYTES", 50)
     p = tmp_path / "huge.png"
     p.write_bytes(b"X" * 500)

@@ -1,4 +1,4 @@
-from niba.agent.redact import Redactor
+from caelza_body.agent.redact import Redactor
 
 
 def test_scrub_replaces_secret():

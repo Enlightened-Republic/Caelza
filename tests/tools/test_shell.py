@@ -1,6 +1,6 @@
 import pytest
-from niba.agent import tools
-from niba.agent.tools import shell
+from caelza_body.agent import tools
+from caelza_body.agent.tools import shell
 
 
 @pytest.fixture(autouse=True)

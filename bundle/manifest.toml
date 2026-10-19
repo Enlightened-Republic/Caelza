@@ -1,0 +1,95 @@
+# Caelza distribution manifest — what "Caelza" ships as, and the pinned
+# version of every component. Tooling (install scripts, release CI) reads
+# this; humans read bundle/README.md.
+
+[caelza]
+name = "Caelza"
+version = "0.1.0"
+tagline = "The embodied agent runtime."
+repo = "https://github.com/Enlightened-Republic/caelza"
+license = "MIT OR Apache-2.0"   # runtime; Mind and Body are MIT
+
+[caelza.parent]
+name = "Enlightened Republic"   # the umbrella company; "ENLIGHTENED REPUBLIC™ presents Caelza"
+site = "https://www.enlightenedrepublic.tech"
+lab = "https://enlightenedrepublic.online"
+discord = "https://discord.gg/7EkMB4kBd"
+x = "https://x.com/EnlightenedRep"
+est = 2026
+
+# ---------------------------------------------------------------------------
+# Runtime — the agent loop, providers, channels, tools, gateway + dashboard.
+# A rebranded build of ZeroClaw. Source of truth: runtime/upstream.toml.
+[components.runtime]
+kind = "rust-binary"
+bin = "caelza"
+path = "runtime/"
+upstream = "https://github.com/zeroclaw-labs/zeroclaw"
+upstream_commit = "c473221313341a853e04122f93bb9bd26b5e6c47"
+upstream_version = "0.8.6"
+config = "~/.caelza/config.toml"
+targets = ["x86_64-unknown-linux-gnu", "aarch64-unknown-linux-gnu", "aarch64-linux-android", "aarch64-apple-darwin", "x86_64-pc-windows-msvc"]
+
+# ---------------------------------------------------------------------------
+# Mind — autonomic long-term memory. xanima is the renamed openwave plugin;
+# the engine underneath is sharpwave-core, served either in-process or by
+# the sharpwave-server brain service.
+[components.mind]
+kind = "memory"
+name = "xanima"
+formerly = "openwave"
+repo = "https://github.com/Enlightened-Republic/openwave"   # main carries the rename (merged 2026-10-18)
+npm = "xanima-openclaw"           # published 2026-10-19; ClawHub: clawhub:xanima
+plugin_id = "xanima"              # legacyPluginIds: ["openwave"]; config entry plugins.entries.xanima
+version = "0.5.0"
+engine = "xanima-core"            # formerly sharpwave-core; published 2026-10-19
+engine_version = "0.5.0"
+engine_repo = "https://github.com/Enlightened-Republic/sharpwave"   # main carries the rename
+service = "xanima-server"         # formerly sharpwave-server; private workspace package (not on npm), runs from a sharpwave checkout; MCP Streamable HTTP on 127.0.0.1:18790
+mcp_server = "xanima"             # published 2026-10-19; keeps a `sharpwave` alias bin
+brain_dir = "~/.xanima/<agent>/brain.db"   # ~/.sharpwave is read until `xanima-server migrate`
+token_env = "XANIMA_BRAIN_TOKEN"  # OPENWAVE_BRAIN_TOKEN still accepted with a warning
+upgrade_cli = "xanima-openclaw-upgrade"    # copies plugins.entries.openwave -> plugins.entries.xanima
+tools = 43                        # brain_* names unchanged and permanent; schema v25
+integration = "mind/README.md"
+
+# ---------------------------------------------------------------------------
+# Body — the device layer: Termux/Android sensors, ADB device control, the
+# immutable supervisor with git-backed self-modification rollback.
+[components.body]
+kind = "python-package"
+package = "caelza_body"           # the reference agent persona is still "Niba"
+path = "caelza_body/"
+python = ">=3.11"
+runtime_target = "Termux on non-root Android"
+state_dir = "~/.caelza-body"      # a legacy ~/.niba is used until setup migrates it
+env_home = "CAELZA_BODY_HOME"     # NIBA_HOME is still honoured as a fallback
+privilege = "adb"                 # "adb" (Termux loopback ADB, primary) or "shizuku" (optional permission; see components.app)
+install = "install.sh"            # one-line Termux install: curl -fsSL <repo>/main/install.sh | sh
+migrate = "python scripts/setup.py --migrate"   # existing Airframe Lite phones, once
+
+# ---------------------------------------------------------------------------
+# App — the Caelza Android app + web app (PWA of the Runtime dashboard).
+# Planned (vision doc §3.3, milestone M7). Shizuku provides shell-level
+# privileges to the app without root or Termux.
+[components.app]
+kind = "android-app"
+status = "planned"
+web = "pwa"                       # the Runtime dashboard, installable
+privilege = "shizuku"             # optional: https://github.com/RikkaApps/Shizuku (Apache-2.0); Sui on rooted devices
+hosts = ["runtime", "body", "model"]
+install = "app"                   # the app's own one-line installer, when it exists
+
+# ---------------------------------------------------------------------------
+# Default model — free and local, no key, no account. Users can bring their
+# own provider/key instead (any provider the Runtime supports).
+[defaults.model]
+family = "deepseek-r1"            # MIT-licensed, including distilled sizes
+guide = "deepseek-r1:1.5b"        # always-available explainer; runs on any device; bundled
+guide_name = "Cael"               # the Guide persona (guide/CAEL.md); sibling of Marley
+bigger = "download"               # 7B/14B offered as a download sized to RAM at quickstart
+hub = "deepseek-r1:14b"           # 16 GB+ hosts (8b on 8–12 GB), via Ollama
+phone_8gb = "DeepSeek-R1-Distill-Qwen-7B-Q4_K_M"   # via llama.cpp
+phone_5gb = "DeepSeek-R1-Distill-Qwen-1.5B-Q4_K_M" # chat + explain only
+embeddings = "ollama/qwen3-embedding:0.6b"          # xanima default, local
+byo = ["anthropic", "openai", "openrouter", "minimax", "ollama", "openai-compatible"]

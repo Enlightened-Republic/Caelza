@@ -1,0 +1,143 @@
+name: release
+
+# Builds the Caelza runtime from the pinned upstream commit for each target,
+# builds the web dashboard once (Node 24), and attaches
+# caelza-<version>-<target>.tar.gz (binary + web/dist + NOTICE + UPSTREAM.md)
+# to the GitHub release for the tag. Nothing generated is committed.
+#
+#   git tag v0.1.0 && git push origin v0.1.0      # → release
+#   workflow_dispatch                             # → artifacts only
+
+on:
+  push:
+    tags: ["v*"]
+  workflow_dispatch:
+
+permissions:
+  contents: write
+
+env:
+  CARGO_TERM_COLOR: always
+
+jobs:
+  dashboard:
+    name: Web dashboard
+    runs-on: ubuntu-latest
+    timeout-minutes: 90
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+      - run: pip install pillow
+      - uses: dtolnay/rust-toolchain@stable
+      - uses: actions/setup-node@v4
+        with:
+          node-version: "24"
+      - name: System deps
+        run: sudo apt-get update -qq && sudo apt-get install -y -qq pkg-config libudev-dev
+      - name: Stage the rebranded tree
+        run: ./runtime/build.sh --no-build
+      - uses: Swatinem/rust-cache@v2
+        with:
+          workspaces: runtime/.build/src -> ../target
+          prefix-key: caelza-dashboard
+      - name: Build (generates the API types, then vite)
+        working-directory: runtime/.build/src
+        env:
+          CARGO_TARGET_DIR: ${{ github.workspace }}/runtime/.build/target
+        run: |
+          cargo web install
+          cargo web build
+      - uses: actions/upload-artifact@v4
+        with:
+          name: web-dist
+          path: runtime/.build/src/web/dist/
+          if-no-files-found: error
+
+  build:
+    name: ${{ matrix.target }}
+    needs: dashboard
+    runs-on: ubuntu-latest
+    timeout-minutes: 120
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - target: x86_64-unknown-linux-gnu
+          - target: aarch64-unknown-linux-gnu
+            cross_compiler: gcc-aarch64-linux-gnu
+          - target: aarch64-linux-android
+            ndk: true
+            experimental: true
+    continue-on-error: ${{ matrix.experimental || false }}
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+      - run: pip install pillow
+      - uses: dtolnay/rust-toolchain@stable
+        with:
+          targets: ${{ matrix.target }}
+      - name: System deps
+        run: sudo apt-get update -qq && sudo apt-get install -y -qq pkg-config libudev-dev ${{ matrix.cross_compiler || '' }}
+      - name: Android NDK on PATH (upstream .cargo/config.toml names the clang linker)
+        if: matrix.ndk
+        run: echo "$ANDROID_NDK/toolchains/llvm/prebuilt/linux-x86_64/bin" >> "$GITHUB_PATH"
+      - name: Stage the rebranded tree
+        run: ./runtime/build.sh --no-build
+      - uses: Swatinem/rust-cache@v2
+        with:
+          workspaces: runtime/.build/src -> ../target
+          prefix-key: caelza-${{ matrix.target }}
+      - uses: actions/download-artifact@v4
+        with:
+          name: web-dist
+          path: runtime/.build/src/web/dist/
+      - name: cargo build --release
+        working-directory: runtime/.build/src
+        env:
+          CARGO_TARGET_DIR: ${{ github.workspace }}/runtime/.build/target
+          CAELZA_BUILD_ID: ${{ github.ref_name }}
+        run: cargo build --release --locked -p caelza --target ${{ matrix.target }}
+      - name: Package
+        id: pack
+        run: |
+          set -euo pipefail
+          ver="${GITHUB_REF_NAME#v}"; [ "$GITHUB_REF_TYPE" = tag ] || ver="dev-${GITHUB_SHA::8}"
+          name="caelza-${ver}-${{ matrix.target }}"
+          stage="$RUNNER_TEMP/$name"; mkdir -p "$stage/web"
+          cp "runtime/.build/target/${{ matrix.target }}/release/caelza" "$stage/"
+          cp -r runtime/.build/src/web/dist "$stage/web/dist"
+          cp runtime/.build/src/NOTICE runtime/.build/src/UPSTREAM.md runtime/.build/src/LICENSE-MIT runtime/.build/src/LICENSE-APACHE "$stage/"
+          tar -C "$RUNNER_TEMP" -czf "$RUNNER_TEMP/$name.tar.gz" "$name"
+          (cd "$RUNNER_TEMP" && sha256sum "$name.tar.gz" > "$name.tar.gz.sha256")
+          echo "asset=$RUNNER_TEMP/$name.tar.gz" >> "$GITHUB_OUTPUT"
+          echo "sum=$RUNNER_TEMP/$name.tar.gz.sha256" >> "$GITHUB_OUTPUT"
+      - uses: actions/upload-artifact@v4
+        with:
+          name: caelza-${{ matrix.target }}
+          path: |
+            ${{ steps.pack.outputs.asset }}
+            ${{ steps.pack.outputs.sum }}
+          if-no-files-found: error
+
+  release:
+    name: GitHub release
+    if: github.ref_type == 'tag'
+    needs: build
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/download-artifact@v4
+        with:
+          pattern: caelza-*
+          path: assets
+          merge-multiple: true
+      - uses: softprops/action-gh-release@v2
+        with:
+          files: assets/*
+          generate_release_notes: true
+          body: |
+            Caelza runtime built from the pinned upstream commit (see `UPSTREAM.md` inside each archive).
+            Each archive holds the `caelza` binary, the web dashboard (`web/dist`), and the upstream notices.

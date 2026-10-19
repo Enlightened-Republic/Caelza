@@ -1,7 +1,7 @@
 import sys, subprocess, time
 from pathlib import Path
 import pytest
-from niba import supervisor
+from caelza_body import supervisor
 
 
 class FakeChild:

@@ -1,0 +1,16 @@
+# Upstream pin for the Caelza runtime.
+#
+# The Caelza runtime is a rebranded build of ZeroClaw (MIT OR Apache-2.0).
+# `runtime/build.sh` fetches exactly this commit, applies the rename map,
+# brand assets, theme map and patches, then compiles. Bump `commit` (and
+# `version`) to track upstream; everything else in runtime/ is the delta.
+
+repo = "https://github.com/zeroclaw-labs/zeroclaw.git"
+commit = "c473221313341a853e04122f93bb9bd26b5e6c47"
+version = "0.8.6"
+committed = "2026-10-18T00:02:09-04:00"
+license = "MIT OR Apache-2.0"
+
+# Compatibility note: the WASM plugin ABI namespace `zeroclaw:plugin@0.1.0`
+# is deliberately NOT renamed (see protect.txt). Caelza loads upstream
+# ZeroClaw WASM plugins unchanged.

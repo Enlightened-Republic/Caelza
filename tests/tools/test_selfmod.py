@@ -1,7 +1,7 @@
 import subprocess
 import pytest
-from niba.agent import tools
-from niba.agent.tools import selfmod
+from caelza_body.agent import tools
+from caelza_body.agent.tools import selfmod
 
 
 @pytest.fixture
@@ -11,10 +11,10 @@ def repo(tmp_path):
     subprocess.run(["git", "init", "-q"], cwd=r, check=True)
     subprocess.run(["git", "config", "user.email", "t@t"], cwd=r, check=True)
     subprocess.run(["git", "config", "user.name", "t"], cwd=r, check=True)
-    (r / "niba").mkdir()
-    (r / "niba" / "supervisor.py").write_text("# immutable\n")
-    (r / "niba" / "agent").mkdir()
-    (r / "niba" / "agent" / "loop.py").write_text("x = 1\n")
+    (r / "caelza_body").mkdir()
+    (r / "caelza_body" / "supervisor.py").write_text("# immutable\n")
+    (r / "caelza_body" / "agent").mkdir()
+    (r / "caelza_body" / "agent" / "loop.py").write_text("x = 1\n")
     subprocess.run(["git", "add", "-A"], cwd=r, check=True)
     subprocess.run(["git", "commit", "-qm", "init"], cwd=r, check=True)
     home = tmp_path / "home"; (home / "run").mkdir(parents=True)
@@ -26,18 +26,18 @@ def repo(tmp_path):
 
 def test_read_and_write(repo):
     r, _ = repo
-    assert "x = 1" in tools.dispatch("self_read_file", {"path": "niba/agent/loop.py"})
-    tools.dispatch("self_write_file", {"path": "niba/agent/loop.py", "content": "x = 2\n"})
-    assert (r / "niba" / "agent" / "loop.py").read_text() == "x = 2\n"
+    assert "x = 1" in tools.dispatch("self_read_file", {"path": "caelza_body/agent/loop.py"})
+    tools.dispatch("self_write_file", {"path": "caelza_body/agent/loop.py", "content": "x = 2\n"})
+    assert (r / "caelza_body" / "agent" / "loop.py").read_text() == "x = 2\n"
 
 
 def test_cannot_touch_supervisor(repo):
-    out = tools.dispatch("self_write_file", {"path": "niba/supervisor.py", "content": "evil"})
+    out = tools.dispatch("self_write_file", {"path": "caelza_body/supervisor.py", "content": "evil"})
     assert out.startswith("error: PermissionError")
 
 
 def test_cannot_touch_supervisor_uppercase(repo):
-    out = tools.dispatch("self_write_file", {"path": "niba/SUPERVISOR.py", "content": "evil"})
+    out = tools.dispatch("self_write_file", {"path": "caelza_body/SUPERVISOR.py", "content": "evil"})
     assert out.startswith("error: PermissionError")
 
 
@@ -48,7 +48,7 @@ def test_cannot_escape_repo(repo):
 
 def test_commit_then_request_restart(repo):
     r, home = repo
-    tools.dispatch("self_write_file", {"path": "niba/agent/loop.py", "content": "x = 3\n"})
+    tools.dispatch("self_write_file", {"path": "caelza_body/agent/loop.py", "content": "x = 3\n"})
     sha = tools.dispatch("self_commit", {"message": "bump x"})
     assert len(sha) >= 7
     tools.dispatch("self_request_restart", {"reason": "bump x"})

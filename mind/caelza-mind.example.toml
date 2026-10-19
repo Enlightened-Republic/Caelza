@@ -1,0 +1,65 @@
+# Caelza Mind — wiring the xanima memory engine into the Caelza runtime.
+# Merge the relevant blocks into ~/.caelza/config.toml.
+#
+# Two paths exist today (see mind/README.md for the roadmap):
+#
+#   A. Tools path  — `xanima`, the engine's stdio MCP server (npm, 0.5.0; the
+#      `sharpwave` bin is kept as an alias). The agent gets the brain_* tools
+#      (deliberate recall/write). No automatic per-turn injection.
+#   B. Service path — `xanima-server` (formerly sharpwave-server) over MCP
+#      Streamable HTTP, one private brain per agent + a shared brain, bearer
+#      tokens. It is a private workspace package: build it from a sharpwave
+#      checkout (`npm run build --workspace xanima-server`) and run
+#      `node packages/server/dist/cli.js serve`. This is the same endpoint
+#      xanima's remote mode speaks, so one brain service serves an OpenClaw
+#      gateway (via xanima) and a Caelza runtime.
+
+# ---------------------------------------------------------------------------
+# A. Tools path (stdio). Requires: npm i -g xanima   (Node 20+)
+[[mcp.servers]]
+name = "brain"
+transport = "stdio"
+command = "xanima"
+# Brain databases live at ~/.xanima/<agent>/brain.db (a legacy ~/.sharpwave is
+# read until `xanima-server migrate` copies it). The engine's env vars keep
+# their SHARPWAVE_ names: SHARPWAVE_DATA_DIR (parent dir) / SHARPWAVE_DB_PATH
+# (exact file) / SHARPWAVE_AGENT_ID. (env values are stored encrypted.)
+env = { SHARPWAVE_AGENT_ID = "main" }
+tool_timeout_secs = 20
+
+# ---------------------------------------------------------------------------
+# B. Service path (Streamable HTTP). Requires xanima-server running on
+#    127.0.0.1:18790 and a token minted with `xanima-server token mint`.
+#    Put the bearer token in `headers` through `caelza config set
+#    mcp.servers.brain-service.headers.Authorization`, never in plaintext here.
+[[mcp.servers]]
+name = "brain-service"
+transport = "http"
+url = "http://127.0.0.1:18790/mcp"
+tool_timeout_secs = 5
+
+# ---------------------------------------------------------------------------
+# Grant the server(s) to the agent. Omission is not a grant.
+[mcp_bundles.mind]
+servers = ["brain"]          # or ["brain-service"]
+
+[agents.main]
+mcp_bundles = ["mind"]
+
+# Recall is cheap and read-only; approve it without prompting. Writes and the
+# destructive tools keep the normal approval policy.
+[risk_profiles.main]
+auto_approve = [
+  "brain__brain_query",
+  "brain__brain_stats",
+  "brain__brain_history",
+  "brain__brain_expand",
+  "brain__brain_edges",
+  "brain__brain_status",
+  "brain__brain_briefing",
+]
+always_ask = [
+  "brain__brain_reset",
+  "brain__brain_forget",
+  "brain__brain_retract",
+]
