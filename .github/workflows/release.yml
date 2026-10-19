@@ -55,20 +55,35 @@ jobs:
           path: runtime/.build/src/web/dist/
           if-no-files-found: error
 
+  # The release profile is opt-level z + fat LTO + codegen-units 1, so the
+  # final link of the `caelza` crate needs more memory than a hosted 7 GB
+  # runner has; the aarch64 legs died there with "runner received a shutdown
+  # signal" (exit 143) on 2026-10-19 while x86_64 passed. Upstream's release
+  # workflow handles the same with an 8 GiB swap file plus `--jobs 2` for the
+  # aarch64 Linux legs (scripts/ci/dist_runner_memory.sh, staged with the
+  # tree), and keeps Android experimental. Same recipe here, Android included.
+  # Linux GNU legs build on ubuntu-22.04 to link against glibc 2.35, as
+  # upstream does, so a hub on an older Debian/Raspberry Pi OS still runs them.
   build:
     name: ${{ matrix.target }}
     needs: dashboard
-    runs-on: ubuntu-latest
+    runs-on: ${{ matrix.os || 'ubuntu-latest' }}
     timeout-minutes: 120
     strategy:
       fail-fast: false
       matrix:
         include:
           - target: x86_64-unknown-linux-gnu
+            os: ubuntu-22.04
           - target: aarch64-unknown-linux-gnu
+            os: ubuntu-22.04
             cross_compiler: gcc-aarch64-linux-gnu
+            swap: true
+            jobs: 2
           - target: aarch64-linux-android
             ndk: true
+            swap: true
+            jobs: 2
             experimental: true
     continue-on-error: ${{ matrix.experimental || false }}
     steps:
@@ -95,12 +110,24 @@ jobs:
         with:
           name: web-dist
           path: runtime/.build/src/web/dist/
+      - name: Bounded build memory (8 GiB swap for the fat-LTO link)
+        id: dist_memory
+        if: matrix.swap
+        timeout-minutes: 5
+        run: bash runtime/.build/src/scripts/ci/dist_runner_memory.sh prepare
       - name: cargo build --release
         working-directory: runtime/.build/src
         env:
           CARGO_TARGET_DIR: ${{ github.workspace }}/runtime/.build/target
           CAELZA_BUILD_ID: ${{ github.ref_name }}
-        run: cargo build --release --locked -p caelza --target ${{ matrix.target }}
+        run: cargo build --release --locked -p caelza --target ${{ matrix.target }} ${{ matrix.jobs && format('--jobs {0}', matrix.jobs) || '' }}
+      - name: Release the build memory
+        if: always() && matrix.swap
+        timeout-minutes: 5
+        env:
+          ZC_DIST_SWAP_FILE: ${{ steps.dist_memory.outputs.swap_file }}
+          ZC_DIST_SWAP_IDENTITY: ${{ steps.dist_memory.outputs.swap_identity }}
+        run: bash runtime/.build/src/scripts/ci/dist_runner_memory.sh cleanup
       - name: Package
         id: pack
         run: |
