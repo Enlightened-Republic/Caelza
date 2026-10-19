@@ -3,29 +3,28 @@
 #
 # Two paths exist today (see mind/README.md for the roadmap):
 #
-#   A. Tools path  — the engine's stdio MCP server. The agent gets the
-#      brain_* tools (deliberate recall/write). No automatic per-turn injection.
-#      Published today as `sharpwave` 0.4.1; on the xanima/v0.5.0 branch the
-#      package is `xanima` and keeps a `sharpwave` alias bin, so this block
-#      works before and after the publish.
+#   A. Tools path  — `xanima`, the engine's stdio MCP server (npm, 0.5.0; the
+#      `sharpwave` bin is kept as an alias). The agent gets the brain_* tools
+#      (deliberate recall/write). No automatic per-turn injection.
 #   B. Service path — `xanima-server` (formerly sharpwave-server) over MCP
 #      Streamable HTTP, one private brain per agent + a shared brain, bearer
-#      tokens. This is the same endpoint xanima's remote mode speaks, so one
-#      brain service serves an OpenClaw gateway (via xanima) and a Caelza
-#      runtime.
+#      tokens. It is a private workspace package: build it from a sharpwave
+#      checkout (`npm run build --workspace xanima-server`) and run
+#      `node packages/server/dist/cli.js serve`. This is the same endpoint
+#      xanima's remote mode speaks, so one brain service serves an OpenClaw
+#      gateway (via xanima) and a Caelza runtime.
 
 # ---------------------------------------------------------------------------
-# A. Tools path (stdio). Requires: npm i -g sharpwave   (Node 20+)
-#    After the xanima publish: npm i -g xanima   (same command, alias kept)
+# A. Tools path (stdio). Requires: npm i -g xanima   (Node 20+)
 [[mcp.servers]]
 name = "brain"
 transport = "stdio"
-command = "sharpwave"
-# Brain databases: ~/.sharpwave/<agent>/brain.db today, ~/.xanima/<agent>/brain.db
-# on the xanima branch (the old folder is read until `xanima-server migrate`).
-# SHARPWAVE_DATA_DIR / SHARPWAVE_DB_PATH are honoured by the engine.
-# (env values are stored encrypted by the runtime.)
-env = { SHARPWAVE_DATA_DIR = "~/.sharpwave/main" }
+command = "xanima"
+# Brain databases live at ~/.xanima/<agent>/brain.db (a legacy ~/.sharpwave is
+# read until `xanima-server migrate` copies it). The engine's env vars keep
+# their SHARPWAVE_ names: SHARPWAVE_DATA_DIR (parent dir) / SHARPWAVE_DB_PATH
+# (exact file) / SHARPWAVE_AGENT_ID. (env values are stored encrypted.)
+env = { SHARPWAVE_AGENT_ID = "main" }
 tool_timeout_secs = 20
 
 # ---------------------------------------------------------------------------

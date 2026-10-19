@@ -397,7 +397,7 @@ Grouped, unranked inside each group. ★ = cheap given what we already have.
 
 | # | Question | Decision |
 |---|---|---|
-| 1 | xanima naming | **Already done** on the `xanima/v0.5.0` branches of the openwave and sharpwave repos: package `xanima-openclaw`, plugin id `xanima` (legacy id `openwave` honoured), engine `xanima-core`, service `xanima-server`, brains in `~/.xanima`, env `XANIMA_BRAIN_TOKEN`, an upgrade CLI. What is left is merging those branches to `main` and publishing to npm / ClawHub; today npm still serves `openwave` 0.1.1 and `sharpwave-core` 0.4.5. |
+| 1 | xanima naming | **Shipped** (2026-10-18/19): both repos' `main` carry the rename, and `xanima-openclaw`, `xanima-core` and `xanima` 0.5.0 are on npm with the plugin on ClawHub as `xanima`. Plugin id `xanima` (legacy id `openwave` honoured), service `xanima-server` (private, runs from a checkout), brains in `~/.xanima`, env `XANIMA_BRAIN_TOKEN`, an upgrade CLI. |
 | 2 | Repo rename | **Rename `airframe-lite` → `caelza` now** (GitHub Settings, redirects keep old links). Every URL in this repo already assumes it. |
 | 3 | Body package | **`caelza_body`**, state in `~/.caelza-body`, env `CAELZA_BODY_HOME`. The reference agent persona stays "Niba". The legacy `~/.niba` / `NIBA_HOME` are honoured until `python scripts/setup.py --migrate` runs on the phone. |
 | 4 | Licence | **MIT** for this repo (Body, pipeline, brand, docs). Runtime stays MIT OR Apache-2.0 from upstream; fonts OFL. |
@@ -410,6 +410,6 @@ Grouped, unranked inside each group. ★ = cheap given what we already have.
 
 Still open:
 
-- Merging the `xanima/v0.5.0` branches (openwave and sharpwave repos) to `main` and publishing `xanima-openclaw`, `xanima-core` and `xanima-server`; finishing the openwave README body, which still carries the old install commands under the new banner.
+- The published `xanima-openclaw` README body, which still carries the old `clawhub:openwave` / `npm:openwave` install commands under the new banner.
 - Whether the Body's `caelza-body-last-good` git tag should replace `niba-last-good` on deployed phones (left as is so the phone's rollback pointer survives the rename).
 - A product domain for Caelza, if any.
