@@ -35,10 +35,13 @@ picture, the roadmap, the UI redesign).
 
 1. **Runtime**: `./runtime/build.sh` → `runtime/dist/caelza`, then
    `caelza quickstart`. Config lives at `~/.caelza/config.toml`.
-2. **Mind**: `npm i -g xanima` (the engine's MCP server; keeps a `sharpwave`
-   alias bin) and register it as an MCP server in the runtime config
-   (`mind/caelza-mind.example.toml`). For the autonomic path run
-   `xanima-server` from a sharpwave checkout and point xanima's remote mode at it.
+2. **Mind**: run `xanima-server` (from a sharpwave checkout for now), mint one
+   token per agent (`xanima-server token mint --agent main --scopes read,write`
+   → `~/.xanima/tokens/main.token`) and set `[memory] backend = "xanima"` in the
+   runtime config (`mind/caelza-mind.example.toml`): the Runtime's own memory is
+   the brain service, so recall is automatic per turn. The stdio `xanima` MCP
+   server (`npm i -g xanima`) and the service's `http` MCP endpoint are the
+   optional tool paths for deliberate memory work.
 3. **Body**: on the phone, `install.sh` or `python scripts/setup.py` (see the
    top-level README). Then merge `body/caelza-body.example.toml` into the
    runtime config so the Runtime spawns `caelza-body serve` and gets the

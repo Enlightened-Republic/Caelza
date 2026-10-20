@@ -15,8 +15,8 @@ runtime/
 ├── protect.txt        tokens the rename must never touch (plugin ABI namespace)
 ├── exclude.txt        files whose contents stay verbatim (licences, changelog)
 ├── theme-map.txt      dashboard fallback palette → Enlightened Republic tokens
-├── overlay/           files copied over the renamed tree (optional)
-├── patches/           *.patch applied after the rename (optional)
+├── overlay/           files copied over the renamed tree: crates/caelza-memory/src/xanima.rs (the Mind as a native memory backend)
+├── patches/           *.patch applied after the rename: 0001-xanima-memory-backend.patch (config schema, backend registry, factory, dashboard picker)
 ├── lib/rename.pl      the replacement engine
 ├── lib/dashboard_theme.py  registers caelza-dark / caelza-light as the dashboard defaults
 └── build.sh           fetch → rebrand → cargo build
@@ -133,6 +133,11 @@ phase 1 in `docs/design/caelza-vision.md`.
 2. `./runtime/build.sh --check-only`.
 3. If the residual check fails, extend `rename-map.txt` (or `protect.txt` /
    `exclude.txt`). If compilation fails, add a patch under `patches/`.
+   If `0001-xanima-memory-backend.patch` no longer applies, re-apply its hunks
+   by hand on the renamed tree, then regenerate it with `diff -u` against a
+   pristine copy of each file it names (`a/<path>` / `b/<path>` labels; the
+   leading paragraph is kept by `patch`). `tests/test_mind_example.py` checks
+   the file list and the defaults it carries.
 4. Commit the delta. The rebranded tree itself is never committed.
 
 ## Trademark note

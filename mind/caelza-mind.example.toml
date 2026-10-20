@@ -1,20 +1,44 @@
 # Caelza Mind — wiring the xanima memory engine into the Caelza runtime.
 # Merge the relevant blocks into ~/.caelza/config.toml.
 #
-# Two paths exist today (see mind/README.md for the roadmap):
+# Three paths (see mind/README.md):
 #
+#   C. Native backend — `[memory] backend = "xanima"`: the Runtime's own memory
+#      talks to `xanima-server`, so recall happens on every turn and every
+#      auto-saved turn lands in the brain's episode log, with no tool call.
+#      One token per agent. This is the one to use (milestone M3).
 #   A. Tools path  — `xanima`, the engine's stdio MCP server (npm, 0.5.0; the
 #      `sharpwave` bin is kept as an alias). The agent gets the brain_* tools
 #      (deliberate recall/write). No automatic per-turn injection.
-#   B. Service path — `xanima-server` (formerly sharpwave-server) over MCP
-#      Streamable HTTP, one private brain per agent + a shared brain, bearer
-#      tokens. It is a private workspace package: build it from a sharpwave
-#      checkout (`npm run build --workspace xanima-server`) and run
-#      `node packages/server/dist/cli.js serve`. This is the same endpoint
-#      xanima's remote mode speaks, so one brain service serves an OpenClaw
-#      gateway (via xanima) and a Caelza runtime.
+#   B. Service path — the same `xanima-server` as an `http` MCP server: the
+#      agent gets the 43 brain_* tools for deliberate work (goals, decisions,
+#      rooms, soul). Combine with C: C remembers for the agent, B lets it think
+#      about its memory on purpose.
+#
+# xanima-server (formerly sharpwave-server) is a private workspace package:
+# build it from a sharpwave checkout (`npm run build --workspace xanima-server`)
+# and run `node packages/server/dist/cli.js serve`. It listens on
+# 127.0.0.1:18790 and is the same endpoint xanima's remote mode speaks, so one
+# brain service serves an OpenClaw gateway (via xanima) and a Caelza runtime.
 
 schema_version = 3   # already present in a quickstart-written config; keep it if you copy this file whole
+
+# ---------------------------------------------------------------------------
+# C. Native backend. Mint one token per agent and drop each in its file:
+#      xanima-server token mint --agent main --scopes read,write --json \
+#        | jq -r .token > ~/.xanima/tokens/main.token
+#    (the same for every alias under [agents.*]; Cael needs only `read`).
+#    A bare `backend = "xanima"` with no [storage.xanima.*] block uses exactly
+#    these defaults.
+[memory]
+backend = "xanima"
+
+[storage.xanima.default]
+url = "http://127.0.0.1:18790"            # the service; a tailnet address for a brain on another host
+token_file = "~/.xanima/tokens/{agent}.token"   # {agent} = the agent alias; or `token` for one shared token (stored encrypted)
+agent = "main"                             # the brain used when an operation names no agent (operator CLI)
+scope = "all"                              # recall searches the private brain + the shared brain; or private | shared
+timeout_secs = 20
 
 # ---------------------------------------------------------------------------
 # A. Tools path (stdio). Requires: npm i -g xanima   (Node 20+)

@@ -55,14 +55,18 @@ caelza daemon                        # gateway on http://127.0.0.1:42617 + chann
 ## Mind
 
 ```bash
-npm i -g xanima                          # the memory engine's MCP server
-# then merge mind/caelza-mind.example.toml into ~/.caelza/config.toml
+# run xanima-server (one brain per agent plus a shared one; from a sharpwave checkout for now)
+xanima-server token mint --agent main --scopes read,write --json | jq -r .token > ~/.xanima/tokens/main.token
+# then merge mind/caelza-mind.example.toml into ~/.caelza/config.toml:
+#   [memory] backend = "xanima"   ← the Runtime's own memory is the brain service
+caelza memory stats                      # the smoke test
 ```
 
-That is the tools path. The service path (`xanima-server`, formerly
-`sharpwave-server`: one brain per agent plus a shared one, the same endpoint
-xanima's remote mode uses) and the native `Memory` backend that makes recall
-automatic per turn are described in [`mind/README.md`](mind/README.md).
+That is the native backend (`XanimaMemory`, built into every `caelza`
+binary): recall on every turn, every turn into the brain's episode log, and the
+service's sleep doing the forgetting. The two tool paths (the stdio `xanima`
+MCP server, the same service as an `http` MCP server) are for deliberate memory
+work and are described in [`mind/README.md`](mind/README.md).
 
 ## Body (the Airframe Lite layer)
 
