@@ -23,7 +23,7 @@ the machine-readable pin list; this file is the human version.
 | Component | What it is | Where | Pin |
 |---|---|---|---|
 | **Runtime** | the agent engine, a rebranded ZeroClaw build | `runtime/` → binary `caelza` | upstream `c473221` (v0.8.6) |
-| **Mind** | autonomic long-term memory: xanima (formerly openwave) on the xanima-core engine | [Enlightened-Republic/openwave](https://github.com/Enlightened-Republic/openwave); npm `xanima-openclaw`, `xanima-core`, `xanima`; ClawHub `xanima` | 0.5.0 / core 0.5.0 |
+| **Mind** | autonomic long-term memory: xanima (formerly openwave) on the xanima-core engine | [Enlightened-Republic/xanima-openclaw](https://github.com/Enlightened-Republic/xanima-openclaw); npm `xanima-openclaw`, `xanima-core`, `xanima`; ClawHub `xanima` | 0.5.0 / core 0.5.0 |
 | **Body** | the device layer: termux-api sensors, ADB device control, the immutable supervisor with git-backed rollback | `caelza_body/` in this repo | this repo |
 
 How they connect today and where that is going is in
