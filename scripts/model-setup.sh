@@ -84,7 +84,7 @@ case "$RUNNER" in
 # One server at a time on :8080. -c 4096 keeps a phone's memory in check.
 set -eu
 model="$MODELS/$AGENT_FILE"
-[ "\${1:-}" = guide ] && model="$MODELS/$GUIDE_FILE"
+if [ "\${1:-}" = guide ]; then model="$MODELS/$GUIDE_FILE"; shift; fi
 exec llama-server -m "\$model" --host 127.0.0.1 --port 8080 -c 4096 --threads $threads "\$@"
 EOF
     chmod +x "$MODELS/serve.sh"
