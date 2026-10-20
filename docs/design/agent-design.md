@@ -597,7 +597,7 @@ Markdown playbooks Niba loads on demand, backed by
 
 ## 16. References
 
-- SharpWave — https://github.com/Enlightened-Republic/sharpwave (Plan 1 targeted the
+- SharpWave (now xanima) — https://github.com/Enlightened-Republic/xanima (Plan 1 targeted the
   published `sharpwave@0.2.1`; see the §5.8 adapter table for its real MCP schema)
 - MiniMax M3 API — https://platform.minimax.io/docs/guides/text-m3-function-call
 - MiniMax CLI — https://github.com/MiniMax-AI/cli

@@ -40,10 +40,10 @@ model_provider = "llamacpp.local"
 # Cael: explains, never acts. The persona is the workspace SOUL.md
 # (~/.caelza/agents/cael/workspace/SOUL.md, copied from guide/cael.system.md)
 # plus IDENTITY.md, which the agent loop injects into the system prompt. Reach
-# Cael from the dashboard's agent picker; give it its own Telegram alias if you
-# want it there. Cael's docs corpus waits on the Runtime wiring
+# Cael from the dashboard's agent picker; give him his own Telegram alias if you
+# want him there. Cael's docs corpus waits on the Runtime wiring
 # `knowledge_bundles` (schema-only at the current pin); until then the facts
-# Cael needs are in its SOUL.md.
+# Cael needs are in his SOUL.md.
 [agents.cael]
 model_provider = "llamacpp.guide"
 risk_profile = "guide"
