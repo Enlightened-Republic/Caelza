@@ -1,0 +1,408 @@
+Caelza M3: the xanima brain service as a native memory backend.
+
+Adds `[storage.xanima.<alias>]` to the config schema, `MemoryBackendKind::Xanima`
+and its onboarding profile to the memory crate, the factory branch that builds
+`XanimaMemory` (the overlay file crates/caelza-memory/src/xanima.rs), the
+attribution kind, and the dashboard storage picker entry. Applied by
+runtime/build.sh after the rename; regenerate with the same `diff -u` when the
+upstream pin moves.
+
+--- a/crates/caelza-api/src/attribution.rs
++++ b/crates/caelza-api/src/attribution.rs
+@@ -373,6 +373,7 @@
+     Qdrant,
+     Postgres,
+     Lucid,
++    Xanima,
+     None,
+     Plugin,
+ }
+--- a/crates/caelza-config/src/schema.rs
++++ b/crates/caelza-config/src/schema.rs
+@@ -5376,6 +5376,12 @@
+                 .get(alias)
+                 .map(ActiveStorage::Lucid)
+                 .unwrap_or(ActiveStorage::None),
++            "xanima" => self
++                .storage
++                .xanima
++                .get(alias)
++                .map(ActiveStorage::Xanima)
++                .unwrap_or(ActiveStorage::None),
+             _ => ActiveStorage::None,
+         }
+     }
+@@ -5399,6 +5405,8 @@
+     Markdown(&'a MarkdownStorageConfig),
+     /// Lucid CLI sync instance.
+     Lucid(&'a LucidStorageConfig),
++    /// xanima brain service instance.
++    Xanima(&'a XanimaStorageConfig),
+ }
+ 
+ impl ActiveStorage<'_> {
+@@ -5412,6 +5420,7 @@
+             ActiveStorage::Qdrant(_) => "qdrant",
+             ActiveStorage::Markdown(_) => "markdown",
+             ActiveStorage::Lucid(_) => "lucid",
++            ActiveStorage::Xanima(_) => "xanima",
+         }
+     }
+ }
+@@ -12538,6 +12547,10 @@
+     #[serde(default, skip_serializing_if = "HashMap::is_empty")]
+     #[nested]
+     pub lucid: HashMap<String, LucidStorageConfig>,
++    /// xanima brain service instances (`[storage.xanima.<alias>]`).
++    #[serde(default, skip_serializing_if = "HashMap::is_empty")]
++    #[nested]
++    pub xanima: HashMap<String, XanimaStorageConfig>,
+ }
+ 
+ /// SQLite storage backend (`[storage.sqlite.<alias>]`).
+@@ -12665,6 +12678,58 @@
+     pub store_timeout_ms: Option<u64>,
+ }
+ 
++/// xanima brain service (`[storage.xanima.<alias>]`): Caelza's Mind.
++///
++/// One `xanima-server` process owns the shared brain and one private brain per
++/// agent and serves them over MCP Streamable HTTP with per-agent bearer
++/// tokens. The `xanima` memory backend talks to it natively, so recall runs on
++/// every turn without a tool call and every agent reaches its own brain with
++/// its own token.
++#[derive(Debug, Clone, Serialize, Deserialize, Configurable)]
++#[cfg_attr(feature = "schema-export", derive(schemars::JsonSchema))]
++#[prefix = "storage_xanima"]
++#[serde(default)]
++pub struct XanimaStorageConfig {
++    /// Service base URL. Default `http://127.0.0.1:18790`, the service's
++    /// loopback listener; use its tailnet address for a brain on another host.
++    pub url: String,
++    /// One bearer token used for every agent. Prefer `token_file`, which keeps
++    /// one token per agent so the service can tell the agents apart.
++    #[secret]
++    #[credential_class = "encrypted_secret"]
++    #[cfg_attr(feature = "schema-export", schemars(extend("x-secret" = true)))]
++    pub token: Option<String>,
++    /// Path of the token file; `{agent}` is replaced by the agent alias.
++    /// Default `~/.xanima/tokens/{agent}.token`. Mint one per agent with
++    /// `xanima-server token mint --agent <alias> --scopes read,write`.
++    pub token_file: Option<String>,
++    /// Agent alias used by operations that carry no agent (the operator CLI,
++    /// the install-wide memory handle). Default `main`.
++    pub agent: String,
++    /// Which brains recall searches: `all` (the agent's private brain plus the
++    /// shared brain, default), `private`, or `shared`.
++    pub scope: String,
++    /// Request timeout in seconds (default 20).
++    pub timeout_secs: u64,
++}
++
++impl Default for XanimaStorageConfig {
++    fn default() -> Self {
++        Self {
++            url: default_xanima_url(),
++            token: None,
++            token_file: None,
++            agent: "main".into(),
++            scope: "all".into(),
++            timeout_secs: 20,
++        }
++    }
++}
++
++fn default_xanima_url() -> String {
++    "http://127.0.0.1:18790".into()
++}
++
+ fn default_storage_schema() -> String {
+     "public".into()
+ }
+--- a/crates/caelza-config/src/sections.rs
++++ b/crates/caelza-config/src/sections.rs
+@@ -318,7 +318,9 @@
+         help:  "SQLite is the safe default for single-node installs (file-based, \
+                 zero-config, no extra services). Pick Postgres for shared or \
+                 multi-instance deployments, Qdrant for vector search, Markdown or \
+-                Lucid for human-readable files. Each backend supports multiple \
++                Lucid for human-readable files, xanima for the brain service (one \
++                private brain per agent plus a shared one, remembers and forgets \
++                on its own). Each backend supports multiple \
+                 aliased instances; agents reference them via `memory.storage_ref`.",
+     },
+     Memory => {
+--- a/crates/caelza-gateway/src/api_sections.rs
++++ b/crates/caelza-gateway/src/api_sections.rs
+@@ -615,6 +615,7 @@
+         "qdrant" => 2,
+         "markdown" => 3,
+         "lucid" => 4,
++        "xanima" => 5,
+         _ => 99,
+     }
+ }
+@@ -636,6 +637,9 @@
+         "lucid" => {
+             Some("Bridge to local lucid-memory CLI while keeping SQLite-style local operation.")
+         }
++        "xanima" => Some(
++            "The Mind: xanima brain service with one private brain per agent plus a shared brain; remembers, consolidates and forgets on its own.",
++        ),
+         _ => None,
+     }
+ }
+--- a/crates/caelza-memory/src/backend.rs
++++ b/crates/caelza-memory/src/backend.rs
+@@ -5,6 +5,7 @@
+     Postgres,
+     Qdrant,
+     Markdown,
++    Xanima,
+     None,
+     Unknown,
+ }
+@@ -65,6 +66,15 @@
+     optional_dependency: false,
+ };
+ 
++const XANIMA_PROFILE: MemoryBackendProfile = MemoryBackendProfile {
++    key: "xanima",
++    label: "xanima brain service (the Mind) — one private brain per agent plus a shared brain, remembers and forgets on its own; needs xanima-server",
++    auto_save_default: true,
++    uses_sqlite_hygiene: false,
++    sqlite_based: false,
++    optional_dependency: true,
++};
++
+ const NONE_PROFILE: MemoryBackendProfile = MemoryBackendProfile {
+     key: "none",
+     label: "None — disable persistent memory",
+@@ -83,11 +93,12 @@
+     optional_dependency: false,
+ };
+ 
+-const SELECTABLE_MEMORY_BACKENDS: [MemoryBackendProfile; 5] = [
++const SELECTABLE_MEMORY_BACKENDS: [MemoryBackendProfile; 6] = [
+     SQLITE_PROFILE,
+     LUCID_PROFILE,
+     POSTGRES_PROFILE,
+     MARKDOWN_PROFILE,
++    XANIMA_PROFILE,
+     NONE_PROFILE,
+ ];
+ 
+@@ -106,6 +117,7 @@
+         "postgres" => MemoryBackendKind::Postgres,
+         "qdrant" => MemoryBackendKind::Qdrant,
+         "markdown" => MemoryBackendKind::Markdown,
++        "xanima" => MemoryBackendKind::Xanima,
+         "none" => MemoryBackendKind::None,
+         _ => MemoryBackendKind::Unknown,
+     }
+@@ -118,6 +130,7 @@
+         MemoryBackendKind::Postgres => POSTGRES_PROFILE,
+         MemoryBackendKind::Qdrant => QDRANT_PROFILE,
+         MemoryBackendKind::Markdown => MARKDOWN_PROFILE,
++        MemoryBackendKind::Xanima => XANIMA_PROFILE,
+         MemoryBackendKind::None => NONE_PROFILE,
+         MemoryBackendKind::Unknown => CUSTOM_PROFILE,
+     }
+@@ -140,6 +153,7 @@
+             MemoryBackendKind::Markdown
+         );
+         assert_eq!(classify_memory_backend("none"), MemoryBackendKind::None);
++        assert_eq!(classify_memory_backend("xanima"), MemoryBackendKind::Xanima);
+     }
+ 
+     #[test]
+@@ -150,12 +164,23 @@
+     #[test]
+     fn selectable_backends_are_ordered_for_onboarding() {
+         let backends = selectable_memory_backends();
+-        assert_eq!(backends.len(), 5);
++        assert_eq!(backends.len(), 6);
+         assert_eq!(backends[0].key, "sqlite");
+         assert_eq!(backends[1].key, "lucid");
+         assert_eq!(backends[2].key, "postgres");
+         assert_eq!(backends[3].key, "markdown");
+-        assert_eq!(backends[4].key, "none");
++        assert_eq!(backends[4].key, "xanima");
++        assert_eq!(backends[5].key, "none");
++    }
++
++    #[test]
++    fn xanima_profile_is_an_optional_remote_service() {
++        let profile = memory_backend_profile("xanima");
++        assert_eq!(profile.key, "xanima");
++        assert!(!profile.sqlite_based);
++        assert!(!profile.uses_sqlite_hygiene);
++        assert!(profile.optional_dependency);
++        assert!(profile.auto_save_default);
+     }
+ 
+     #[test]
+@@ -198,7 +223,7 @@
+ 
+     #[test]
+     fn each_known_backend_profile_carries_a_matching_key() {
+-        for name in ["sqlite", "lucid", "postgres", "qdrant", "markdown", "none"] {
++        for name in ["sqlite", "lucid", "postgres", "qdrant", "markdown", "xanima", "none"] {
+             assert_eq!(
+                 memory_backend_profile(name).key,
+                 name,
+--- a/crates/caelza-memory/src/lib.rs
++++ b/crates/caelza-memory/src/lib.rs
+@@ -45,6 +45,7 @@
+ pub mod threat;
+ pub mod traits;
+ pub mod vector;
++pub mod xanima;
+ 
+ pub use agent_scoped::{AgentMemoryGrant, AgentScopedMemory};
+ pub use agent_scoped_markdown::{AgentScopedMarkdownMemory, MarkdownPeer};
+@@ -73,6 +74,7 @@
+ pub use scanned::ScannedMemory;
+ pub use sqlite::SqliteMemory;
+ pub use traits::Memory;
++pub use xanima::{XanimaMemory, XanimaSettings};
+ #[allow(unused_imports)]
+ pub use traits::{
+     ExportFilter, MemoryCategory, MemoryEntry, ProceduralMessage, is_recent_recall_query,
+@@ -184,6 +186,12 @@
+                  or markdown"
+             )
+         }
++        MemoryBackendKind::Xanima => {
++            anyhow::bail!(
++                "xanima backend requires storage config; \
++                 call create_memory_with_storage_and_routes instead of create_memory_with_builders"
++            )
++        }
+         MemoryBackendKind::Markdown => wrap_scanned_and_audit(
+             MarkdownMemory::new("markdown", workspace_dir),
+             policy,
+@@ -747,6 +755,39 @@
+         );
+     }
+ 
++    if matches!(backend_kind, MemoryBackendKind::Xanima) {
++        // The brain service has a loopback default and a token-file
++        // convention, so a bare `memory.backend = "xanima"` with no
++        // `[storage.xanima.<alias>]` entry still resolves.
++        let defaults = caelza_config::schema::XanimaStorageConfig::default();
++        let xanima_cfg = match active_storage {
++            ActiveStorage::Xanima(x) => x,
++            _ => {
++                ::caelza_log::record!(
++                    INFO,
++                    ::caelza_log::Event::new(module_path!(), ::caelza_log::Action::Note),
++                    "xanima memory backend: no [storage.xanima.<alias>] entry; using the loopback defaults"
++                );
++                &defaults
++            }
++        };
++        let settings = xanima::XanimaSettings::from_storage(xanima_cfg)?;
++        ::caelza_log::record!(
++            INFO,
++            ::caelza_log::Event::new(module_path!(), ::caelza_log::Action::Note),
++            &format!(
++                "🧠 xanima memory backend configured (url: {}, agent: {}, scope: {})",
++                settings.url, settings.agent, settings.scope
++            )
++        );
++        return wrap_scanned_and_audit(
++            XanimaMemory::new("xanima", settings),
++            &config.policy,
++            workspace_dir,
++            config.audit_enabled,
++        );
++    }
++
+     if matches!(backend_kind, MemoryBackendKind::Postgres) {
+         let pg_cfg = match active_storage {
+             ActiveStorage::Postgres(p) => p,
+@@ -1210,6 +1251,83 @@
+         assert_eq!(mem.name(), "sqlite");
+     }
+ 
++    #[test]
++    fn factory_xanima_without_storage_entry_uses_loopback_defaults() {
++        // A bare `backend = "xanima"` resolves to ActiveStorage::None; the
++        // factory falls back to the service's loopback URL and the token-file
++        // convention instead of refusing. Nothing is contacted at build time.
++        let tmp = TempDir::new().unwrap();
++        let cfg = MemoryConfig {
++            backend: "xanima".into(),
++            hygiene_enabled: false,
++            ..MemoryConfig::default()
++        };
++        let mem = create_memory(&cfg, tmp.path(), None).unwrap();
++        assert_eq!(mem.name(), "xanima");
++    }
++
++    #[test]
++    fn factory_xanima_reads_the_storage_entry() {
++        let tmp = TempDir::new().unwrap();
++        let mut config = Config::default();
++        config.memory.backend = "xanima.hub".into();
++        config.memory.hygiene_enabled = false;
++        config.data_dir = tmp.path().to_path_buf();
++        let mut entry = caelza_config::schema::XanimaStorageConfig::default();
++        entry.url = "http://hub.local:18790/".into();
++        entry.scope = "private".into();
++        entry.agent = "clamps".into();
++        config.storage.xanima.insert("hub".into(), entry);
++        let settings = match config.resolve_active_storage() {
++            caelza_config::schema::ActiveStorage::Xanima(x) => XanimaSettings::from_storage(x).unwrap(),
++            other => panic!("expected xanima storage, got {other:?}"),
++        };
++        assert_eq!(settings.url, "http://hub.local:18790");
++        assert_eq!(settings.scope, "private");
++        assert_eq!(settings.agent, "clamps");
++        let mem = create_memory_from_config(&config, None).unwrap();
++        assert_eq!(mem.name(), "xanima");
++
++        let mut bad = config.clone();
++        bad.storage.xanima.get_mut("hub").unwrap().scope = "nope".into();
++        assert!(create_memory_from_config(&bad, None).is_err());
++    }
++
++    #[test]
++    fn factory_xanima_parses_the_mind_example_wiring() {
++        // The block mind/caelza-mind.example.toml ships, through the real
++        // config loader: `[storage.xanima.default]` deserializes and resolves.
++        let tmp = TempDir::new().unwrap();
++        let text = r#"
++schema_version = 3
++
++[memory]
++backend = "xanima"
++
++[storage.xanima.default]
++url = "http://127.0.0.1:18790"
++token_file = "~/.xanima/tokens/{agent}.token"
++agent = "main"
++scope = "all"
++timeout_secs = 20
++"#;
++        let mut config: Config = toml::from_str(text).expect("the mind example wiring parses");
++        config.data_dir = tmp.path().to_path_buf();
++        config.memory.hygiene_enabled = false;
++        match config.resolve_active_storage() {
++            caelza_config::schema::ActiveStorage::Xanima(x) => {
++                assert_eq!(x.url, "http://127.0.0.1:18790");
++                assert_eq!(x.token_file.as_deref(), Some("~/.xanima/tokens/{agent}.token"));
++                assert_eq!(x.agent, "main");
++                assert_eq!(x.timeout_secs, 20);
++                assert!(x.token.is_none());
++            }
++            other => panic!("expected xanima storage, got {other:?}"),
++        }
++        let mem = create_memory_from_config(&config, None).unwrap();
++        assert_eq!(mem.name(), "xanima");
++    }
++
+     #[tokio::test]
+     async fn per_agent_markdown_factory_applies_memory_policy() {
+         use caelza_config::multi_agent::{

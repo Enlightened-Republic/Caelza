@@ -57,6 +57,14 @@ token_env = "XANIMA_BRAIN_TOKEN"  # OPENWAVE_BRAIN_TOKEN still accepted with a w
 upgrade_cli = "xanima-openclaw-upgrade"    # copies plugins.entries.openwave -> plugins.entries.xanima
 tools = 43                        # brain_* names unchanged and permanent; schema v25
 integration = "mind/README.md"
+# M3: the native Memory backend in the Runtime (`[memory] backend = "xanima"`),
+# carried into every build as an overlay file plus a patch (see mind/README.md §C).
+native_backend = "xanima"
+native_config = "mind/caelza-mind.example.toml"
+native_overlay = "runtime/overlay/crates/caelza-memory/src/xanima.rs"
+native_patch = "runtime/patches/0001-xanima-memory-backend.patch"
+service_url = "http://127.0.0.1:18790"
+token_file = "~/.xanima/tokens/{agent}.token"   # one bearer token per agent alias: xanima-server token mint --agent <alias> --scopes read,write
 
 # ---------------------------------------------------------------------------
 # Body — the device layer: Termux/Android sensors, ADB device control, the
