@@ -80,12 +80,23 @@ is outside Caelza, say so in one line.
 
 ## Where Cael lives
 
-- Runtime: a dedicated agent entry (`[agents.cael]`) pinned to the local
-  provider, with `allowed_tools = []` and the docs corpus pinned into context
-  (upstream's `pinned_resources`). Approval policy irrelevant: no tools.
-- Dashboard: a "Ask Cael" affordance on every page, and "Explain this screen"
-  that sends the page context as the first turn. UI phase 1 in the vision doc.
+- Runtime (**shipped**, `scripts/model-setup.sh`): a dedicated agent entry
+  `[agents.cael]` pinned to the local guide provider (`llamacpp.guide` on a
+  phone, `ollama.guide` on a hub, always the 1.5B), with risk profile `guide`:
+  `level = "readonly"` and `deny_all_tools = true`. Not `allowed_tools = []`:
+  in this runtime an empty allow-list means unrestricted. The persona is the
+  agent's workspace `SOUL.md` (`~/.caelza/agents/cael/workspace/SOUL.md`,
+  copied from [`cael.system.md`](cael.system.md)) plus a short `IDENTITY.md`,
+  both injected into the system prompt by the agent loop.
+- Docs corpus: upstream's `knowledge_bundles` is schema-only at the current
+  pin and `pinned_resources` belongs to MCP servers, so Cael has no corpus yet;
+  the facts it must not get wrong are in `cael.system.md`. Revisit when the
+  Runtime wires knowledge bundles, or give Cael a read-only docs MCP server.
+- Dashboard: Cael appears in the agent picker now. "Ask Cael" on every page and
+  "Explain this screen" (page context as the first turn) are UI phase 1 in the
+  vision doc.
 - App: the same, plus the first-run wizard is Cael-led.
-- Persona and prompt source of truth: this file. The Marley prompt on the
-  `.tech` site is the sibling; keep the two in the same register when either
+- Persona and prompt source of truth: this file for the design,
+  `cael.system.md` for the text the runtime loads. The Marley prompt on the
+  `.tech` site is the sibling; keep the three in the same register when any
   changes.

@@ -127,13 +127,24 @@ without root or Termux (§3.3).
 
 ## Models
 
-Caelza works with no account and no API key: quickstart offers **DeepSeek R1,
-free and local** (Ollama on a hub, llama.cpp on the phone, sized to the
-device) and a **bring your own** door for any provider the Runtime supports
-(Anthropic, OpenAI, OpenRouter, MiniMax, Ollama, any OpenAI-compatible
-endpoint). The local model also powers **Cael**, the in-app guide, who explains
-keys, providers, approvals and pairing in plain language, offline (§3.4,
-[`guide/CAEL.md`](guide/CAEL.md)).
+Caelza works with no account and no API key. Door 1 is **DeepSeek R1, free and
+local**; door 2 is **bring your own** (any provider the Runtime supports:
+Anthropic, OpenAI, OpenRouter, MiniMax, Ollama, any OpenAI-compatible endpoint).
+
+```bash
+sh scripts/model-setup.sh --dry-run   # what this device gets
+sh scripts/model-setup.sh             # fetch the models, configure the Runtime, create Cael
+```
+
+The ladder ([`scripts/model_ladder.py`](scripts/model_ladder.py)) is honest
+about size: a hub with 16 GB runs `deepseek-r1:14b` on Ollama, 8 GB runs `8b`;
+a phone with 6 GB or more runs the 7B Q4 on llama.cpp (the Termux package),
+a smaller phone runs the 1.5B for chat and explanation only. GGUFs are verified
+against pinned checksums. The 1.5B always comes along: it is **Cael**, the
+in-app guide (`agents.cael`, read-only, no tools), who explains keys,
+providers, approvals and pairing in plain language, offline (§3.4,
+[`guide/CAEL.md`](guide/CAEL.md), persona in [`guide/cael.system.md`](guide/cael.system.md)).
+The wiring in TOML: [`runtime/caelza.local-model.example.toml`](runtime/caelza.local-model.example.toml).
 
 ## Design docs
 

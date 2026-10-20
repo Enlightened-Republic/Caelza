@@ -1,0 +1,55 @@
+# Caelza — the free local model (vision doc §3.4, milestone M1.5).
+#
+# DeepSeek R1 on this device as the agent's default brain, and Cael, the guide,
+# on the 1.5B. No account, no API key. `scripts/model-setup.sh` picks the sizes
+# for your RAM, downloads or pulls the models and writes exactly these values
+# with `caelza config set`; this file is the readable version to merge by hand.
+# Bring-your-own stays one line away: point `agents.main.model_provider` at any
+# provider alias you add (`caelza quickstart --model-provider anthropic …`).
+
+schema_version = 3
+
+# ---------------------------------------------------------------------------
+# Phone (Termux): llama.cpp. The Runtime's llamacpp provider talks to
+# http://localhost:8080/v1, which is where ~/.caelza/models/serve.sh (written by
+# model-setup) runs llama-server. One server at a time: the agent and Cael
+# share whatever model it serves unless you start a second server on another
+# port behind a `custom` provider.
+[providers.models.llamacpp.local]
+model = "DeepSeek-R1-Distill-Qwen-7B-Q4_K_M"     # the 1.5B on a phone with <= 5 GB RAM
+
+[providers.models.llamacpp.guide]
+model = "DeepSeek-R1-Distill-Qwen-1.5B-Q4_K_M"
+
+# ---------------------------------------------------------------------------
+# Hub / laptop / VPS: Ollama on 127.0.0.1:11434 (add `uri` when it is elsewhere).
+# Uncomment these and point the agents at ollama.* instead of llamacpp.*.
+# [providers.models.ollama.local]
+# model = "deepseek-r1:14b"        # 8b on 8-12 GB
+# num_ctx = 8192
+#
+# [providers.models.ollama.guide]
+# model = "deepseek-r1:1.5b"
+
+# ---------------------------------------------------------------------------
+# The owner's agent. quickstart may have created it already; this only decides
+# which brain it uses by default.
+[agents.main]
+model_provider = "llamacpp.local"
+
+# Cael: explains, never acts. The persona is the workspace SOUL.md
+# (~/.caelza/agents/cael/workspace/SOUL.md, copied from guide/cael.system.md)
+# plus IDENTITY.md, which the agent loop injects into the system prompt. Reach
+# Cael from the dashboard's agent picker; give it its own Telegram alias if you
+# want it there. Cael's docs corpus waits on the Runtime wiring
+# `knowledge_bundles` (schema-only at the current pin); until then the facts
+# Cael needs are in its SOUL.md.
+[agents.cael]
+model_provider = "llamacpp.guide"
+risk_profile = "guide"
+
+# No tools at all. deny_all_tools is the explicit gate: an empty allowed_tools
+# would mean "unrestricted" in this runtime.
+[risk_profiles.guide]
+level = "readonly"
+deny_all_tools = true

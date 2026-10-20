@@ -95,11 +95,17 @@ install = "app"                   # the app's own one-line installer, when it ex
 # own provider/key instead (any provider the Runtime supports).
 [defaults.model]
 family = "deepseek-r1"            # MIT-licensed, including distilled sizes
-guide = "deepseek-r1:1.5b"        # always-available explainer; runs on any device; bundled
+guide = "deepseek-r1:1.5b"        # always-available explainer; runs on any device; always installed
 guide_name = "Cael"               # the Guide persona (guide/CAEL.md); sibling of Marley
-bigger = "download"               # 7B/14B offered as a download sized to RAM at quickstart
+guide_soul = "guide/cael.system.md"   # becomes ~/.caelza/agents/cael/workspace/SOUL.md
+bigger = "download"               # 7B/14B offered as a download sized to RAM
 hub = "deepseek-r1:14b"           # 16 GB+ hosts (8b on 8–12 GB), via Ollama
-phone_8gb = "DeepSeek-R1-Distill-Qwen-7B-Q4_K_M"   # via llama.cpp
+phone_8gb = "DeepSeek-R1-Distill-Qwen-7B-Q4_K_M"   # via llama.cpp (Termux package llama-cpp)
 phone_5gb = "DeepSeek-R1-Distill-Qwen-1.5B-Q4_K_M" # chat + explain only
+guide_gguf_sha256 = "1741e5b2d062b07acf048bf0d2c514dadf2a48f94e2b4aa0cfe069af3838ee2f"   # bartowski 1.5B Q4_K_M, 1.04 GiB
+phone_8gb_gguf_sha256 = "731ece8d06dc7eda6f6572997feb9ee1258db0784827e642909d9b565641937b"   # bartowski 7B Q4_K_M, 4.36 GiB
+ladder = "scripts/model_ladder.py"       # RAM + platform -> agent and guide tiers (tested)
+setup = "scripts/model-setup.sh"         # install the runner, fetch the models, configure the Runtime, create Cael
+config = "runtime/caelza.local-model.example.toml"   # the same wiring, readable
 embeddings = "ollama/qwen3-embedding:0.6b"          # xanima default, local
 byo = ["anthropic", "openai", "openrouter", "minimax", "ollama", "openai-compatible"]
