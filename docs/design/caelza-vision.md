@@ -189,8 +189,8 @@ So the local model has two jobs and one job it does not get by default:
 - **Cael, the Guide** (`guide/CAEL.md`): the in-app helper that explains what
   an API key is, what a provider is, what Shizuku does, why an approval prompt
   appeared, and walks through setup in plain language. This is the "super user
-  friendly" layer: a sibling of Marley inside the product, running free and
-  offline. Even the 1.5B model is good at this.
+  friendly" layer: the same Cael who greets visitors on
+  enlightenedrepublic.tech, here inside the product, running free and offline. Even the 1.5B model is good at this.
 - **Offline reasoning**: when the phone has no network, the local model
   handles the Airframe "offline mode" cases (queued device actions, simple
   questions) instead of the canned "offline, will process later" reply.
@@ -386,7 +386,7 @@ Grouped, unranked inside each group. ★ = cheap given what we already have.
 - Caelza relay (`caelrelay`) hosted by us as an optional service for bodies on carrier NAT.
 - The Caelza Android app with Shizuku (§3.3) and the web app as a PWA.
 - **Free by default**: DeepSeek R1 local, no key, no account (§3.4); "bring your own" for everything else.
-- **Cael**: the local model as an always-available explainer (what is an API key, what did that approval mean, how do I pair a phone), in the Republic's voice, offline. Sibling of Marley on `enlightenedrepublic.tech`; persona in `guide/CAEL.md`.
+- **Cael**: the local model as an always-available explainer (what is an API key, what did that approval mean, how do I pair a phone), in the Republic's voice, offline. The same Cael who greets visitors on `enlightenedrepublic.tech`; persona in `guide/CAEL.md`.
 - Model picker that shows the honest ladder: what runs on *this* device, what it is good for, and when to bring a cloud model.
 - One-tap "explain this screen" anywhere in the app, answered by the Guide.
 
@@ -398,7 +398,7 @@ Grouped, unranked inside each group. ★ = cheap given what we already have.
 | **M1 Runtime on the phone** | **Shipped:** the install path and the config. `runtime/termux-install.sh` puts the release's `aarch64-linux-android` build in `$PREFIX/bin` with the dashboard where the gateway finds it (optional Termux:Boot script); `runtime/caelza.phone.example.toml` is the phone config (Telegram alias + peer group through the Runtime, Mind path A, Body MCP, a `phone` risk profile), validated against the binary; `./runtime/build.sh --target aarch64-linux-android` does the NDK cross-build the release workflow runs (verified 2026-10-19 with NDK r27c: 14 min, a 34 MB aarch64 PIE linked against Bionic, only libc/libm/libdl). **Open:** first run on the REVVL beside Niba. | a `v*` tag for the first release asset |
 | **M2 Body as MCP** | **Shipped:** `caelza-body` stdio MCP server (`caelza_body/mcp_server.py`) exposing the 35 sensors/device/shell/web/selfmod tools with the Airframe safety semantics, every tool classified read-only / destructive / neutral, images returned as MCP image content; the Runtime wiring + risk profile (`body/caelza-body.example.toml`). **Open:** the Python loop retired per phone once the Runtime runs there | M1 for the retirement |
 | **M3 Mind native** | `XanimaMemory` backend in the Runtime over `xanima-server`; auto-provisioned per-agent brains; noise filtering ported | xanima rename shipped; service published |
-| **M1.5 Free local default** | **Shipped:** `scripts/model-setup.sh` + `scripts/model_ladder.py` (RAM × platform → agent and guide tiers, tested): installs llama.cpp (Termux package) or expects Ollama, fetches the DeepSeek R1 GGUFs against pinned sha256s or pulls the Ollama tags, writes the `llamacpp.*` / `ollama.*` provider aliases, points `agents.main` at the local model when it has none, creates Cael (`agents.cael`, profile `guide`: `readonly` + `deny_all_tools`) with `guide/cael.system.md` as its SOUL.md; `runtime/caelza.local-model.example.toml` is the readable wiring. **Open:** quickstart's own first screen still lists providers rather than the two doors (an upstream patch); Cael's docs corpus waits on `knowledge_bundles` getting runtime wiring. | M1 for the phone run |
+| **M1.5 Free local default** | **Shipped:** `scripts/model-setup.sh` + `scripts/model_ladder.py` (RAM × platform → agent and guide tiers, tested): installs llama.cpp (Termux package) or expects Ollama, fetches the DeepSeek R1 GGUFs against pinned sha256s or pulls the Ollama tags, writes the `llamacpp.*` / `ollama.*` provider aliases, points `agents.main` at the local model when it has none, creates Cael (`agents.cael`, profile `guide`: `readonly` + `deny_all_tools`) with `guide/cael.system.md` as his SOUL.md; `runtime/caelza.local-model.example.toml` is the readable wiring. **Open:** quickstart's own first screen still lists providers rather than the two doors (an upstream patch); Cael's docs corpus waits on `knowledge_bundles` getting runtime wiring. | M1 for the phone run |
 | **M4 UI phases 1–2** | Caelza themes as default, Bodies page, Memory page; web app installable as a PWA | M2, M3 |
 | **M5 SOP playbooks** | debloat / malware / new-phone / diagnostics as SOPs with approvals; evals on an emulator | M2 |
 | **M6 Fleet + Forge** | hub + bodies deployment; supervisor guards the Runtime binary; agent-authored PRs | M2–M5 |
@@ -416,12 +416,12 @@ Grouped, unranked inside each group. ★ = cheap given what we already have.
 | 6 | Dashboard bundle | **GitHub Actions builds it on release** (`.github/workflows/release.yml`: `cargo web build` with Node 24, shipped in each tarball). Nothing generated is committed. |
 | 7 | Privilege path | **Termux + loopback ADB is primary** for the current test device. Shizuku is an *optional permission*, the way the Runtime's risk profiles grant capabilities: `body.privilege = "adb" \| "shizuku"`. Both ship as one-line installs: `install.sh` for Termux now, the app's installer when the app exists. |
 | 8 | Local model | **Bundle the 1.5B Guide model; offer 7B/14B as a download** sized to RAM at quickstart; bring-your-own key is the other door. |
-| 9 | The Guide | **Cael**, short for Caelza: a sibling of Marley with the same prompt lineage. Persona and prompt in `guide/CAEL.md`. |
+| 9 | The Guide | **Cael**, short for Caelza: one character with the chat on `enlightenedrepublic.tech` (renamed from Marley 2026-10-20), there scoping projects for the lab, here helping you run Caelza. Persona and prompt in `guide/CAEL.md`. |
 | 10 | The mark | Bolt alone is the default; the leaning C stays opt-in. Still being sat with. |
 
 Still open:
 
 - The `xanima-openclaw` README is rewritten on `main` (PR #12, 2026-10-19) and reaches npm/ClawHub at the next publish. Left there: `package.json` repository URLs still say `openwave`, the plugin manifest's token/server descriptions, and the `brain-docs/*.md` the agent reads through `brain_docs` still describe openwave on sharpwave-core 0.4.2.
-- Both upstream repos were renamed on GitHub (`openwave` → `xanima-openclaw`, `sharpwave` → `xanima`); links in this repo still use the old names, which redirect.
+- Both upstream repos were renamed on GitHub (`openwave` → `xanima-openclaw`, `sharpwave` → `xanima`); the Markdown links in this repo now use the new names (2026-10-20); `bundle/manifest.toml` `repo` / `engine_repo` still use the old ones, which redirect.
 - Whether the Body's `caelza-body-last-good` git tag should replace `niba-last-good` on deployed phones (left as is so the phone's rollback pointer survives the rename).
 - A product domain for Caelza, if any.

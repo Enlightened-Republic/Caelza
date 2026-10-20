@@ -18,8 +18,8 @@ The rebrand shipped on 2026-10-18/19: both repos' `main` branches carry it
 
 | Package | What | Where |
 |---|---|---|
-| `xanima-openclaw` 0.5.0 | the OpenClaw plugin, id `xanima` (legacy id `openwave` honoured), bin `xanima-openclaw-upgrade` | npm; ClawHub as `clawhub:xanima`; repo [Enlightened-Republic/openwave](https://github.com/Enlightened-Republic/openwave) `main` |
-| `xanima-core` 0.5.0 | the engine (formerly `sharpwave-core`) | npm; repo [Enlightened-Republic/sharpwave](https://github.com/Enlightened-Republic/sharpwave) `main`, `packages/core` |
+| `xanima-openclaw` 0.5.0 | the OpenClaw plugin, id `xanima` (legacy id `openwave` honoured), bin `xanima-openclaw-upgrade` | npm; ClawHub as `clawhub:xanima`; repo [Enlightened-Republic/xanima-openclaw](https://github.com/Enlightened-Republic/xanima-openclaw) `main` |
+| `xanima-core` 0.5.0 | the engine (formerly `sharpwave-core`) | npm; repo [Enlightened-Republic/xanima](https://github.com/Enlightened-Republic/xanima) `main`, `packages/core` |
 | `xanima` 0.5.0 | the stdio MCP server (formerly `sharpwave`), bins `xanima` and `sharpwave` | npm; `packages/mcp` |
 | `xanima-server` 0.5.0 | the brain service (formerly `sharpwave-server`), bins `xanima-server`, `xanima-client` plus the old names | **private, not on npm**: build from a sharpwave checkout (`npm run build --workspace xanima-server`) and run `node packages/server/dist/cli.js serve` |
 

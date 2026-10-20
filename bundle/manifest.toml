@@ -96,7 +96,7 @@ install = "app"                   # the app's own one-line installer, when it ex
 [defaults.model]
 family = "deepseek-r1"            # MIT-licensed, including distilled sizes
 guide = "deepseek-r1:1.5b"        # always-available explainer; runs on any device; always installed
-guide_name = "Cael"               # the Guide persona (guide/CAEL.md); sibling of Marley
+guide_name = "Cael"               # the Guide persona (guide/CAEL.md); same Cael as the enlightenedrepublic.tech chat
 guide_soul = "guide/cael.system.md"   # becomes ~/.caelza/agents/cael/workspace/SOUL.md
 bigger = "download"               # 7B/14B offered as a download sized to RAM
 hub = "deepseek-r1:14b"           # 16 GB+ hosts (8b on 8–12 GB), via Ollama

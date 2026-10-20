@@ -16,7 +16,7 @@ Caelza is three layers shipped as one product (`bundle/manifest.toml`):
 | Layer | What | Where |
 |---|---|---|
 | **Runtime** | the engine: agent loop, 20+ model providers, 30+ channels, tools, security policy, SOP engine, cron, gateway + web dashboard, WASM plugins, hardware peripherals. A rebranded build of [ZeroClaw](https://github.com/zeroclaw-labs/zeroclaw), regenerated from a pinned commit. | [`runtime/`](runtime/) |
-| **Mind** | autonomic long-term memory: a graph with a real forgetting curve and a sleep system. [xanima](https://github.com/Enlightened-Republic/openwave) (formerly openwave) on the [xanima-core](https://github.com/Enlightened-Republic/sharpwave) engine (formerly sharpwave-core), both on npm at 0.5.0. | [`mind/`](mind/) |
+| **Mind** | autonomic long-term memory: a graph with a real forgetting curve and a sleep system. [xanima](https://github.com/Enlightened-Republic/xanima-openclaw) (formerly openwave) on the [xanima-core](https://github.com/Enlightened-Republic/xanima) engine (formerly sharpwave-core), both on npm at 0.5.0. | [`mind/`](mind/) |
 | **Body** | the device layer: camera, mic, location, notifications and TTS through termux-api; ADB control of its own phone and paired phones with audit logging and pre-removal snapshots; an immutable supervisor that probes self-modified builds and rolls back. Served to the Runtime as the `caelza-body` MCP server. Formerly **Airframe Lite**. | [`caelza_body/`](caelza_body/), [`body/`](body/) |
 
 Read [`docs/design/caelza-vision.md`](docs/design/caelza-vision.md) for the
