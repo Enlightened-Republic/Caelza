@@ -1,0 +1,276 @@
+Caelza M4 phase 1: the dashboard wears the brand, and installs as an app.
+
+Self-hosted Inter Tight / JetBrains Mono / Orbitron (web/src/caelza-brand.css,
+fonts copied by brand/make_assets.py) with Inter Tight as the default UI face;
+the lockup (web/src/components/brand/CaelzaLockup.tsx) in the mobile drawer
+and on the pairing screen; the parent's attribution in both sidebar footers;
+labelled accent swatches; the PWA manifest, icons and service worker
+(web/public, registered by web/src/pwa.ts) with the gateway sending
+Service-Worker-Allowed for sw.js so the worker may claim the SPA root.
+Applied by runtime/build.sh after the rename and after the overlay; regenerate
+with the same `diff -u` when the upstream pin moves.
+
+--- a/web/index.html
++++ b/web/index.html
+@@ -4,7 +4,14 @@
+     <meta charset="UTF-8" />
+     <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+     <meta name="color-scheme" content="dark" />
++    <meta name="theme-color" content="#06040f" />
++    <meta name="application-name" content="Caelza" />
++    <meta name="apple-mobile-web-app-capable" content="yes" />
++    <meta name="apple-mobile-web-app-title" content="Caelza" />
++    <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent" />
+     <link rel="icon" type="image/png" href="/_app/logo.png" />
++    <link rel="apple-touch-icon" href="/_app/apple-touch-icon.png" />
++    <link rel="manifest" href="/_app/manifest.webmanifest" />
+     <link
+       rel="alternate"
+       type="application/rss+xml"
+--- a/web/src/App.tsx
++++ b/web/src/App.tsx
+@@ -18,6 +18,7 @@
+ import { ConfigDraftProvider } from "./lib/draftStore";
+ import { setLocale, type Locale } from "./lib/i18n";
+ import { Router } from "./router/router";
++import { Lockup } from "./components/brand/CaelzaLockup";
+ 
+ // Locale context
+ interface LocaleContextType {
+@@ -227,17 +228,10 @@
+       {/* Ambient glow */}
+       <div className="relative surface-panel p-8 w-full max-w-md animate-fade-in-scale">
+         <div className="text-center mb-8">
+-          <img
+-            src={`${basePath}/_app/logo.png`}
+-            alt="Caelza"
+-            className="h-20 w-20 rounded-2xl object-cover mx-auto mb-4 animate-float"
+-            onError={(e) => {
+-              e.currentTarget.style.display = "none";
+-            }}
+-          />
+-          <h1 className="text-2xl font-bold mb-2 text-gradient-blue">
+-            Caelza
+-          </h1>
++          {/* ENLIGHTENED REPUBLIC™ PRESENTS / [mark] CAELZA (brand/BRAND.md). */}
++          <div className="mb-4">
++            <Lockup markSrc={`${basePath}/_app/logo.png`} />
++          </div>
+           <p className="text-sm" style={{ color: "var(--pc-text-muted)" }}>
+             {codeLoading
+               ? "Checking pairing status…"
+--- a/web/src/components/SettingsModal.tsx
++++ b/web/src/components/SettingsModal.tsx
+@@ -13,16 +13,19 @@
+   { value: 'oled', icon: Monitor, labelKey: 'theme.oled', previewBg: '#000000', previewFg: '#d4d4d8' },
+ ];
+ 
+-const accentOptions: { value: AccentColor; color: string }[] = [
+-  { value: 'cyan', color: '#22d3ee' },
+-  { value: 'violet', color: '#8b5cf6' },
+-  { value: 'emerald', color: '#10b981' },
+-  { value: 'amber', color: '#f59e0b' },
+-  { value: 'rose', color: '#f43f5e' },
+-  { value: 'blue', color: '#3b82f6' },
++// Swatches match the values ThemeContext applies; the labels name them so the
++// picker reads as words, not just dots (cyan is the mark's cyan).
++const accentOptions: { value: AccentColor; color: string; label: string }[] = [
++  { value: 'cyan', color: '#22e6ff', label: 'Cyan' },
++  { value: 'violet', color: '#8b5cf6', label: 'Violet' },
++  { value: 'emerald', color: '#10b981', label: 'Emerald' },
++  { value: 'amber', color: '#f59e0b', label: 'Amber' },
++  { value: 'rose', color: '#f43f5e', label: 'Rose' },
++  { value: 'blue', color: '#3b82f6', label: 'Blue' },
+ ];
+ 
+ const uiFontOptions: { value: UiFont; label: string; sample: string }[] = [
++  { value: 'inter-tight', label: 'Inter Tight', sample: 'Caelza' },
+   { value: 'system', label: 'System', sample: 'Segoe/UI' },
+   { value: 'inter', label: 'Inter', sample: 'Inter' },
+   { value: 'segoe', label: 'Segoe UI', sample: 'Segoe' },
+@@ -313,9 +316,9 @@
+                       key={opt.value}
+                       type="button"
+                       onClick={() => setAccent(opt.value)}
+-                      className="relative flex min-h-[44px] min-w-[44px] items-center justify-center rounded-full p-2 cursor-pointer focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[var(--pc-focus)] focus-visible:ring-offset-2 focus-visible:ring-offset-pc-base"
++                      className="relative flex min-h-[44px] min-w-[44px] flex-col items-center justify-center gap-1 rounded-[var(--radius-md)] px-2 py-1.5 cursor-pointer focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[var(--pc-focus)] focus-visible:ring-offset-2 focus-visible:ring-offset-pc-base"
+                       aria-pressed={accent === opt.value}
+-                      aria-label={`${opt.value} ${t('settings.accent_suffix')}`}
++                      aria-label={`${opt.label} ${t('settings.accent_suffix')}`}
+                     >
+                       <span
+                         className="flex h-7 w-7 items-center justify-center rounded-full transition-all"
+@@ -327,6 +330,12 @@
+                       >
+                         {accent === opt.value && <Check size={14} style={{ color: 'white' }} />}
+                       </span>
++                      <span
++                        className={accent === opt.value ? 'text-pc-text-secondary' : 'text-pc-text-faint'}
++                        style={{ fontSize: '10px', lineHeight: 1 }}
++                      >
++                        {opt.label}
++                      </span>
+                     </button>
+                   ))}
+                 </div>
+--- a/web/src/components/layout/Sidebar.tsx
++++ b/web/src/components/layout/Sidebar.tsx
+@@ -28,6 +28,7 @@
+ import { getStatus } from '@/lib/api';
+ import { useVersionCheck } from '@/hooks/useVersionCheck';
+ import { UpgradeDialog } from '@/components/UpgradeDialog';
++import { Attribution, Wordmark } from '@/components/brand/CaelzaLockup';
+ import type { StatusResponse } from '@/types/api';
+ 
+ interface NavItem {
+@@ -476,12 +477,8 @@
+           }}
+         />
+       </div>
+-      <span
+-        className="text-sm font-semibold tracking-wide whitespace-nowrap"
+-        style={{ color: 'var(--pc-text-primary)' }}
+-      >
+-        {t('sidebar.brand')}
+-      </span>
++      {/* The wordmark: Orbitron in the mark's gradient (brand/BRAND.md). */}
++      <Wordmark size="sm" />
+     </div>
+   );
+ }
+@@ -509,9 +506,11 @@
+       : t('sidebar.gateway');
+   return (
+     <div
+-      className="border-t shrink-0 flex items-center justify-center"
++      className="border-t shrink-0 flex flex-col items-center justify-center gap-1"
+       style={{ borderColor: 'var(--pc-border)', padding: '10px 0' }}
+     >
++      {/* The parent's signature, short form for the 56 px rail. */}
++      <Attribution compact />
+       {(version || hasUpdate) && (
+         <button
+           type="button"
+@@ -572,6 +571,10 @@
+       className="px-5 py-4 border-t text-[10px] uppercase tracking-wider"
+       style={{ borderColor: 'var(--pc-border)', color: 'var(--pc-text-faint)' }}
+     >
++      {/* The parent's signature: every Enlightened Republic product carries it. */}
++      <div className="mb-2">
++        <Attribution />
++      </div>
+       <button
+         type="button"
+         onClick={onOpen}
+--- a/web/src/contexts/ThemeContext.tsx
++++ b/web/src/contexts/ThemeContext.tsx
+@@ -5,10 +5,12 @@
+ 
+ export type ThemeMode = 'system' | 'dark' | 'light' | 'oled';
+ export type AccentColor = 'cyan' | 'violet' | 'emerald' | 'amber' | 'rose' | 'blue';
+-export type UiFont = 'system' | 'inter' | 'segoe' | 'sf';
++export type UiFont = 'inter-tight' | 'system' | 'inter' | 'segoe' | 'sf';
+ export type MonoFont = 'jetbrains' | 'fira' | 'cascadia' | 'system-mono';
+ 
+ export const uiFontStacks: Record<UiFont, string> = {
++  // The brand face, self-hosted from web/public/fonts (src/caelza-brand.css).
++  'inter-tight': '"Inter Tight", "Inter", system-ui, -apple-system, "Segoe UI", sans-serif',
+   system: 'system-ui, -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif',
+   inter: '"Inter", system-ui, sans-serif',
+   segoe: '"Segoe UI", system-ui, sans-serif',
+@@ -115,7 +117,7 @@
+   theme: 'dark',
+   accent: 'cyan',
+   colorTheme: 'operator-dark',
+-  uiFont: 'system',
++  uiFont: 'inter-tight',
+   monoFont: 'jetbrains',
+   uiFontSize: 15,
+   monoFontSize: 14,
+--- a/web/src/index.css
++++ b/web/src/index.css
+@@ -6,6 +6,10 @@
+    in the personality editor's Markdown preview. */
+ @import "highlight.js/styles/github-dark.css";
+ 
++/* Caelza brand faces (self-hosted Inter Tight, JetBrains Mono, Orbitron) and
++   the lockup classes. Written by the Caelza pipeline (runtime/overlay). */
++@import "./caelza-brand.css";
++
+ @theme {
+   /* Theme-aware colors mapped to CSS custom properties */
+   --color-pc-base: var(--pc-bg-base);
+--- a/web/src/main.tsx
++++ b/web/src/main.tsx
+@@ -3,12 +3,15 @@
+ import { BrowserRouter } from 'react-router-dom';
+ import App from './App';
+ import { basePath } from './lib/basePath';
++import { registerServiceWorker } from './pwa';
+ import './index.css';
+ 
+ const unsupportedBrowser =
+   document.documentElement.getAttribute('data-unsupported-browser') === '1';
+ 
+ if (!unsupportedBrowser) {
++  // Installable dashboard: the app shell stays available offline.
++  registerServiceWorker();
+   ReactDOM.createRoot(document.getElementById('root')!).render(
+     <React.StrictMode>
+       {/* basePath is injected by the Rust gateway at serve time for reverse-proxy prefix support. */}
+--- a/crates/caelza-gateway/src/static_files.rs
++++ b/crates/caelza-gateway/src/static_files.rs
+@@ -30,10 +30,30 @@
+ 
+     #[cfg(feature = "embedded-web")]
+     if let Some(resp) = serve_embedded_file(path) {
+-        return resp;
++        return allow_root_scope(resp, path, &state.path_prefix);
+     }
+ 
+-    serve_fs_file(state.web_dist_dir.as_ref(), path).await
++    allow_root_scope(
++        serve_fs_file(state.web_dist_dir.as_ref(), path).await,
++        path,
++        &state.path_prefix,
++    )
++}
++
++/// The dashboard's service worker (`web/public/sw.js`) is served under `/_app/`
++/// but must control the SPA root (the installed app, the offline shell).
++/// Browsers allow a scope above the script's directory only when the script is
++/// served with `Service-Worker-Allowed` naming it.
++fn allow_root_scope(mut response: Response, path: &str, path_prefix: &str) -> Response {
++    if path == "sw.js"
++        && let Ok(scope) = header::HeaderValue::from_str(&format!("{path_prefix}/"))
++    {
++        response.headers_mut().insert(
++            header::HeaderName::from_static("service-worker-allowed"),
++            scope,
++        );
++    }
++    response
+ }
+ 
+ /// SPA fallback: serve index.html for any non-API, non-static GET request.
+@@ -329,6 +349,20 @@
+     }
+ 
+     #[test]
++    fn service_worker_may_claim_the_dashboard_root() {
++        let sw = allow_root_scope((StatusCode::OK, "sw").into_response(), "sw.js", "");
++        assert_eq!(sw.headers().get("service-worker-allowed").unwrap(), "/");
++        let prefixed =
++            allow_root_scope((StatusCode::OK, "sw").into_response(), "sw.js", "/caelza");
++        assert_eq!(
++            prefixed.headers().get("service-worker-allowed").unwrap(),
++            "/caelza/"
++        );
++        let other = allow_root_scope((StatusCode::OK, "js").into_response(), "assets/app.js", "");
++        assert!(other.headers().get("service-worker-allowed").is_none());
++    }
++
++    #[test]
+     fn static_route_rejects_malformed_path_syntax() {
+         for path in [
+             "/_app//index.html",

@@ -34,6 +34,12 @@ termux_install = "runtime/termux-install.sh"   # one line in Termux: latest rele
 phone_config = "runtime/caelza.phone.example.toml"   # Telegram + Mind + Body + risk profile, merged after `caelza quickstart`
 dashboard_dir = "~/.local/share/caelza/web/dist"   # one of the gateway's auto-detected locations
 daemon = "caelza daemon"          # gateway (127.0.0.1:42617) + channels + cron; Termux:Boot script via CAELZA_BOOT=1
+# M4 phase 1: the dashboard wears the brand (self-hosted Inter Tight / JetBrains Mono / Orbitron,
+# the lockup, the parent attribution) and installs as an app. Carried by runtime/overlay/web + patch 0002.
+dashboard_fonts = "brand/fonts -> web/public/fonts (brand/make_assets.py)"
+dashboard_lockup = "runtime/overlay/web/src/components/brand/CaelzaLockup.tsx"
+dashboard_pwa = "runtime/overlay/web/public/manifest.webmanifest"   # + sw.js; icons rendered by brand/make_assets.py
+dashboard_patch = "runtime/patches/0002-ui-phase1.patch"
 
 # ---------------------------------------------------------------------------
 # Mind — autonomic long-term memory. xanima is the renamed openwave plugin;

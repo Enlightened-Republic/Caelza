@@ -131,7 +131,11 @@ element per view.
   `.online` broadcast side of the house and are not used in Caelza.
 
 Fonts are vendored in `fonts/` (SIL OFL 1.1, licences alongside) so renders
-are reproducible.
+are reproducible, and the dashboard serves the same files: `make_assets.py
+--runtime` copies them into `web/public/fonts`, `runtime/overlay/web/src/caelza-brand.css`
+declares them, and Inter Tight is the dashboard's default UI face. The lockup
+and the footer attribution are one component,
+`runtime/overlay/web/src/components/brand/CaelzaLockup.tsx`.
 
 ## Voice
 
