@@ -9,6 +9,8 @@ from pathlib import Path
 REPO_ROOT = Path(__file__).resolve().parents[1]
 OVERLAY = REPO_ROOT / "runtime" / "overlay"
 PATCH = (REPO_ROOT / "runtime" / "patches" / "0003-mind-page.patch").read_text()
+# Phase 3a (Home) added the digest route to the same module; its wiring lives in patch 0005.
+PATCH_HOME = (REPO_ROOT / "runtime" / "patches" / "0005-home-procedures.patch").read_text()
 API_MIND = (OVERLAY / "crates" / "caelza-gateway" / "src" / "api_mind.rs").read_text()
 CLIENT = (OVERLAY / "web" / "src" / "lib" / "mind.ts").read_text()
 PAGE = (OVERLAY / "web" / "src" / "pages" / "Memory.tsx").read_text()
@@ -29,13 +31,14 @@ def test_patch_touches_only_the_files_it_claims():
 
 
 def test_the_page_calls_only_routes_the_gateway_mounts():
-    mounted = set(re.findall(r'"(/api/mind/[a-z]+)"', PATCH))
+    mounted = set(re.findall(r'"(/api/mind/[a-z]+)"', PATCH)) | set(re.findall(r'"(/api/mind/[a-z]+)"', PATCH_HOME))
     called = set(re.findall(r"(/api/mind/[a-z]+)", CLIENT))
-    assert mounted == called == {"/api/mind/status", "/api/mind/recall", "/api/mind/forget", "/api/mind/review"}
+    assert mounted == called == {"/api/mind/status", "/api/mind/recall", "/api/mind/forget", "/api/mind/review", "/api/mind/digest"}
     for handler in ("handle_mind_status", "handle_mind_recall", "handle_mind_forget",
                     "handle_mind_review_list", "handle_mind_review_decide"):
         assert f"pub async fn {handler}" in API_MIND, handler
         assert f"api_mind::{handler}" in PATCH, handler
+    assert "api_mind::handle_mind_digest" in PATCH_HOME
 
 
 def test_tokens_stay_on_the_host():
@@ -45,7 +48,7 @@ def test_tokens_stay_on_the_host():
     assert "token" not in code.replace("has_token", "").replace("token_file", "").lower()
     assert "Authorization" not in CLIENT and "Bearer" not in CLIENT
     assert "require_auth(&state, &headers)" in API_MIND
-    assert API_MIND.count("require_auth(&state, &headers)") == 5, "every route is behind the dashboard's auth"
+    assert API_MIND.count("require_auth(&state, &headers)") == 6, "every route (digest included) is behind the dashboard's auth"
     assert "XanimaMemory::new" in API_MIND and "has_token" in API_MIND
 
 

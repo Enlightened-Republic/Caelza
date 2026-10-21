@@ -1,0 +1,218 @@
+// Pure helpers for the Home and Procedures pages; tested under node, no React.
+import type { BodiesStatus, BodyDevice } from '@/lib/bodies';
+import type { MindDigestCommitment, MindStatus } from '@/lib/mind';
+import type { SopRunSummary } from '@/lib/sops';
+
+export type Tone = 'ok' | 'warn' | 'error' | 'neutral';
+
+/** One status tile on Home: what it says, how loud, and where it leads. */
+export interface Tile {
+  label: string;
+  value: string;
+  sublabel: string;
+  tone: Tone;
+  to: string;
+}
+
+/** The slice of the gateway's `StatusResponse` the Runtime tile reads. */
+export interface RuntimeStatusSlice {
+  version: string;
+  uptime_seconds: number;
+  model: string;
+  model_provider?: string | null;
+  memory_backend: string;
+  health?: { components?: Record<string, { status: string }> } | null;
+}
+
+export function formatUptime(seconds: number): string {
+  const s = Math.max(0, Math.floor(seconds));
+  const d = Math.floor(s / 86400);
+  const h = Math.floor((s % 86400) / 3600);
+  const m = Math.floor((s % 3600) / 60);
+  if (d > 0) return `${d}d ${h}h`;
+  if (h > 0) return `${h}h ${m}m`;
+  return `${m}m`;
+}
+
+/** Component health states that mean "not fine"; anything else but `starting` counts as healthy. */
+const FAILING = new Set(['error', 'failed', 'failing', 'unhealthy', 'down', 'crashed', 'degraded']);
+
+export function runtimeTile(status: RuntimeStatusSlice | null, error?: string | null): Tile {
+  const to = '/dashboard';
+  if (error) return { label: 'Runtime', value: 'Unreachable', sublabel: error, tone: 'error', to };
+  if (!status) return { label: 'Runtime', value: '…', sublabel: 'reading', tone: 'neutral', to };
+  const components = Object.entries(status.health?.components ?? {});
+  const failing = components.filter(([, c]) => FAILING.has(c.status.toLowerCase())).map(([name]) => name);
+  const starting = components.filter(([, c]) => c.status.toLowerCase() === 'starting').map(([name]) => name);
+  const model = [status.model_provider, status.model].filter((p): p is string => !!p).join(' / ');
+  const sublabel = [`v${status.version}`, `up ${formatUptime(status.uptime_seconds)}`, model].filter(Boolean).join(' · ');
+  if (failing.length > 0) {
+    return {
+      label: 'Runtime',
+      value: `${failing.length} component${failing.length === 1 ? '' : 's'} failing`,
+      sublabel: `${failing.join(', ')} · ${sublabel}`,
+      tone: 'error',
+      to,
+    };
+  }
+  if (starting.length > 0) {
+    return { label: 'Runtime', value: 'Starting', sublabel: `${starting.join(', ')} · ${sublabel}`, tone: 'warn', to };
+  }
+  return { label: 'Runtime', value: 'Alive', sublabel, tone: 'ok', to };
+}
+
+export function mindTile(mind: MindStatus | null, error?: string | null): Tile {
+  const to = '/memory';
+  if (error) return { label: 'Mind', value: 'Unreachable', sublabel: error, tone: 'error', to };
+  if (!mind) return { label: 'Mind', value: '…', sublabel: 'reading', tone: 'neutral', to };
+  if (!mind.enabled) {
+    return { label: 'Mind', value: 'Not active', sublabel: `memory.backend = ${mind.backend ?? '?'}`, tone: 'neutral', to };
+  }
+  if (!mind.healthy) return { label: 'Mind', value: 'Not answering', sublabel: mind.url ?? '', tone: 'error', to };
+  if (!mind.has_token) return { label: 'Mind', value: 'No token', sublabel: `for agent ${mind.agent ?? ''}`.trim(), tone: 'warn', to };
+  const brains = mind.stats?.brains ?? [];
+  const nodes = brains.reduce((n, b) => n + (b.nodes ?? 0), 0);
+  const brain = mind.status?.brains?.find((b) => b.brain === 'private') ?? mind.status?.brains?.[0];
+  const pending = (brain?.reviews?.pending ?? 0) + (brain?.quarantine?.held ?? 0);
+  const parts = [`${brains.length} brain${brains.length === 1 ? '' : 's'}`];
+  if (pending > 0) parts.push(`${pending} awaiting review`);
+  if (brain?.lastSleep?.ago) parts.push(`slept ${brain.lastSleep.ago}`);
+  return {
+    label: 'Mind',
+    value: `${nodes} belief${nodes === 1 ? '' : 's'}`,
+    sublabel: parts.join(' · '),
+    tone: pending > 0 ? 'warn' : 'ok',
+    to,
+  };
+}
+
+export function bodyTile(body: BodiesStatus | null, devices: BodyDevice[] | null, error?: string | null): Tile {
+  const to = '/bodies';
+  if (error) return { label: 'Body', value: 'Unreachable', sublabel: error, tone: 'error', to };
+  if (!body) return { label: 'Body', value: '…', sublabel: 'reading', tone: 'neutral', to };
+  if (!body.enabled) return { label: 'Body', value: 'Not configured', sublabel: body.reason ?? '', tone: 'neutral', to };
+  const name = body.server?.name ?? 'body';
+  if (!body.connected) return { label: 'Body', value: 'Not answering', sublabel: name, tone: 'error', to };
+  if (!devices) {
+    return { label: 'Body', value: 'Connected', sublabel: `${name} · ${(body.tools ?? []).length} tools`, tone: 'ok', to };
+  }
+  const reachable = devices.filter((d) => d.reachable).length;
+  const paired = devices.filter((d) => !d.self).length;
+  const tone: Tone = reachable === devices.length ? 'ok' : reachable === 0 ? 'error' : 'warn';
+  return {
+    label: 'Body',
+    value: `${reachable} of ${devices.length} reachable`,
+    sublabel: `${name} · this phone${paired > 0 ? ` + ${paired} paired` : ''}`,
+    tone,
+    to,
+  };
+}
+
+export interface RunBuckets {
+  /** Held for a decision, oldest first. */
+  waiting: SopRunSummary[];
+  /** Live and not waiting, newest first. */
+  running: SopRunSummary[];
+  /** Ended inside the window, newest first. */
+  finished: SopRunSummary[];
+}
+
+const DAY_MS = 24 * 3600 * 1000;
+
+export function partitionRuns(runs: SopRunSummary[], now = Date.now(), windowMs = DAY_MS): RunBuckets {
+  const waiting: SopRunSummary[] = [];
+  const running: SopRunSummary[] = [];
+  const finished: SopRunSummary[] = [];
+  for (const run of runs) {
+    switch (run.status) {
+      case 'waiting_approval':
+      case 'paused_checkpoint':
+        waiting.push(run);
+        break;
+      case 'pending':
+      case 'running':
+      case 'cancel_requested':
+        running.push(run);
+        break;
+      default: {
+        const ended = Date.parse(run.completed_at ?? run.started_at);
+        if (!Number.isNaN(ended) && now - ended <= windowMs) finished.push(run);
+      }
+    }
+  }
+  waiting.sort((a, b) => a.started_at.localeCompare(b.started_at));
+  running.sort((a, b) => b.started_at.localeCompare(a.started_at));
+  finished.sort((a, b) => (b.completed_at ?? b.started_at).localeCompare(a.completed_at ?? a.started_at));
+  return { waiting, running, finished };
+}
+
+export interface SessionSlice {
+  session_id: string;
+  session_key: string;
+  last_activity: string;
+  message_count: number;
+  name?: string;
+  agent_alias: string | null;
+  channel_id: string | null;
+}
+
+/** Sessions that moved inside the window, most recent first. */
+export function recentSessions<T extends SessionSlice>(sessions: T[], now = Date.now(), windowMs = DAY_MS, limit = 6): T[] {
+  return sessions
+    .filter((s) => {
+      const at = Date.parse(s.last_activity);
+      return !Number.isNaN(at) && now - at <= windowMs;
+    })
+    .sort((a, b) => b.last_activity.localeCompare(a.last_activity))
+    .slice(0, limit);
+}
+
+export function sessionLabel(session: SessionSlice): string {
+  if (session.name) return session.name;
+  const who = session.agent_alias ?? 'agent';
+  const where = session.channel_id ? ` on ${session.channel_id}` : '';
+  return `${who}${where}`;
+}
+
+/** `overdue by 2 h`, `due in 3 d`, `due today`; null without a due date. */
+export function dueLabel(dueAt: number | null | undefined, now = Date.now()): string | null {
+  if (dueAt === null || dueAt === undefined) return null;
+  const diff = dueAt - now;
+  const span = (ms: number): string => {
+    const abs = Math.abs(ms);
+    if (abs < 3600 * 1000) return `${Math.max(1, Math.round(abs / 60000))} min`;
+    if (abs < DAY_MS * 2) return `${Math.round(abs / (3600 * 1000))} h`;
+    return `${Math.round(abs / DAY_MS)} d`;
+  };
+  if (diff < -60 * 1000) return `overdue by ${span(diff)}`;
+  if (diff < 60 * 1000) return 'due now';
+  return `due in ${span(diff)}`;
+}
+
+export function commitmentTone(c: Pick<MindDigestCommitment, 'overdue' | 'blocked'>): Tone {
+  if (c.overdue) return 'error';
+  if (c.blocked) return 'warn';
+  return 'neutral';
+}
+
+export interface SleepSummarySlice {
+  nodesBefore?: number;
+  nodesAfter?: number;
+  pruned?: number;
+  newContradictions?: number;
+  flaggedForReview?: number;
+}
+
+/** `slept 3 hours ago: 120 → 118 nodes, 4 pruned, 1 flagged for review`; null when it never slept. */
+export function sleepLine(lastSleep: { at: number | null; ago: string; summary: unknown } | null | undefined): string | null {
+  if (!lastSleep || lastSleep.at === null) return null;
+  const parts: string[] = [];
+  const s = (lastSleep.summary ?? null) as SleepSummarySlice | null;
+  if (s && typeof s === 'object') {
+    if (typeof s.nodesBefore === 'number' && typeof s.nodesAfter === 'number') parts.push(`${s.nodesBefore} → ${s.nodesAfter} nodes`);
+    if (s.pruned) parts.push(`${s.pruned} pruned`);
+    if (s.newContradictions) parts.push(`${s.newContradictions} new contradiction${s.newContradictions === 1 ? '' : 's'}`);
+    if (s.flaggedForReview) parts.push(`${s.flaggedForReview} flagged for review`);
+  }
+  return `slept ${lastSleep.ago}${parts.length ? `: ${parts.join(', ')}` : ''}`;
+}

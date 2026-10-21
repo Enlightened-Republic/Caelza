@@ -1,0 +1,198 @@
+Caelza M4 phase 3a: Home and Procedures.
+
+Home (/) is Caelza's: status before chat (Runtime, Mind and Body tiles),
+what waits on the owner (procedure runs held at a gate, memory changes
+awaiting review) and what happened while they were away (the Mind's digest
+over the gateway's new /api/mind/digest, the Runtime's runs and sessions of
+the last day). The upstream dashboard keeps its tabs at /dashboard and Home
+forwards the old `/?tab=` deep links there. Procedures (/procedures) is the
+front door to the SOP engine: waiting, running, the library, finished.
+
+Mounts the digest route (crates/caelza-gateway/src/api_mind.rs, an overlay
+file), wires the two pages (web/src/pages/Home.tsx, Procedures.tsx, overlay)
+into the lazy page registry and the router, puts Home, Bodies, Memory and
+Procedures in the sidebar's Home group with the dashboard under Operations,
+mirrors that in the command palette, teaches the header and the tab title
+the new sections, and adds the English nav.home / nav.procedures strings
+(every other locale falls back to English). Applied after the rename, the
+overlay and patches 0001 to 0004; regenerate with the same `diff -u` when
+the upstream pin moves.
+
+--- a/crates/caelza-gateway/src/lib.rs
++++ b/crates/caelza-gateway/src/lib.rs
+@@ -2358,6 +2358,7 @@
+             "/api/mind/review",
+             get(api_mind::handle_mind_review_list).post(api_mind::handle_mind_review_decide),
+         )
++        .route("/api/mind/digest", get(api_mind::handle_mind_digest))
+         // The Body (caelza-body over MCP) for the dashboard's Bodies page;
+         // the gateway owns the connection and makes the tool calls.
+         .route("/api/bodies/status", get(api_bodies::handle_bodies_status))
+--- a/web/src/components/CommandPalette.tsx
++++ b/web/src/components/CommandPalette.tsx
+@@ -3,9 +3,12 @@
+ import {
+   Activity,
+   Bot,
++  Brain,
++  ClipboardList,
+   Clock,
+   CornerDownLeft,
+   FolderTree,
++  House,
+   LayoutDashboard,
+   MessageSquare,
+   Monitor,
+@@ -15,6 +18,7 @@
+   SlidersHorizontal,
+   Sparkles,
+   Stethoscope,
++  TabletSmartphone,
+   Terminal,
+   Wrench,
+ } from 'lucide-react';
+@@ -33,7 +37,10 @@
+ }
+ 
+ const DESTINATIONS: Destination[] = [
+-  { to: '/', icon: LayoutDashboard, labelKey: 'nav.dashboard', groupKey: 'nav.group.home' },
++  { to: '/', icon: House, labelKey: 'nav.home', groupKey: 'nav.group.home' },
++  { to: '/bodies', icon: TabletSmartphone, labelKey: 'nav.bodies', groupKey: 'nav.group.home' },
++  { to: '/memory', icon: Brain, labelKey: 'nav.memory', groupKey: 'nav.group.home' },
++  { to: '/procedures', icon: ClipboardList, labelKey: 'nav.procedures', groupKey: 'nav.group.home' },
+   { to: '/agents', icon: MessageSquare, labelKey: 'nav.agents', groupKey: 'nav.group.chat' },
+   { to: '/config', icon: Settings, labelKey: 'nav.config', groupKey: 'nav.group.configure' },
+   { to: '/config/agents', icon: Bot, labelKey: 'nav.agent', groupKey: 'nav.group.configure' },
+@@ -41,6 +48,7 @@
+   { to: '/skills', icon: Sparkles, labelKey: 'nav.skills', groupKey: 'nav.group.configure' },
+   { to: '/integrations', icon: Puzzle, labelKey: 'nav.integrations', groupKey: 'nav.group.configure' },
+   { to: '/cron', icon: Clock, labelKey: 'nav.cron', groupKey: 'nav.group.configure' },
++  { to: '/dashboard', icon: LayoutDashboard, labelKey: 'nav.dashboard', groupKey: 'nav.group.operations' },
+   { to: '/logs', icon: Activity, labelKey: 'nav.logs', groupKey: 'nav.group.operations' },
+   { to: '/doctor', icon: Stethoscope, labelKey: 'nav.doctor', groupKey: 'nav.group.operations' },
+   { to: '/canvas', icon: Monitor, labelKey: 'nav.canvas', groupKey: 'nav.group.operations' },
+--- a/web/src/components/layout/Header.tsx
++++ b/web/src/components/layout/Header.tsx
+@@ -10,13 +10,16 @@
+ // Exact-path titles. The dashboard ('/') must stay exact so it doesn't
+ // swallow every other route as a prefix.
+ const exactRouteTitles: Record<string, string> = {
+-  '/': 'nav.dashboard',
++  '/': 'nav.home',
+ };
+ 
+ // Section titles keyed by the first path segment. Resolving by the matched
+ // section (not the literal pathname) means nested routes like /config/agents,
+ // /agent/:alias, or /agents all surface a correct <h1> instead of an empty one.
+ const sectionTitles: Record<string, string> = {
++  dashboard: 'nav.dashboard',
++  bodies: 'nav.bodies',
++  procedures: 'nav.procedures',
+   agent: 'nav.agent',
+   agents: 'nav.agents',
+   tools: 'nav.tools',
+--- a/web/src/components/layout/Layout.tsx
++++ b/web/src/components/layout/Layout.tsx
+@@ -11,6 +11,9 @@
+ // First-path-segment → i18n title key, so the browser tab/history/bookmark
+ // reflects the current page instead of a constant "Caelza".
+ const TITLE_KEYS: Record<string, string> = {
++  dashboard: 'nav.dashboard',
++  bodies: 'nav.bodies',
++  procedures: 'nav.procedures',
+   agents: 'nav.agents',
+   config: 'nav.config',
+   setup: 'nav.config',
+@@ -43,7 +46,7 @@
+     const first = seg[0];
+     let name: string | null;
+     if (!first) {
+-      name = t('nav.dashboard');
++      name = t('nav.home');
+     } else if (first === 'agent' && seg[1]) {
+       name = `${decodeURIComponent(seg[1])} · ${t('nav.group.chat')}`;
+     } else {
+--- a/web/src/components/layout/Sidebar.tsx
++++ b/web/src/components/layout/Sidebar.tsx
+@@ -9,7 +9,9 @@
+   Blocks,
+   Bot,
+   Brain,
++  ClipboardList,
+   Clock,
++  House,
+   LayoutDashboard,
+   ListChecks,
+   MessageSquare,
+@@ -53,10 +55,12 @@
+   {
+     headingKey: 'nav.group.home',
+     items: [
+-      { to: '/', icon: LayoutDashboard, labelKey: 'nav.dashboard' },
+-      // Bodies and the Mind: top-level sections (vision §7), not settings pages.
++      // Home: status before chat (vision §7). Bodies, the Mind and Procedures
++      // are top-level sections, not settings pages.
++      { to: '/', icon: House, labelKey: 'nav.home' },
+       { to: '/bodies', icon: TabletSmartphone, labelKey: 'nav.bodies' },
+       { to: '/memory', icon: Brain, labelKey: 'nav.memory' },
++      { to: '/procedures', icon: ClipboardList, labelKey: 'nav.procedures' },
+     ],
+   },
+   {
+@@ -80,6 +84,8 @@
+   {
+     headingKey: 'nav.group.operations',
+     items: [
++      // The upstream dashboard (uptime, sessions, channels, health, cost).
++      { to: '/dashboard', icon: LayoutDashboard, labelKey: 'nav.dashboard' },
+       { to: '/logs', icon: Activity, labelKey: 'nav.logs' },
+       { to: '/pairing', icon: Smartphone, labelKey: 'nav.pairing' },
+       { to: '/doctor', icon: Stethoscope, labelKey: 'nav.doctor' },
+--- a/web/src/lib/i18n.ts
++++ b/web/src/lib/i18n.ts
+@@ -1395,6 +1395,8 @@
+     'nav.skills': 'Skills',
+     'nav.memory': 'Memory',
+     'nav.bodies': 'Bodies',
++    'nav.home': 'Home',
++    'nav.procedures': 'Procedures',
+     'nav.config': 'Config',
+     'nav.cost': 'Cost Tracker',
+     'nav.logs': 'Logs',
+--- a/web/src/router/lazyPages.tsx
++++ b/web/src/router/lazyPages.tsx
+@@ -25,3 +25,5 @@
+ export const RunDetail = lazy(() => import('../pages/RunDetail'));
+ export const Memory = lazy(() => import('../pages/Memory'));
+ export const Bodies = lazy(() => import('../pages/Bodies'));
++export const Home = lazy(() => import('../pages/Home'));
++export const Procedures = lazy(() => import('../pages/Procedures'));
+--- a/web/src/router/router.tsx
++++ b/web/src/router/router.tsx
+@@ -12,11 +12,13 @@
+   Cron,
+   Dashboard,
+   Doctor,
++  Home,
+   Integrations,
+   Logs,
+   Memory,
+   Pairing,
+   Plugins,
++  Procedures,
+   Quickstart,
+   RunDetail,
+   Runs,
+@@ -42,7 +44,11 @@
+   <Suspense fallback={<RouteFallback />}>
+     <Routes>
+       <Route element={<Layout />}>
+-        <Route path="/" element={<Dashboard />} />
++        {/* Home is Caelza's: status before chat. The upstream dashboard keeps
++            its tabs at /dashboard; Home forwards the old `/?tab=` links there. */}
++        <Route path="/" element={<Home />} />
++        <Route path="/dashboard" element={<Dashboard />} />
++        <Route path="/procedures" element={<Procedures />} />
+         <Route path="/agent" element={<Navigate to="/agents" replace />} />
+         <Route path="/agents" element={<AgentsList />} />
+         <Route path="/agent/:alias" element={<AgentChat />} />

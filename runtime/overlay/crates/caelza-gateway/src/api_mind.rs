@@ -13,6 +13,9 @@
 //! - `POST /api/mind/forget`             `{node_id, agent?, visibility?}` → `brain_forget`
 //! - `GET  /api/mind/review?agent=&status=`     the review queue (`brain_review list`)
 //! - `POST /api/mind/review`             `{id, action: accept|reject, reason?, agent?}`
+//! - `GET  /api/mind/digest?agent=`      what the Mind would tell you first: attention,
+//!   focus and last sleep (`brain_status`), open commitments (`brain_commitments`),
+//!   open questions (`brain_list_open`); the Home page's "since you were away"
 
 use super::AppState;
 use super::api::require_auth;
@@ -386,6 +389,92 @@ pub async fn handle_mind_review_decide(
     }
 }
 
+/// GET /api/mind/digest?agent=
+pub async fn handle_mind_digest(
+    State(state): State<AppState>,
+    headers: HeaderMap,
+    Query(q): Query<AgentQuery>,
+) -> Response {
+    if let Err(e) = require_auth(&state, &headers) {
+        return e.into_response();
+    }
+    let (config, settings, memory) = match open_mind(&state) {
+        Ok(m) => m,
+        Err(r) => return r,
+    };
+    let agent = match resolve_agent(&config, &settings, q.agent.as_deref()) {
+        Ok(a) => a,
+        Err(r) => return r,
+    };
+    let mut errors: Vec<String> = Vec::new();
+    let mut take = |result: anyhow::Result<Value>| -> Value {
+        match result {
+            Ok(v) => v,
+            Err(e) => {
+                errors.push(e.to_string());
+                Value::Null
+            }
+        }
+    };
+    let status = take(
+        memory
+            .call_tool_json(
+                &agent,
+                "brain_status",
+                json!({"visibility": "private", "format": "json"}),
+            )
+            .await,
+    );
+    let commitments = take(
+        memory
+            .call_tool_json(
+                &agent,
+                "brain_commitments",
+                json!({"status": "open", "format": "json"}),
+            )
+            .await,
+    );
+    let open = take(
+        memory
+            .call_tool_json(
+                &agent,
+                "brain_list_open",
+                json!({"status": "active", "limit": 8, "format": "json"}),
+            )
+            .await,
+    );
+    let brain = private_brain(&status).cloned().unwrap_or(Value::Null);
+    Json(json!({
+        "agent": agent,
+        "attention": brain.get("attention").cloned().unwrap_or_else(|| json!([])),
+        "focus": brain.get("focus").cloned().unwrap_or(Value::Null),
+        "last_sleep": brain.get("lastSleep").cloned().unwrap_or(Value::Null),
+        "commitments": digest_items(&commitments, "commitments"),
+        "open_items": digest_items(&open, "items"),
+        "errors": errors,
+    }))
+    .into_response()
+}
+
+/// The private brain's entry in a `brain_status` JSON reply, else the first brain.
+pub(crate) fn private_brain(status: &Value) -> Option<&Value> {
+    let brains = status.get("brains")?.as_array()?;
+    brains
+        .iter()
+        .find(|b| b.get("brain").and_then(Value::as_str) == Some("private"))
+        .or_else(|| brains.first())
+}
+
+/// The array under `key` in a continuity tool's JSON reply. A text reply
+/// ("No commitments match.") or a failed call is an empty list.
+pub(crate) fn digest_items(reply: &Value, key: &str) -> Vec<Value> {
+    reply
+        .get(key)
+        .and_then(Value::as_array)
+        .cloned()
+        .unwrap_or_default()
+}
+
 /// `brain_review list` answers in text, one item per line:
 /// `<id> [<status>] <kind> (<section>) <label>[ ⚠ <flags>]: <reason>`.
 /// Lines that are not items (the count header, "No pending review items.") are
@@ -447,6 +536,27 @@ mod tests {
         assert_eq!(items[1]["reason"], "proposed by main");
         assert!(parse_review_lines("No pending review items.").is_empty());
         assert!(parse_review_line("").is_none());
+    }
+
+    #[test]
+    fn digest_reads_the_private_brain_and_the_item_lists() {
+        let status = json!({
+            "agentId": "main",
+            "brains": [
+                {"brain": "shared", "attention": ["shared note"]},
+                {"brain": "private", "attention": ["a", "b"], "focus": "ship the page"},
+            ],
+        });
+        assert_eq!(private_brain(&status).unwrap()["focus"], "ship the page");
+        let only_shared = json!({"brains": [{"brain": "shared"}]});
+        assert_eq!(private_brain(&only_shared).unwrap()["brain"], "shared");
+        assert!(private_brain(&json!({"text": "error: no brain"})).is_none());
+        assert!(private_brain(&Value::Null).is_none());
+
+        let commitments = json!({"commitments": [{"title": "call back"}, {"title": "ship"}]});
+        assert_eq!(digest_items(&commitments, "commitments").len(), 2);
+        assert!(digest_items(&json!({"text": "No commitments match."}), "commitments").is_empty());
+        assert!(digest_items(&Value::Null, "items").is_empty());
     }
 
     #[test]
