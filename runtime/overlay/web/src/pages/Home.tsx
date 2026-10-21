@@ -37,6 +37,8 @@ import {
   runtimeTile,
   sessionLabel,
   sleepLine,
+  sopEngineOff,
+  SOP_OFF_TEXT,
   type Tile,
 } from './home.logic';
 
@@ -136,8 +138,14 @@ export default function Home() {
           <Badge tone={waitingCount > 0 ? 'warn' : 'ok'}>{waitingCount}</Badge>
         </div>
         <p className="mb-3 text-xs text-pc-text-faint">Procedures held at an approval gate, and memories the Mind would not take without you.</p>
-        {runs.error && <p className="text-xs text-status-error">Runs could not be read: {runs.error}</p>}
-        <ApprovalQueue runs={buckets.waiting} onDecided={refresh} emptyText="No procedure is waiting for a decision." />
+        {runs.error && sopEngineOff(runs.error) ? (
+          <p className="text-sm text-pc-text-muted">{SOP_OFF_TEXT}</p>
+        ) : (
+          <>
+            {runs.error && <p className="mb-2 text-xs text-status-error">Runs could not be read: {runs.error}</p>}
+            <ApprovalQueue runs={buckets.waiting} onDecided={refresh} emptyText="No procedure is waiting for a decision." />
+          </>
+        )}
         {reviewPending > 0 && (
           <p className="mt-3 text-sm text-pc-text-secondary">
             {reviewPending} memory change{reviewPending === 1 ? '' : 's'} await your review.{' '}

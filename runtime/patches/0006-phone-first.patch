@@ -1,0 +1,126 @@
+Caelza M4 phase 3b: the phone-first pass.
+
+Measured at 390 x 844 with runtime/tools/phone-shots against every route.
+Most of the pass is CSS in the overlay (web/src/caelza-brand.css: 16 px page
+gutters, tables that scroll inside their card, thumb-sized controls); these
+hunks fix what CSS cannot: the page header's actions slot now wraps and
+shrinks instead of pushing past the edge (Tools' controls did), the header's
+language button keeps only its globe on a phone so the page title is not
+cut to an ellipsis, the chat toolbar wraps and its model name yields, the
+Runs page gets the page padding every other page has and, with SOPs and
+Plugins, a header and tab title, and the mono face is no longer fetched
+from a font CDN (it is vendored; the CSP refused the fetch). Applied after
+the rename, the overlay and patches 0001 to 0005; regenerate with the same
+`diff -u` when the upstream pin moves.
+
+--- a/web/src/components/layout/Header.tsx
++++ b/web/src/components/layout/Header.tsx
+@@ -29,6 +29,9 @@
+   config: 'nav.config',
+   setup: 'nav.config',
+   memory: 'nav.memory',
++  sops: 'nav.sops',
++  runs: 'nav.runs',
++  plugins: 'nav.plugins',
+   logs: 'nav.logs',
+   doctor: 'nav.doctor',
+   pairing: 'nav.pairing',
+@@ -155,8 +158,10 @@
+               style={{ background: 'var(--pc-bg-elevated)' }}
+             >
+               <Globe className="h-[20px] w-[20px] shrink-0" />
+-              {locale.toUpperCase()}
+-              <ChevronDown className="h-3 w-3 shrink-0" style={{ transform: langOpen ? 'rotate(180deg)' : undefined, transition: 'transform 0.15s' }} />
++              {/* On a phone the globe alone is the control; the code and the
++                  chevron would push the page title into an ellipsis. */}
++              <span className="hidden sm:inline">{locale.toUpperCase()}</span>
++              <ChevronDown className="h-3 w-3 shrink-0 hidden sm:block" style={{ transform: langOpen ? 'rotate(180deg)' : undefined, transition: 'transform 0.15s' }} />
+             </Button>
+ 
+             {langOpen && (
+--- a/web/src/components/layout/Layout.tsx
++++ b/web/src/components/layout/Layout.tsx
+@@ -28,6 +28,9 @@
+   'acp-console': 'nav.acp',
+   quickstart: 'nav.quickstart',
+   memory: 'nav.memory',
++  sops: 'nav.sops',
++  runs: 'nav.runs',
++  plugins: 'nav.plugins',
+ };
+ 
+ export default function Layout() {
+--- a/web/src/components/ui/PageHeader.tsx
++++ b/web/src/components/ui/PageHeader.tsx
+@@ -29,7 +29,7 @@
+         )}
+       </div>
+       {actions != null && (
+-        <div className="flex items-center gap-2 flex-shrink-0">{actions}</div>
++        <div className="flex items-center gap-2 flex-wrap min-w-0 max-w-full">{actions}</div>
+       )}
+     </div>
+   );
+--- a/web/src/contexts/ThemeContext.tsx
++++ b/web/src/contexts/ThemeContext.tsx
+@@ -82,7 +82,8 @@
+ }
+ 
+ function loadMonoFont(font: string) {
+-  if (font === 'jetbrains') loadGoogleFont('JetBrains Mono');
++  // JetBrains Mono is self-hosted (caelza-brand.css, brand/fonts), so
++  // 'jetbrains' fetches nothing: no font CDN, nothing for the CSP to refuse.
+   if (font === 'fira') loadGoogleFont('Fira Code');
+   if (font === 'cascadia') loadGoogleFont('Cascadia Code');
+ }
+--- a/web/src/pages/AgentChat.tsx
++++ b/web/src/pages/AgentChat.tsx
+@@ -557,7 +557,7 @@
+         </div>
+       )}
+       {/* Header with model selector */}
+-      <div className="flex items-center justify-between px-4 py-2 border-b border-pc-border bg-pc-surface">
++      <div className="flex items-center justify-between flex-wrap gap-y-2 px-4 py-2 border-b border-pc-border bg-pc-surface">
+         <div className="flex items-center gap-2">
+           <Bot className="h-4 w-4 text-pc-accent" />
+           <span className="text-sm font-medium text-pc-text">{agentAlias}</span>
+@@ -571,7 +571,7 @@
+           </Link>
+         </div>
+ 
+-        <div className="flex items-center gap-2">
++        <div className="flex items-center gap-2 flex-wrap min-w-0">
+           <SessionPicker agentAlias={agentAlias} />
+ 
+           <div className="relative" ref={modelDropdownRef}>
+@@ -581,7 +581,7 @@
+               disabled={modelLoading || typing || (availableModels.length === 0 && currentModel === null)}
+               className="flex items-center gap-2 px-3 h-7 rounded-[var(--radius-md)] text-xs font-medium border border-pc-border bg-pc-elevated text-pc-text-secondary transition-colors hover:text-pc-text hover:border-pc-border-strong disabled:opacity-50 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[var(--pc-focus)]"
+             >
+-              <span className="max-w-[180px] truncate">
++              <span className="max-w-[40vw] sm:max-w-[180px] truncate">
+                 {modelLoading
+                   ? t('agent.model_switching')
+                   : (currentModel ?? (availableModels.length === 0 ? t('agent.model_loading') : t('agent.select_model')))}
+--- a/web/src/pages/Runs.tsx
++++ b/web/src/pages/Runs.tsx
+@@ -150,7 +150,7 @@
+   }, []);
+ 
+   return (
+-    <div className="space-y-4">
++    <div className="p-6 space-y-4">
+       <PageHeader
+         title={t('runs.title')}
+         description={t('runs.subtitle')}
+--- a/web/src/pages/Tools.tsx
++++ b/web/src/pages/Tools.tsx
+@@ -280,7 +280,7 @@
+                 ))}
+               </select>
+             )}
+-            <div className="relative w-64 max-w-full">
++            <div className="relative w-full sm:w-64">
+               <Search className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-pc-text-faint pointer-events-none" />
+               <input
+                 type="text"

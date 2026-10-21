@@ -12,7 +12,7 @@ import { formatRelative } from '@/lib/format';
 import { t } from '@/lib/i18n';
 import { cancelSop, listRuns, listSops, runStatusBadge, type SopRunSummary, type SopSummary } from '@/lib/sops';
 import { usePolling } from '@/hooks/usePolling';
-import { partitionRuns } from './home.logic';
+import { partitionRuns, sopEngineOff, SOP_OFF_TEXT } from './home.logic';
 
 function errorText(reason: unknown): string {
   return reason instanceof Error ? reason.message : String(reason);
@@ -63,11 +63,20 @@ export default function Procedures() {
         }
       />
 
-      {error && (
+      {error && sopEngineOff(error) ? (
+        <Card>
+          <div className="flex items-start gap-3 text-sm">
+            <ClipboardList className="mt-0.5 h-5 w-5 shrink-0 text-pc-accent" aria-hidden="true" />
+            <p className="text-pc-text-muted">
+              {SOP_OFF_TEXT} Add a <code className="font-mono">[sop]</code> block to the config to turn it on.
+            </p>
+          </div>
+        </Card>
+      ) : error ? (
         <div role="alert" className="rounded-[var(--radius-md)] border border-status-error/25 bg-status-error/10 p-3 text-xs text-status-error">
           {error}
         </div>
-      )}
+      ) : null}
 
       <Card>
         <div className="mb-1 flex items-center justify-between">

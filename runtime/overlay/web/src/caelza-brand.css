@@ -71,3 +71,40 @@
   color: var(--pc-text-faint);
   white-space: nowrap;
 }
+
+/* ---- Phone-first (vision §7): every page works at 390 px, one hand. ----
+   These rules sit outside Tailwind's layers, so they win over its utilities
+   and cover every page, upstream ones included, without touching their
+   markup. Measured with runtime/tools/phone-shots at 390 × 844. */
+
+@media (max-width: 640px) {
+  /* Page gutters: 16 px instead of 24, so a 390 px phone keeps 358 px for
+     content. Only the page root (a child or grandchild of <main>), never the
+     cards inside it. */
+  main > .p-6,
+  main > * > .p-6 {
+    padding: 1rem;
+  }
+
+  /* Tables scroll sideways inside their card instead of clipping a column
+     (the Runs table) or pushing the page wider. */
+  main table {
+    display: block;
+    max-width: 100%;
+    overflow-x: auto;
+    -webkit-overflow-scrolling: touch;
+  }
+}
+
+@media (pointer: coarse), (max-width: 640px) {
+  /* Thumb-sized controls: 36 px minimum on touch screens, including the
+     text-only buttons (Unpair, Accept, More) and the filter inputs that
+     upstream draws at 26 px. min-height beats a utility height. */
+  main :is(button, [role="button"], [role="tab"], select, textarea, a.inline-flex,
+    input:not([type="checkbox"]):not([type="radio"]):not([type="range"])) {
+    min-height: 2.25rem;
+  }
+  main button {
+    min-width: 2.25rem;
+  }
+}
