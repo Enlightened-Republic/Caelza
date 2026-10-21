@@ -16,10 +16,12 @@ runtime/
 ├── exclude.txt        files whose contents stay verbatim (licences, changelog)
 ├── theme-map.txt      dashboard fallback palette → Enlightened Republic tokens
 ├── overlay/           files copied over the renamed tree: crates/caelza-memory/src/xanima.rs (the Mind as a native
-│                      memory backend); web/ brand CSS, the lockup component, PWA manifest + service worker
+│                      memory backend); crates/caelza-gateway/src/api_mind.rs (/api/mind, the brain service proxied
+│                      for the dashboard); web/ brand CSS, the lockup component, PWA manifest + service worker,
+│                      the Memory page
 ├── patches/           *.patch applied after the rename: 0001 xanima memory backend (config schema, backend registry,
 │                      factory, dashboard picker); 0002 UI phase 1 (fonts default, lockup, attribution, accent labels,
-│                      PWA hooks, Service-Worker-Allowed in the gateway)
+│                      PWA hooks, Service-Worker-Allowed in the gateway); 0003 the Memory page (routes, router, sidebar)
 ├── lib/rename.pl      the replacement engine
 ├── lib/dashboard_theme.py  registers caelza-dark / caelza-light as the dashboard defaults
 └── build.sh           fetch → rebrand → cargo build

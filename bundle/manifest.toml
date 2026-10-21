@@ -40,6 +40,10 @@ dashboard_fonts = "brand/fonts -> web/public/fonts (brand/make_assets.py)"
 dashboard_lockup = "runtime/overlay/web/src/components/brand/CaelzaLockup.tsx"
 dashboard_pwa = "runtime/overlay/web/public/manifest.webmanifest"   # + sw.js; icons rendered by brand/make_assets.py
 dashboard_patch = "runtime/patches/0002-ui-phase1.patch"
+# M4 phase 2a: the Memory page (/memory) over the gateway's /api/mind routes.
+dashboard_memory_page = "runtime/overlay/web/src/pages/Memory.tsx"
+mind_api = "runtime/overlay/crates/caelza-gateway/src/api_mind.rs"   # GET status/recall/review, POST forget/review; tokens stay on the host
+mind_patch = "runtime/patches/0003-mind-page.patch"
 
 # ---------------------------------------------------------------------------
 # Mind — autonomic long-term memory. xanima is the renamed openwave plugin;
