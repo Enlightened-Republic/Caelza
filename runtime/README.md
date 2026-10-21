@@ -19,11 +19,12 @@ runtime/
 │                      memory backend); crates/caelza-gateway/src/api_mind.rs (/api/mind, the brain service proxied
 │                      for the dashboard); crates/caelza-gateway/src/api_bodies.rs (/api/bodies, the Body's MCP server
 │                      reached for the dashboard); web/ brand CSS, the lockup component, PWA manifest + service worker,
-│                      the Memory and Bodies pages
+│                      the Home, Bodies, Memory and Procedures pages, the shared ApprovalQueue
 ├── patches/           *.patch applied after the rename: 0001 xanima memory backend (config schema, backend registry,
 │                      factory, dashboard picker); 0002 UI phase 1 (fonts default, lockup, attribution, accent labels,
 │                      PWA hooks, Service-Worker-Allowed in the gateway); 0003 the Memory page (routes, router, sidebar);
-│                      0004 the Bodies page (routes, router, sidebar, the nav.bodies string)
+│                      0004 the Bodies page (routes, router, sidebar, the nav.bodies string); 0005 Home and Procedures
+│                      (the digest route, Home at /, the dashboard at /dashboard, sidebar + palette + titles, strings)
 ├── lib/rename.pl      the replacement engine
 ├── lib/dashboard_theme.py  registers caelza-dark / caelza-light as the dashboard defaults
 └── build.sh           fetch → rebrand → cargo build

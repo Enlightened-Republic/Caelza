@@ -78,6 +78,48 @@ export interface MindReviewItem {
   raw: string;
 }
 
+/** A commitment the agent made (xanima `CommitmentView`), from `brain_commitments`. */
+export interface MindDigestCommitment {
+  node_id: string;
+  title: string;
+  owner: string;
+  counterparty: string;
+  status: string;
+  due_at: number | null;
+  note: string | null;
+  created_at: number;
+  updated_at: number;
+  done_at: number | null;
+  blockers: Array<{ id: string; label: string; done: boolean }>;
+  overdue: boolean;
+  blocked: boolean;
+}
+
+/** An open hypothesis, question or assumption (xanima `OpenItemView`), from `brain_list_open`. */
+export interface MindDigestOpenItem {
+  node_id: string;
+  kind: 'hypothesis' | 'question' | 'assumption';
+  text: string;
+  status: string;
+  load_bearing: number;
+  contradicted_at: number | null;
+  confidence: string;
+  created_at: number;
+  updated_at: number;
+  links: Array<{ id: string; type: string; label: string }>;
+}
+
+/** `GET /api/mind/digest`: what the Mind would tell you first. */
+export interface MindDigest {
+  agent: string;
+  attention: string[];
+  focus: string | null;
+  last_sleep: { at: number | null; ago: string; summary: unknown } | null;
+  commitments: MindDigestCommitment[];
+  open_items: MindDigestOpenItem[];
+  errors: string[];
+}
+
 function qs(params: Record<string, string | number | undefined>): string {
   const search = new URLSearchParams();
   for (const [key, value] of Object.entries(params)) {
@@ -89,6 +131,10 @@ function qs(params: Record<string, string | number | undefined>): string {
 
 export function getMindStatus(agent?: string): Promise<MindStatus> {
   return apiFetch<MindStatus>(`/api/mind/status${qs({ agent })}`);
+}
+
+export function getMindDigest(agent?: string): Promise<MindDigest> {
+  return apiFetch<MindDigest>(`/api/mind/digest${qs({ agent })}`);
 }
 
 export function mindRecall(

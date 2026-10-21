@@ -48,6 +48,12 @@ mind_patch = "runtime/patches/0003-mind-page.patch"
 dashboard_bodies_page = "runtime/overlay/web/src/pages/Bodies.tsx"
 bodies_api = "runtime/overlay/crates/caelza-gateway/src/api_bodies.rs"   # GET status/devices/sensors/packages/capture, POST|DELETE pair; one MCP connection to the Body
 bodies_patch = "runtime/patches/0004-bodies-page.patch"
+# M4 phase 3a: Home (/) as status before chat and Procedures (/procedures) over the SOP engine;
+# the upstream dashboard keeps its tabs at /dashboard.
+dashboard_home_page = "runtime/overlay/web/src/pages/Home.tsx"
+dashboard_procedures_page = "runtime/overlay/web/src/pages/Procedures.tsx"
+mind_digest_api = "/api/mind/digest"   # brain_status attention + last sleep, brain_commitments, brain_list_open; in api_mind.rs
+home_patch = "runtime/patches/0005-home-procedures.patch"
 
 # ---------------------------------------------------------------------------
 # Mind — autonomic long-term memory. xanima is the renamed openwave plugin;
