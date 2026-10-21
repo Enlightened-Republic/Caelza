@@ -1,0 +1,85 @@
+Caelza M4 phase 2a: the Memory page.
+
+Mounts the gateway's /api/mind routes (crates/caelza-gateway/src/api_mind.rs,
+an overlay file) that proxy the xanima brain service with the host-side
+tokens, and wires the dashboard's Memory page (web/src/pages/Memory.tsx,
+overlay) into the lazy page registry, the router (/memory was a redirect to
+the dashboard's Memories tab) and the sidebar's Home group. Applied after the
+rename, the overlay and patches 0001 and 0002; regenerate with the same
+`diff -u` when the upstream pin moves.
+
+--- a/crates/caelza-gateway/src/lib.rs
++++ b/crates/caelza-gateway/src/lib.rs
+@@ -12,6 +12,7 @@
+ pub mod api_browse;
+ pub mod api_config;
+ pub mod api_logs;
++pub mod api_mind;
+ pub mod api_oidc;
+ pub mod api_pairing;
+ pub mod api_personality;
+@@ -2347,6 +2348,15 @@
+         .route("/api/memory", get(api::handle_api_memory_list))
+         .route("/api/memory", post(api::handle_api_memory_store))
+         .route("/api/memory/{key}", delete(api::handle_api_memory_delete))
++        // The Mind (xanima brain service) for the dashboard's Memory page;
++        // the gateway holds the tokens and proxies the brain tools.
++        .route("/api/mind/status", get(api_mind::handle_mind_status))
++        .route("/api/mind/recall", get(api_mind::handle_mind_recall))
++        .route("/api/mind/forget", post(api_mind::handle_mind_forget))
++        .route(
++            "/api/mind/review",
++            get(api_mind::handle_mind_review_list).post(api_mind::handle_mind_review_decide),
++        )
+         .route("/api/cost", get(api::handle_api_cost))
+         .route("/api/cli-tools", get(api::handle_api_cli_tools))
+         .route("/api/channels", get(api::handle_api_channels))
+--- a/web/src/components/layout/Sidebar.tsx
++++ b/web/src/components/layout/Sidebar.tsx
+@@ -8,6 +8,7 @@
+   ArrowDownToLine,
+   Blocks,
+   Bot,
++  Brain,
+   Clock,
+   LayoutDashboard,
+   ListChecks,
+@@ -50,7 +51,11 @@
+ const navGroups: NavGroup[] = [
+   {
+     headingKey: 'nav.group.home',
+-    items: [{ to: '/', icon: LayoutDashboard, labelKey: 'nav.dashboard' }],
++    items: [
++      { to: '/', icon: LayoutDashboard, labelKey: 'nav.dashboard' },
++      // The Mind: a top-level section (vision §7), not a settings page.
++      { to: '/memory', icon: Brain, labelKey: 'nav.memory' },
++    ],
+   },
+   {
+     headingKey: 'nav.group.chat',
+--- a/web/src/router/lazyPages.tsx
++++ b/web/src/router/lazyPages.tsx
+@@ -23,3 +23,4 @@
+ );
+ export const Runs = lazy(() => import('../pages/Runs'));
+ export const RunDetail = lazy(() => import('../pages/RunDetail'));
++export const Memory = lazy(() => import('../pages/Memory'));
+--- a/web/src/router/router.tsx
++++ b/web/src/router/router.tsx
+@@ -13,6 +13,7 @@
+   Doctor,
+   Integrations,
+   Logs,
++  Memory,
+   Pairing,
+   Plugins,
+   Quickstart,
+@@ -56,7 +57,7 @@
+         <Route path="/runs/:sop/:runId" element={<RunDetail />} />
+         <Route path="/integrations" element={<Integrations />} />
+         <Route path="/plugins" element={<Plugins />} />
+-        <Route path="/memory" element={<Navigate to="/?tab=memories" replace />} />
++        <Route path="/memory" element={<Memory />} />
+         <Route path="/config" element={<Config />} />
+         <Route path="/config/:section" element={<Config />} />
+         <Route path="/config/:section/:type" element={<Config />} />

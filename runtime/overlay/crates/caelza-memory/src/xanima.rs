@@ -216,6 +216,25 @@ impl XanimaMemory {
         );
     }
 
+    /// The agent whose brain answers operations that name no agent.
+    pub fn agent(&self) -> &str {
+        &self.settings.agent
+    }
+
+    /// Whether a token source exists for `agent`: the configured token, or
+    /// the agent's token file on disk.
+    pub fn has_token(&self, agent: &str) -> bool {
+        matches!(self.token_for(agent), Ok(Some(_)))
+    }
+
+    /// One brain tool call for operator surfaces (the dashboard's Mind page):
+    /// the tool's text reply, parsed as JSON when it is JSON, else wrapped as
+    /// `{"text": ...}`. Errors carry the service's own message.
+    pub async fn call_tool_json(&self, agent: &str, tool: &str, arguments: Value) -> Result<Value> {
+        let text = self.call_tool(agent, tool, arguments).await?;
+        Ok(serde_json::from_str::<Value>(&text).unwrap_or_else(|_| json!({"text": text})))
+    }
+
     /// One MCP `tools/call` round trip. Returns the joined text content.
     async fn call_tool(&self, agent: &str, tool: &str, arguments: Value) -> Result<String> {
         let token = self.require_token(agent)?;

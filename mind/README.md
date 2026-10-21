@@ -135,10 +135,16 @@ never become memories.
 - **Skill evolution → Caelza skills.** `skillEvolution` generates a skill file
   when a pattern recurs; write them into the runtime's skill-bundle directory
   so the agent grows its own playbooks.
-- **Memory page in the dashboard.** xanima ships a control UI
-  (`src/control-ui.ts`): brain stats, recall preview, graph browse, identity
-  history. Port it to the Caelza dashboard's Memory section against the
-  service API.
+- **Memory page in the dashboard: shipped** (M4 phase 2a). `/memory` shows the
+  brains (`brain_stats`), the status counts and attention lines
+  (`brain_status`), recall by query with a forget action (`brain_query`,
+  `brain_forget`) and the review queue with accept / reject (`brain_review`;
+  deciding needs an admin-scoped token on the service). The browser never
+  holds a brain token: the gateway's `/api/mind/status|recall|forget|review`
+  (`runtime/overlay/crates/caelza-gateway/src/api_mind.rs`) resolve the
+  active `xanima` storage entry and call the service with the agent's token
+  file. Still to port from xanima's control UI: graph browse (`brain_expand`)
+  and identity history.
 
 ## Files
 
