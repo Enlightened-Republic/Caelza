@@ -1,0 +1,73 @@
+/* Caelza brand faces and the lockup (brand/BRAND.md).
+   The fonts are vendored from brand/fonts (SIL OFL 1.1, licences alongside) and
+   copied into web/public/fonts by brand/make_assets.py, so the dashboard loads
+   its own faces with no font CDN and keeps them offline. Inter Tight is the UI
+   face, JetBrains Mono the code face, Orbitron the wordmark and nothing else. */
+
+@font-face {
+  font-family: 'Inter Tight';
+  font-style: normal;
+  font-weight: 400;
+  font-display: swap;
+  src: url('/fonts/InterTight-400.ttf') format('truetype');
+}
+@font-face {
+  font-family: 'Inter Tight';
+  font-style: normal;
+  font-weight: 700;
+  font-display: swap;
+  src: url('/fonts/InterTight-700.ttf') format('truetype');
+}
+@font-face {
+  font-family: 'JetBrains Mono';
+  font-style: normal;
+  font-weight: 500;
+  font-display: swap;
+  src: url('/fonts/JetBrainsMono-500.ttf') format('truetype');
+}
+@font-face {
+  font-family: 'Orbitron';
+  font-style: normal;
+  font-weight: 900;
+  font-display: swap;
+  src: url('/fonts/Orbitron-900.ttf') format('truetype');
+}
+
+:root {
+  --cz-font-wordmark: 'Orbitron', 'Inter Tight', system-ui, sans-serif;
+  /* The mark's gradient, left to right, as the wordmark fill. */
+  --cz-gradient-mark: linear-gradient(90deg, #22e6ff 0%, #7b6bff 50%, #b44fff 100%);
+}
+
+/* Eyebrow: "ENLIGHTENED REPUBLIC™ PRESENTS". Mono, caps, wide tracking, dim. */
+.cz-eyebrow {
+  font-family: var(--pc-font-mono);
+  font-size: 10px;
+  letter-spacing: 0.16em;
+  text-transform: uppercase;
+  color: var(--pc-text-faint);
+}
+
+/* Wordmark: Orbitron 900, caps, gradient fill, a faint glow. */
+.cz-wordmark {
+  font-family: var(--cz-font-wordmark);
+  font-weight: 900;
+  letter-spacing: 0.06em;
+  text-transform: uppercase;
+  background: var(--cz-gradient-mark);
+  -webkit-background-clip: text;
+  background-clip: text;
+  color: transparent;
+  -webkit-text-fill-color: transparent;
+  filter: drop-shadow(0 0 10px rgba(34, 230, 255, 0.22));
+}
+
+/* Footer attribution: the parent signs every Enlightened Republic product. */
+.cz-attribution {
+  font-family: var(--pc-font-mono);
+  font-size: 9px;
+  letter-spacing: 0.12em;
+  text-transform: uppercase;
+  color: var(--pc-text-faint);
+  white-space: nowrap;
+}

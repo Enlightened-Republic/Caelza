@@ -357,6 +357,15 @@ def icon(size: int, *, art: Image.Image | None = None) -> Image.Image:
 # output sets
 # ---------------------------------------------------------------------------
 
+def maskable_icon(size: int) -> Image.Image:
+    """Maskable PWA icon: the mark inside the 80 % safe zone on the void, no
+    frame, so every launcher shape (circle, squircle, teardrop) keeps the bolt."""
+    im = Image.new("RGBA", (size, size), TOKENS["color"]["void"])
+    mark = draw_mark(int(size * 0.62))
+    im.alpha_composite(mark, ((size - mark.width) // 2, (size - mark.height) // 2))
+    return im
+
+
 def save_png(im: Image.Image, path: Path) -> None:
     path.parent.mkdir(parents=True, exist_ok=True)
     im.save(path, "PNG", optimize=True)
@@ -385,6 +394,18 @@ def render_runtime(root: Path, *, use_art: bool = False) -> None:
     mark256 = draw_mark(256)
     save_png(mark256, root / "web/public/logo.png")
     save_png(mark256, root / "web/dist/logo.png")
+    # The dashboard's own faces (brand/fonts, SIL OFL, licences alongside) and
+    # the installable app's icons. web/src/caelza-brand.css and
+    # web/public/manifest.webmanifest (runtime/overlay) reference them.
+    fonts_dir = root / "web/public/fonts"
+    fonts_dir.mkdir(parents=True, exist_ok=True)
+    for f in sorted((HERE / "fonts").iterdir()):
+        if f.suffix == ".ttf" or f.name.startswith("OFL-"):
+            (fonts_dir / f.name).write_bytes(f.read_bytes())
+    save_png(icon(192, art=art), root / "web/public/icon-192.png")
+    save_png(icon(512, art=art), root / "web/public/icon-512.png")
+    save_png(icon(180, art=art), root / "web/public/apple-touch-icon.png")
+    save_png(maskable_icon(512), root / "web/public/icon-maskable-512.png")
     save_png(mark256, root / "docs/book/theme/favicon.png")
     (root / "docs/book/theme/favicon.svg").write_text(svg, encoding="utf-8")
     save_png(draw_mark(512), root / ".github/assets/caelza-logo.png")
