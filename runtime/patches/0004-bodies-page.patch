@@ -1,0 +1,94 @@
+Caelza M4 phase 2b: the Bodies page.
+
+Mounts the gateway's /api/bodies routes (crates/caelza-gateway/src/api_bodies.rs,
+an overlay file) that reach the Body's MCP server (`caelza-body serve`, the
+[[mcp.servers]] entry named body) through the Runtime's own MCP client, and
+wires the dashboard's Bodies page (web/src/pages/Bodies.tsx, overlay) into the
+lazy page registry, the router (/bodies), the sidebar's Home group and the
+English strings (every other locale falls back to English for nav.bodies).
+Applied after the rename, the overlay and patches 0001 to 0003; regenerate
+with the same `diff -u` when the upstream pin moves.
+
+--- a/crates/caelza-gateway/src/lib.rs
++++ b/crates/caelza-gateway/src/lib.rs
+@@ -9,6 +9,7 @@
+ pub mod acp;
+ pub mod agent_owned_state;
+ pub mod api;
++pub mod api_bodies;
+ pub mod api_browse;
+ pub mod api_config;
+ pub mod api_logs;
+@@ -2357,6 +2358,17 @@
+             "/api/mind/review",
+             get(api_mind::handle_mind_review_list).post(api_mind::handle_mind_review_decide),
+         )
++        // The Body (caelza-body over MCP) for the dashboard's Bodies page;
++        // the gateway owns the connection and makes the tool calls.
++        .route("/api/bodies/status", get(api_bodies::handle_bodies_status))
++        .route("/api/bodies/devices", get(api_bodies::handle_bodies_devices))
++        .route("/api/bodies/sensors", get(api_bodies::handle_bodies_sensors))
++        .route("/api/bodies/packages", get(api_bodies::handle_bodies_packages))
++        .route("/api/bodies/capture", get(api_bodies::handle_bodies_capture))
++        .route(
++            "/api/bodies/pair",
++            post(api_bodies::handle_bodies_pair).delete(api_bodies::handle_bodies_unpair),
++        )
+         .route("/api/cost", get(api::handle_api_cost))
+         .route("/api/cli-tools", get(api::handle_api_cli_tools))
+         .route("/api/channels", get(api::handle_api_channels))
+--- a/web/src/components/layout/Sidebar.tsx
++++ b/web/src/components/layout/Sidebar.tsx
+@@ -19,6 +19,7 @@
+   Smartphone,
+   Sparkles,
+   Stethoscope,
++  TabletSmartphone,
+   Terminal,
+   Workflow,
+   Wrench,
+@@ -53,7 +54,8 @@
+     headingKey: 'nav.group.home',
+     items: [
+       { to: '/', icon: LayoutDashboard, labelKey: 'nav.dashboard' },
+-      // The Mind: a top-level section (vision §7), not a settings page.
++      // Bodies and the Mind: top-level sections (vision §7), not settings pages.
++      { to: '/bodies', icon: TabletSmartphone, labelKey: 'nav.bodies' },
+       { to: '/memory', icon: Brain, labelKey: 'nav.memory' },
+     ],
+   },
+--- a/web/src/lib/i18n.ts
++++ b/web/src/lib/i18n.ts
+@@ -1394,6 +1394,7 @@
+     'nav.integrations': 'Integrations',
+     'nav.skills': 'Skills',
+     'nav.memory': 'Memory',
++    'nav.bodies': 'Bodies',
+     'nav.config': 'Config',
+     'nav.cost': 'Cost Tracker',
+     'nav.logs': 'Logs',
+--- a/web/src/router/lazyPages.tsx
++++ b/web/src/router/lazyPages.tsx
+@@ -24,3 +24,4 @@
+ export const Runs = lazy(() => import('../pages/Runs'));
+ export const RunDetail = lazy(() => import('../pages/RunDetail'));
+ export const Memory = lazy(() => import('../pages/Memory'));
++export const Bodies = lazy(() => import('../pages/Bodies'));
+--- a/web/src/router/router.tsx
++++ b/web/src/router/router.tsx
+@@ -6,6 +6,7 @@
+   AgentChat,
+   AgentWorkspaceExplorer,
+   AgentsList,
++  Bodies,
+   Canvas,
+   Config,
+   Cron,
+@@ -58,6 +59,7 @@
+         <Route path="/integrations" element={<Integrations />} />
+         <Route path="/plugins" element={<Plugins />} />
+         <Route path="/memory" element={<Memory />} />
++        <Route path="/bodies" element={<Bodies />} />
+         <Route path="/config" element={<Config />} />
+         <Route path="/config/:section" element={<Config />} />
+         <Route path="/config/:section/:type" element={<Config />} />

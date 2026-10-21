@@ -44,6 +44,10 @@ dashboard_patch = "runtime/patches/0002-ui-phase1.patch"
 dashboard_memory_page = "runtime/overlay/web/src/pages/Memory.tsx"
 mind_api = "runtime/overlay/crates/caelza-gateway/src/api_mind.rs"   # GET status/recall/review, POST forget/review; tokens stay on the host
 mind_patch = "runtime/patches/0003-mind-page.patch"
+# M4 phase 2b: the Bodies page (/bodies) over the gateway's /api/bodies routes.
+dashboard_bodies_page = "runtime/overlay/web/src/pages/Bodies.tsx"
+bodies_api = "runtime/overlay/crates/caelza-gateway/src/api_bodies.rs"   # GET status/devices/sensors/packages/capture, POST|DELETE pair; one MCP connection to the Body
+bodies_patch = "runtime/patches/0004-bodies-page.patch"
 
 # ---------------------------------------------------------------------------
 # Mind — autonomic long-term memory. xanima is the renamed openwave plugin;

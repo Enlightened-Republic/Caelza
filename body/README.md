@@ -86,6 +86,24 @@ loop (the rest of M2: the Runtime owns the turn, the supervisor guards the
 Body code and the Runtime binary) is a per-phone switch once the Runtime is
 running there (M1).
 
+## On the dashboard
+
+The Runtime's dashboard has a **Bodies** page (`/bodies`, M4 phase 2b): this
+phone and the paired phones with reachability (`device_list`), battery,
+whereabouts and notifications (`sensors_battery`, `sensors_location` in quick
+mode, `sensors_notifications`), a screenshot of any paired phone and a photo
+from this phone's camera (`device_screencap`, `sensors_camera_photo`), the
+package list (`device_packages`), and pair / unpair over ADB wireless
+debugging (`device_pair`, `device_unpair`). The gateway's `/api/bodies/*`
+(`runtime/overlay/crates/caelza-gateway/src/api_bodies.rs`) reads the
+`[[mcp.servers]]` entry named `body` (another name works through `?server=`;
+any entry whose command is `caelza-body` counts as a Body), keeps one
+connection to it for the gateway's lifetime and makes the tool calls with the
+Runtime's own MCP client, so the browser never spawns or reaches the Body
+directly. A Body started with `--tools` shows only the sections its groups
+serve. The page's pair and unpair are the owner's own hand on the phone; the
+agent's calls to the same tools still go through the risk profile above.
+
 ## Next
 
 - `transport = "http"` so a hub Runtime reaches phones over Tailscale
