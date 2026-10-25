@@ -54,6 +54,10 @@ dashboard_home_page = "runtime/overlay/web/src/pages/Home.tsx"
 dashboard_procedures_page = "runtime/overlay/web/src/pages/Procedures.tsx"
 mind_digest_api = "/api/mind/digest"   # brain_status attention + last sleep, brain_commitments, brain_list_open; in api_mind.rs
 home_patch = "runtime/patches/0005-home-procedures.patch"
+# M4 phase 3b: the phone-first pass (vision §7: every page works at 390 px, one hand).
+phone_rules = "runtime/overlay/web/src/caelza-brand.css"   # gutters, tables scroll in their card, 36 px controls on touch
+phone_patch = "runtime/patches/0006-phone-first.patch"
+phone_shots = "runtime/tools/phone-shots"                   # Playwright at 390 x 844 over every route; reference screens in docs/design/screens/390
 
 # ---------------------------------------------------------------------------
 # Mind — autonomic long-term memory. xanima is the renamed openwave plugin;

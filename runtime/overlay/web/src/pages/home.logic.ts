@@ -195,6 +195,15 @@ export function commitmentTone(c: Pick<MindDigestCommitment, 'overdue' | 'blocke
   return 'neutral';
 }
 
+/** The SOP engine answers 503 "SOP subsystem not enabled" when the config has
+ *  no `[sop]` block; that is a state to explain, not an error to shout. */
+export function sopEngineOff(errorMessage: string | null | undefined): boolean {
+  if (!errorMessage) return false;
+  return errorMessage.includes('SOP subsystem not enabled') || /^API 503\b/.test(errorMessage);
+}
+
+export const SOP_OFF_TEXT = 'Procedures are off in this config: the SOP engine is not enabled, so nothing can run or wait here.';
+
 export interface SleepSummarySlice {
   nodesBefore?: number;
   nodesAfter?: number;

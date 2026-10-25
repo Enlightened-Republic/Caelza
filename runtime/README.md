@@ -24,7 +24,11 @@ runtime/
 │                      factory, dashboard picker); 0002 UI phase 1 (fonts default, lockup, attribution, accent labels,
 │                      PWA hooks, Service-Worker-Allowed in the gateway); 0003 the Memory page (routes, router, sidebar);
 │                      0004 the Bodies page (routes, router, sidebar, the nav.bodies string); 0005 Home and Procedures
-│                      (the digest route, Home at /, the dashboard at /dashboard, sidebar + palette + titles, strings)
+│                      (the digest route, Home at /, the dashboard at /dashboard, sidebar + palette + titles, strings);
+│                      0006 the phone-first pass (header actions wrap, globe-only language button, chat toolbar wraps,
+│                      Runs padding and titles, no font CDN)
+├── tools/phone-shots/ Playwright over every dashboard route at 390 × 844: screenshots, sideways scroll, elements past
+│                      the edge, controls under 32 px; a mock proxy for the Mind and Body routes
 ├── lib/rename.pl      the replacement engine
 ├── lib/dashboard_theme.py  registers caelza-dark / caelza-light as the dashboard defaults
 └── build.sh           fetch → rebrand → cargo build

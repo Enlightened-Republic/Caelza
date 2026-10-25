@@ -11,7 +11,16 @@ import {
   runtimeTile,
   sessionLabel,
   sleepLine,
+  sopEngineOff,
 } from './home.logic.ts';
+
+test('a disabled SOP engine is a state, not an error', () => {
+  assert.ok(sopEngineOff('API 503: {"error":"SOP subsystem not enabled"}'));
+  assert.ok(sopEngineOff('API 503: Service Unavailable'));
+  assert.ok(!sopEngineOff('API 502: gateway timeout'));
+  assert.ok(!sopEngineOff(null));
+  assert.ok(!sopEngineOff(''));
+});
 
 const NOW = Date.parse('2026-10-21T12:00:00Z');
 
