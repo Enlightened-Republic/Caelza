@@ -1,0 +1,32 @@
+@@caelza:pkg com.cleaner.boost.master
+    versionName=1.0
+    pkgFlags=[ HAS_CODE ALLOW_CLEAR_USER_DATA ]
+    firstInstallTime=2026-06-01 10:00:00
+    lastUpdateTime=2026-06-01 10:00:00
+android.permission.INTERNET
+@@caelza:ops com.cleaner.boost.master
+Uid u0a402:
+  RUN_IN_BACKGROUND: allow
+@@caelza:pkg com.example.flashlightpro
+    versionName=3.2.1
+    pkgFlags=[ HAS_CODE ALLOW_CLEAR_USER_DATA ALLOW_BACKUP ]
+    firstInstallTime=2026-10-20 18:02:11
+    lastUpdateTime=2026-10-20 18:02:11
+    installerPackageName=com.google.android.packageinstaller
+android.permission.INTERNET
+android.permission.READ_SMS
+android.permission.RECEIVE_BOOT_COMPLETED
+android.permission.RECEIVE_SMS
+android.permission.REQUEST_INSTALL_PACKAGES
+android.permission.SYSTEM_ALERT_WINDOW
+@@caelza:ops com.example.flashlightpro
+Uid u0a401:
+  SYSTEM_ALERT_WINDOW: allow; time=+3h12m0s ago
+  RUN_IN_BACKGROUND: allow
+  REQUEST_INSTALL_PACKAGES: allow
+@@caelza:accessibility
+com.example.flashlightpro/com.example.flashlightpro.a11y.HelperService
+@@caelza:listeners
+null
+@@caelza:admins
+@@caelza:end

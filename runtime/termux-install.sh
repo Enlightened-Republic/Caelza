@@ -118,7 +118,8 @@ Next:
   caelza config set channels.telegram.home.bot_token   # if you want Telegram (masked prompt)
   # then merge runtime/caelza.phone.example.toml into ~/.caelza/config.toml:
   #   Telegram alias + peer group, the Mind (xanima) and Body (caelza-body) MCP servers,
-  #   and the risk profile that gates the dangerous Body tools
+  #   the risk profile that gates the dangerous Body tools, and [sop] sops_dir
+  caelza-body playbooks --install         # the phone playbooks → ~/.caelza/shared/sops (needs ../install.sh)
   caelza daemon                           # gateway on http://127.0.0.1:42617 + channels
 EOF
 [ -d "$HOME/caelza" ] && say "the example configs are in $HOME/caelza/runtime, mind and body" || true

@@ -5,6 +5,12 @@
 **Method:** `adb shell pm uninstall --user 0` / `pm disable-user --user 0` (non-root, no bootloader unlock)
 **Restore reference:** `docs/examples/revvl-7-debloat/packages-snapshot.txt` (full `pm list packages -f` of all 297 packages before changes)
 
+> This log became the **`phone-debloat`** playbook (`body/sops/phone-debloat`, milestone M5):
+> the carrier junk below is the seed of the curated list in `caelza_body/agent/playbooks.py`,
+> the Google apps are its *optional* class, and `tests/test_playbook_evals.py` runs the
+> classifier over this snapshot. The playbook does by procedure, with an approval gate,
+> what this log did by hand.
+
 ## Result
 
 `MemAvailable` 2.40 GB → 2.93 GB immediately (expected ~3.3–3.6 GB steady-state after a reboot).

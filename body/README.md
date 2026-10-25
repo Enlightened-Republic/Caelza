@@ -28,9 +28,10 @@ On the phone, in the Body checkout (`install.sh` already does the install):
 
 ```bash
 pip install -e .            # puts `caelza-body` on PATH
-caelza-body probe           # {"ok": true, "tools": 35, ...} and exit 0
+caelza-body probe           # {"ok": true, "tools": 39, ...} and exit 0
 caelza-body list-tools      # every tool, its schema and safety hints, as JSON
 caelza-body serve           # the stdio server; this is what the Runtime runs
+caelza-body playbooks       # the phone playbooks (body/sops); --install puts them where the Runtime loads SOPs
 ```
 
 `--home DIR` overrides the state dir (default `$CAELZA_BODY_HOME`, then
@@ -51,12 +52,22 @@ and the class is what the example risk profile is generated from.
 
 | class | MCP hints | Runtime policy | tools |
 |---|---|---|---|
-| **read-only** | `readOnlyHint`, `idempotentHint` | `auto_approve` | `device_list`, `device_packages`, `device_logcat`, `device_settings`, `device_ui_dump`, `device_screencap`, `sensors_battery`, `sensors_notifications`, `sensors_clipboard_get`, `sensors_location`, `self_read_file`, `self_list_tree`, `web_search`, `web_read`, `web_map`, `web_crawl_result` |
+| **read-only** | `readOnlyHint`, `idempotentHint` | `auto_approve` | `device_list`, `device_packages`, `device_logcat`, `device_settings`, `device_ui_dump`, `device_screencap`, `device_debloat_plan`, `device_suspects`, `device_foreground`, `device_health`, `sensors_battery`, `sensors_notifications`, `sensors_clipboard_get`, `sensors_location`, `self_read_file`, `self_list_tree`, `web_search`, `web_read`, `web_map`, `web_crawl_result` |
 | **destructive** | `destructiveHint` | `always_ask` | `device_uninstall`, `device_disable`, `device_settings_put`, `device_appops`, `device_pair`, `device_unpair`, `device_shell`, `shell_run`, `self_write_file`, `self_commit`, `self_request_restart` |
 | **neutral** | none | the profile's normal policy | `device_input`, `sensors_camera_photo`, `sensors_mic_record`, `sensors_tts_speak`, `sensors_clipboard_set`, `sensors_torch`, `self_run_tests`, `web_crawl` |
 
 The memory tools (`memory_recall`, `memory_remember`, `memory_reset`) are not
 served: the Mind owns memory now ([`../mind/README.md`](../mind/README.md)).
+
+The four `device_*` reads added for the playbooks (M5) live in
+`caelza_body/agent/tools/playbook.py` and register with the `device` group:
+`device_debloat_plan` (the curated debloat list applied to what is installed),
+`device_suspects` (sideloaded apps with the permissions malware wants, scored),
+`device_foreground` (what is on screen and who installed it) and
+`device_health` (identity, battery, storage, memory, uptime, heat, crashes,
+the setup checklist, in one adb call). Their parsing is pure code in
+`caelza_body/agent/playbooks.py`, run by `tests/test_playbook_evals.py` over
+recorded phone output.
 
 ## How calls behave
 
@@ -103,6 +114,21 @@ Runtime's own MCP client, so the browser never spawns or reaches the Body
 directly. A Body started with `--tools` shows only the sections its groups
 serve. The page's pair and unpair are the owner's own hand on the phone; the
 agent's calls to the same tools still go through the risk profile above.
+
+## The phone playbooks (`sops/`)
+
+Four standard operating procedures for the Runtime's SOP engine, the Airframe
+capability playbooks as procedures with approval gates (milestone M5):
+`phone-debloat`, `phone-malware-removal`, `phone-new-setup`,
+`phone-diagnostics`. Each is a `SOP.toml` + `SOP.md` directory the Runtime
+loads as-is; the reads are the playbook tools above, the one step per
+procedure that changes the phone carries `requires_confirmation` and parks the
+run until the owner approves it on the Procedures page (which gives each a
+**Run** that asks which phone), on Home, or over `caelza sop approve`.
+`caelza-body playbooks --install` copies them into `~/.caelza/shared/sops`,
+`install.sh` does the same on a phone, and `[sop] sops_dir = "shared/sops"`
+in the Runtime config loads them. [`sops/README.md`](sops/README.md) has the
+table, the gates, the evals and how to run them against an emulator.
 
 ## Next
 

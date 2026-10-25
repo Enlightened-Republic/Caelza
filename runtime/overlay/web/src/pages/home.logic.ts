@@ -204,6 +204,49 @@ export function sopEngineOff(errorMessage: string | null | undefined): boolean {
 
 export const SOP_OFF_TEXT = 'Procedures are off in this config: the SOP engine is not enabled, so nothing can run or wait here.';
 
+/** The library lists procedures from disk, but the runs route answers 503: the engine is built by `caelza daemon`, not by a standalone gateway. */
+export const SOP_ENGINE_NOT_RUNNING_TEXT =
+  'The SOP engine is not running in this process: the procedures are listed from disk, but nothing can run or wait here. `caelza gateway start` serves the dashboard alone; start the Runtime with `caelza daemon`.';
+
+/** What to say when the runs route reports the engine off, given whether the library found any procedures. */
+export function sopOffText(listed: boolean): string {
+  return listed ? SOP_ENGINE_NOT_RUNNING_TEXT : SOP_OFF_TEXT;
+}
+
+/** The phone playbooks (body/sops) ship under this prefix; the library gives them a Run that asks which phone. */
+export const PLAYBOOK_PREFIX = 'phone-';
+
+export function isPlaybook(name: string): boolean {
+  return name.startsWith(PLAYBOOK_PREFIX);
+}
+
+/** The trigger payload a playbook reads: which phone (`self` is the one the Body runs on), and for the debloat an optional keep list. */
+export function playbookPayload(device: string, keep?: string): string {
+  const payload: Record<string, string> = { device: device.trim() || 'self' };
+  const pinned = (keep ?? '').trim();
+  if (pinned) payload.keep = pinned;
+  return JSON.stringify(payload);
+}
+
+/** One line a device picker can show for a Body device. */
+export function deviceOptionLabel(d: BodyDevice): string {
+  return `${d.name}${d.self ? ' (this phone)' : ''}${d.reachable ? '' : ' · unreachable'}`;
+}
+
+/** The run endpoint's refusals in plain words; anything unknown passes through. */
+export function runRefusal(message: string, listed = true): string {
+  if (sopEngineOff(message)) return sopOffText(listed);
+  if (/no owning agent|cannot be started here|unowned/i.test(message)) {
+    return 'This procedure has no owning agent, so it cannot start from the dashboard. Set `agent` in its SOP.toml, or start it from a chat.';
+  }
+  if (/^API 404\b/.test(message)) return 'The procedure is not loaded. Install or save it, then refresh.';
+  if (/^API 409\b/.test(message) || /already (running|in flight)|admission|deferred|cooldown/i.test(message)) {
+    return 'A run of this procedure is already in flight. Wait for it, or stop it first.';
+  }
+  if (/^API 400\b/.test(message) && /payload/i.test(message)) return 'The payload was refused: it must be JSON, like {"device": "self"}.';
+  return message;
+}
+
 export interface SleepSummarySlice {
   nodesBefore?: number;
   nodesAfter?: number;

@@ -11,7 +11,7 @@ from caelza_body.agent.model import Model
 from caelza_body.agent.redact import Redactor
 from caelza_body.agent.session import Session
 from caelza_body.agent.telegram import Telegram, api_client
-from caelza_body.agent.tools import device, memreset, selfmod, sensors, shell, web
+from caelza_body.agent.tools import device, memreset, playbook, selfmod, sensors, shell, web
 
 
 def _register_tools(repo_root, body_home, firecrawl_api_key="",
@@ -24,6 +24,7 @@ def _register_tools(repo_root, body_home, firecrawl_api_key="",
     shell.register()
     device.configure(body_home)
     device.register()
+    playbook.register()
     web.configure(body_home, firecrawl_api_key, tavily_api_key, searchapi_api_key)
     web.register()
 

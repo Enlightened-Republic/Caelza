@@ -62,7 +62,9 @@ def test_patch_touches_only_the_files_it_claims():
 def test_a_disabled_sop_engine_is_explained_not_shouted():
     assert "export function sopEngineOff" in LOGIC and "SOP subsystem not enabled" in LOGIC
     for page in (HOME, PROCEDURES):
-        assert "sopEngineOff(" in page and "SOP_OFF_TEXT" in page
+        assert "sopEngineOff(" in page and ("SOP_OFF_TEXT" in page or "sopOffText(" in page)
+    # Procedures tells a standalone gateway (procedures listed, engine absent) from a config with the engine off.
+    assert "sopOffText(" in PROCEDURES and "SOP_ENGINE_NOT_RUNNING_TEXT" in LOGIC and "caelza daemon" in LOGIC
 
 
 def test_the_measuring_tool_and_the_reference_screens_are_in_the_repo():
@@ -75,7 +77,7 @@ def test_the_measuring_tool_and_the_reference_screens_are_in_the_repo():
     for route in ("'/'", "'/bodies'", "'/memory'", "'/procedures'", "'/dashboard'", "'/agents'"):
         assert route in shoot, route
     assert "390" in shoot and "deviceScaleFactor" in shoot
-    expected = {"home", "bodies", "memory", "procedures", "dashboard", "agent-chat", "tools", "runs", "drawer"}
+    expected = {"home", "bodies", "memory", "procedures", "procedures-run", "dashboard", "agent-chat", "tools", "runs", "drawer"}
     assert {p.stem for p in SCREENS.glob("*.png")} == expected
     for png in SCREENS.glob("*.png"):
         assert png.read_bytes()[:8] == b"\x89PNG\r\n\x1a\n", png.name

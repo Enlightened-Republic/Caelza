@@ -1,18 +1,20 @@
 // Procedures: the SOP engine as the owner sees it. What waits on them, what is
 // running, the library of procedures, what finished lately. The deeper views
 // (the editor, the canvas, the full runs table) stay where upstream put them;
-// this page is the front door.
-import { useCallback, useState } from 'react';
-import { Link } from 'react-router-dom';
-import { ClipboardList, ExternalLink, Loader2, Pencil, Plus, RefreshCw, Square } from 'lucide-react';
+// this page is the front door. The phone playbooks (body/sops) get a Run that
+// asks which phone and sends it as the trigger payload.
+import { useCallback, useEffect, useState } from 'react';
+import { Link, useNavigate } from 'react-router-dom';
+import { ClipboardList, ExternalLink, Loader2, Pencil, Play, Plus, RefreshCw, Smartphone, Square } from 'lucide-react';
 
 import ApprovalQueue from '@/components/ApprovalQueue';
-import { Badge, Button, Card, PageHeader } from '@/components/ui';
+import { Badge, Button, Card, ConfirmDialog, PageHeader, Select } from '@/components/ui';
+import { getBodyDevices, type BodyDevice } from '@/lib/bodies';
 import { formatRelative } from '@/lib/format';
 import { t } from '@/lib/i18n';
-import { cancelSop, listRuns, listSops, runStatusBadge, type SopRunSummary, type SopSummary } from '@/lib/sops';
+import { cancelSop, listRuns, listSops, runSop, runStatusBadge, type SopRunSummary, type SopSummary } from '@/lib/sops';
 import { usePolling } from '@/hooks/usePolling';
-import { partitionRuns, sopEngineOff, SOP_OFF_TEXT } from './home.logic';
+import { deviceOptionLabel, isPlaybook, partitionRuns, playbookPayload, runRefusal, sopEngineOff, sopOffText } from './home.logic';
 
 function errorText(reason: unknown): string {
   return reason instanceof Error ? reason.message : String(reason);
@@ -23,6 +25,7 @@ export default function Procedures() {
   const [runs, setRuns] = useState<SopRunSummary[] | null>(null);
   const [error, setError] = useState<string | null>(null);
   const [reload, setReload] = useState(0);
+  const [starting, setStarting] = useState<SopSummary | null>(null);
   const refresh = useCallback(() => setReload((n) => n + 1), []);
 
   usePolling(
@@ -68,7 +71,13 @@ export default function Procedures() {
           <div className="flex items-start gap-3 text-sm">
             <ClipboardList className="mt-0.5 h-5 w-5 shrink-0 text-pc-accent" aria-hidden="true" />
             <p className="text-pc-text-muted">
-              {SOP_OFF_TEXT} Add a <code className="font-mono">[sop]</code> block to the config to turn it on.
+              {sopOffText((sops?.length ?? 0) > 0)}
+              {(sops?.length ?? 0) === 0 && (
+                <>
+                  {' '}
+                  Add a <code className="font-mono">[sop]</code> block with <code className="font-mono">sops_dir = "shared/sops"</code> to the config to turn it on.
+                </>
+              )}
             </p>
           </div>
         </Card>
@@ -89,7 +98,7 @@ export default function Procedures() {
 
       <RunningNow runs={buckets.running} onChanged={refresh} loaded={runs !== null} />
 
-      <Library sops={sops} />
+      <Library sops={sops} onRun={setStarting} />
 
       <Card>
         <div className="mb-1 flex items-center justify-between">
@@ -118,6 +127,8 @@ export default function Procedures() {
           </ul>
         )}
       </Card>
+
+      <RunDialog sop={starting} onClose={() => setStarting(null)} onStarted={refresh} />
     </div>
   );
 }
@@ -189,7 +200,8 @@ function RunningNow({ runs, onChanged, loaded }: { runs: SopRunSummary[]; onChan
   );
 }
 
-function Library({ sops }: { sops: SopSummary[] | null }) {
+function Library({ sops, onRun }: { sops: SopSummary[] | null; onRun: (sop: SopSummary) => void }) {
+  const playbooks = (sops ?? []).filter((s) => isPlaybook(s.name)).length;
   return (
     <Card>
       <div className="mb-1 flex items-center justify-between">
@@ -198,6 +210,13 @@ function Library({ sops }: { sops: SopSummary[] | null }) {
       </div>
       <p className="mb-3 text-xs text-pc-text-faint">
         Standard operating procedures the agent follows: event-triggered, step by step, with approval gates where you want a say.
+        {playbooks > 0 && (
+          <>
+            {' '}
+            <Smartphone className="inline h-3 w-3 align-[-1px] text-pc-accent" aria-hidden="true" /> marks a phone playbook: Run asks which phone, the
+            step that changes it waits for your approval.
+          </>
+        )}
       </p>
       {sops === null ? (
         <p className="text-sm text-pc-text-muted">Reading…</p>
@@ -205,22 +224,30 @@ function Library({ sops }: { sops: SopSummary[] | null }) {
         <div className="flex items-start gap-3 text-sm">
           <ClipboardList className="mt-0.5 h-5 w-5 shrink-0 text-pc-accent" aria-hidden="true" />
           <p className="text-pc-text-muted">
-            No procedures yet. Write one with <Link to="/sops/new" className="text-pc-accent hover:underline">New procedure</Link>; the phone playbooks
-            (debloat, malware removal, new-phone setup, diagnostics) arrive as procedures in a later milestone.
+            No procedures loaded. Write one with <Link to="/sops/new" className="text-pc-accent hover:underline">New procedure</Link>, or install the
+            phone playbooks (debloat, malware removal, new-phone setup, diagnostics) with{' '}
+            <code className="font-mono">caelza-body playbooks --install</code> and refresh.
           </p>
         </div>
       ) : (
         <ul className="grid gap-2 md:grid-cols-2">
           {sops.map((s) => (
             <li key={s.name} className="rounded-[var(--radius-md)] border border-pc-border bg-pc-elevated p-3">
-              <div className="flex items-center gap-2">
+              <div className="flex flex-wrap items-center gap-2">
+                {isPlaybook(s.name) && <Smartphone className="h-3.5 w-3.5 shrink-0 text-pc-accent" aria-label="phone playbook" />}
                 <Link to={`/sops/${encodeURIComponent(s.name)}`} className="text-sm font-medium text-pc-text hover:underline">
                   {s.name}
                 </Link>
                 {s.version && <span className="font-mono text-xs text-pc-text-faint">v{s.version}</span>}
-                <Link to={`/sops/${encodeURIComponent(s.name)}/edit`} className="ml-auto inline-flex items-center gap-1 text-xs text-pc-accent hover:underline">
-                  <Pencil size={12} aria-hidden="true" /> Edit
-                </Link>
+                <span className="ml-auto flex items-center gap-2">
+                  <Button size="sm" variant="primary" onClick={() => onRun(s)} aria-label={`Run ${s.name}`}>
+                    <Play size={12} aria-hidden="true" fill="currentColor" />
+                    <span className="ml-1">Run</span>
+                  </Button>
+                  <Link to={`/sops/${encodeURIComponent(s.name)}/edit`} className="inline-flex items-center gap-1 text-xs text-pc-accent hover:underline">
+                    <Pencil size={12} aria-hidden="true" /> Edit
+                  </Link>
+                </span>
               </div>
               {s.description && <p className="mt-1 text-xs text-pc-text-secondary">{s.description}</p>}
             </li>
@@ -228,5 +255,102 @@ function Library({ sops }: { sops: SopSummary[] | null }) {
         </ul>
       )}
     </Card>
+  );
+}
+
+/** Start a procedure by hand. A phone playbook asks which phone (the Body's devices) and, for the debloat, what to leave alone. */
+function RunDialog({ sop, onClose, onStarted }: { sop: SopSummary | null; onClose: () => void; onStarted: () => void }) {
+  const navigate = useNavigate();
+  const [devices, setDevices] = useState<BodyDevice[] | null>(null);
+  const [device, setDevice] = useState('self');
+  const [keep, setKeep] = useState('');
+  const [busy, setBusy] = useState(false);
+  const [error, setError] = useState<string | null>(null);
+  const playbook = sop !== null && isPlaybook(sop.name);
+
+  useEffect(() => {
+    if (!sop) return;
+    setError(null);
+    setBusy(false);
+    setKeep('');
+    setDevice('self');
+    if (!isPlaybook(sop.name)) return;
+    let stale = false;
+    getBodyDevices()
+      .then((r) => {
+        if (!stale) setDevices(r.devices);
+      })
+      .catch(() => {
+        if (!stale) setDevices([]);
+      });
+    return () => {
+      stale = true;
+    };
+  }, [sop]);
+
+  const start = async () => {
+    if (!sop) return;
+    setBusy(true);
+    setError(null);
+    try {
+      const payload = playbook ? playbookPayload(device, sop.name === 'phone-debloat' ? keep : undefined) : undefined;
+      const { run_id } = await runSop(sop.name, payload);
+      onStarted();
+      onClose();
+      navigate(`/runs/${encodeURIComponent(sop.name)}/${encodeURIComponent(run_id)}`);
+    } catch (reason) {
+      setError(runRefusal(errorText(reason)));
+    } finally {
+      setBusy(false);
+    }
+  };
+
+  const options = (devices ?? []).map((d) => ({ value: d.name, label: deviceOptionLabel(d) }));
+  if (options.length === 0) options.push({ value: 'self', label: 'self (this phone)' });
+
+  return (
+    <ConfirmDialog
+      open={sop !== null}
+      title={sop ? `Run ${sop.name}?` : ''}
+      confirmLabel={busy ? 'Starting…' : 'Run'}
+      onConfirm={() => void start()}
+      onClose={onClose}
+      message={
+        sop ? (
+          <div className="space-y-3 text-left">
+            {sop.description && <p>{sop.description}</p>}
+            {playbook ? (
+              <>
+                <label className="block text-xs text-pc-text-muted">
+                  Which phone
+                  <Select value={device} onChange={setDevice} options={options} className="mt-1 min-w-40" aria-label="Which phone" />
+                </label>
+                {sop.name === 'phone-debloat' && (
+                  <label className="block text-xs text-pc-text-muted">
+                    Leave these alone (package names, comma-separated; optional)
+                    <input
+                      className="input-electric mt-1 w-full font-mono text-xs"
+                      value={keep}
+                      onChange={(e) => setKeep(e.target.value)}
+                      placeholder="com.example.one, com.example.two"
+                    />
+                  </label>
+                )}
+                <p className="text-xs text-pc-text-faint">
+                  The read steps run right away. The step that changes the phone waits for your approval here and on Home.
+                </p>
+              </>
+            ) : (
+              <p className="text-xs text-pc-text-faint">Starts a manual run with no payload. The procedure needs a manual trigger and an owning agent.</p>
+            )}
+            {error && (
+              <p role="alert" className="text-xs text-status-error">
+                {error}
+              </p>
+            )}
+          </div>
+        ) : undefined
+      }
+    />
   );
 }

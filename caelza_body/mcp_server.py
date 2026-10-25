@@ -12,6 +12,8 @@ top (``body/caelza-body.example.toml``).
     caelza-body serve        # stdio MCP server (what the Runtime runs)
     caelza-body list-tools   # JSON of every tool, its schema and safety hints
     caelza-body probe        # register everything; exit 0 if the Body is sane
+    caelza-body playbooks    # the phone playbooks (body/sops); --install copies
+                             # them into the Runtime's sops dir
 
 In ``serve`` mode stdout is the MCP transport, so nothing here (or in the tool
 modules this loads) may print to stdout. Diagnostics go to stderr.
@@ -36,8 +38,9 @@ from mcp.server.lowlevel import Server
 from mcp.server.stdio import stdio_server
 
 from caelza_body.agent import config as _config
+from caelza_body.agent import playbooks
 from caelza_body.agent import tools
-from caelza_body.agent.tools import device, media, selfmod, sensors, shell, web
+from caelza_body.agent.tools import device, media, playbook, selfmod, sensors, shell, web
 
 SERVER_NAME = "caelza-body"
 SERVER_VERSION = "0.1.0"
@@ -50,14 +53,21 @@ INSTRUCTIONS = (
     "also saved under the Body's tmp dir, whose path is in the text result."
 )
 
-#: Tool groups, in registration order. ``--tools`` selects a subset.
+#: Tool groups, in registration order. ``--tools`` selects a subset. The
+#: playbook reads (``device_debloat_plan``, ``device_suspects``,
+#: ``device_foreground``, ``device_health``) belong to ``device``.
 GROUPS = ("selfmod", "sensors", "shell", "device", "web")
+
+#: Where the Runtime loads SOPs from when ``[sop] sops_dir = "shared/sops"``
+#: (relative to the directory holding its config.toml).
+DEFAULT_SOPS_DIR = "~/.caelza/shared/sops"
 
 #: Pure reads. readOnlyHint=True, idempotentHint=True; the natural
 #: ``auto_approve`` list for the Runtime.
 READ_ONLY = frozenset({
     "device_list", "device_packages", "device_logcat", "device_settings",
     "device_ui_dump", "device_screencap",
+    "device_debloat_plan", "device_suspects", "device_foreground", "device_health",
     "sensors_battery", "sensors_notifications", "sensors_clipboard_get",
     "sensors_location",
     "self_read_file", "self_list_tree",
@@ -144,6 +154,7 @@ def register_tools(settings: BodySettings, groups=GROUPS) -> list[str]:
     if "device" in groups:
         device.configure(settings.body_home)
         device.register()
+        playbook.register()
     if "web" in groups:
         web.configure(settings.body_home, settings.firecrawl_api_key,
                       settings.tavily_api_key, settings.searchapi_api_key)
@@ -251,12 +262,39 @@ def probe(names: list[str], groups, settings: BodySettings) -> int:
     return 0
 
 
+def list_playbooks(settings: BodySettings, install: str | None, force: bool) -> int:
+    """Print the shipped playbooks (name, version, steps, gates, the tools they
+    use); with ``install`` copy them into that directory. Exit 1 when the
+    checkout ships none (wrong ``--repo-root``)."""
+    shipped = playbooks.shipped_playbooks(settings.repo_root)
+    if not shipped:
+        print(f"no playbooks under {playbooks.shipped_root(settings.repo_root)}", file=sys.stderr)
+        return 1
+    for pb in shipped:
+        gates = ", ".join(str(n) for n in pb.gates) or "none"
+        print(f"{pb.name} v{pb.version}: {pb.description}")
+        print(f"  {len(pb.steps)} steps, gates at {gates}; agent {pb.agent or '-'}; "
+              f"tools {', '.join(sorted(pb.tools)) or '-'}")
+    if install is not None:
+        dest = Path(install).expanduser()
+        for name, status in playbooks.install_playbooks(settings.repo_root, dest, force=force):
+            print(f"{status:>9}  {dest / name}")
+        print("Runtime: set [sop] sops_dir = \"shared/sops\" (runtime/caelza.phone.example.toml) "
+              "and restart the daemon; the Procedures page lists them.")
+    return 0
+
+
 def main(argv: list[str] | None = None) -> int:
     p = argparse.ArgumentParser(
         prog="caelza-body",
         description="The Caelza Body as an MCP server (stdio).")
-    p.add_argument("command", nargs="?", choices=("serve", "list-tools", "probe"),
+    p.add_argument("command", nargs="?", choices=("serve", "list-tools", "probe", "playbooks"),
                    default="serve")
+    p.add_argument("--install", metavar="DIR", nargs="?", const=DEFAULT_SOPS_DIR, default=None,
+                   help=f"playbooks: copy the shipped SOPs into DIR (default {DEFAULT_SOPS_DIR}); "
+                        "a copy you edited is kept unless --force")
+    p.add_argument("--force", action="store_true",
+                   help="playbooks --install: overwrite copies that differ from the shipped ones")
     p.add_argument("--home", type=Path, default=None,
                    help="Body state dir (default: $CAELZA_BODY_HOME, else ~/.caelza-body)")
     p.add_argument("--repo-root", type=Path, default=None,
@@ -279,6 +317,8 @@ def main(argv: list[str] | None = None) -> int:
         return 0
     if a.command == "probe":
         return probe(names, groups, settings)
+    if a.command == "playbooks":
+        return list_playbooks(settings, a.install, a.force)
 
     print(f"{SERVER_NAME} {SERVER_VERSION}: {len(names)} tools ({','.join(groups)}), "
           f"home={settings.body_home}", file=sys.stderr, flush=True)
