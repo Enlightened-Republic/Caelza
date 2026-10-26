@@ -117,6 +117,18 @@ def test_token_is_created_once_and_private(tmp_path):
     assert not fleet.bearer_ok(first, first) and not fleet.bearer_ok(None, first)
 
 
+def test_a_fresh_token_never_starts_with_a_dash_or_underscore():
+    """`--token <token>` on the command line: a leading `-` would read as an
+    option (CI met `-e-F9…` and argparse refused it)."""
+    draws = iter(["-e-F9Mx86mZOdg1QkBQOb23vJSg9ZLOs1-60dadn3T0", "_underscored", "", "Ok3Ltoken"])
+    assert fleet.fresh_token(generate=lambda n: next(draws)) == "Ok3Ltoken"
+    for _ in range(64):
+        assert fleet.fresh_token()[0] not in "-_"
+    # The CLI still takes an awkward token in the `--token=` form.
+    a = srv.build_parser().parse_args(["fleet", "join", "phone", "--url", "http://x/mcp", "--token=-starts-with-dash"])
+    assert a.token == "-starts-with-dash"
+
+
 def test_allowed_hosts_cover_the_bind_address_loopback_and_extras():
     hosts = fleet.allowed_hosts_for("100.64.0.9", 42618, ["niba.tail.ts.net"])
     assert "100.64.0.9:42618" in hosts and "127.0.0.1:42618" in hosts and "localhost" in hosts

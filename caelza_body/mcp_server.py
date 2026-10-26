@@ -388,7 +388,7 @@ def build_parser() -> argparse.ArgumentParser:
     fl.add_argument("action", nargs="?", choices=("list", "join", "forget", "tag"), default="list")
     fl.add_argument("name", nargs="?", help="the device name for join / forget / tag")
     fl.add_argument("--url", help="join: the remote Body's MCP URL (http://<tailscale-ip>:42618/mcp)")
-    fl.add_argument("--token", help="join: the remote's bearer token")
+    fl.add_argument("--token", help="join: the remote's bearer token (write --token=<token> if it starts with a dash)")
     fl.add_argument("--token-file", type=Path, help="join: read the token from this file instead")
     fl.add_argument("--groups", default="", help="join / tag: comma-separated groups")
     fl.add_argument("--notes", default="", help="join: a note for the registry")

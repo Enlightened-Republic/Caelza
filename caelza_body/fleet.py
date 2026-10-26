@@ -60,6 +60,16 @@ def token_path(body_home: Path | str) -> Path:
     return Path(body_home) / TOKEN_FILE
 
 
+def fresh_token(generate=secrets.token_urlsafe) -> str:
+    """A new bearer token that starts with a letter or digit, so it can be
+    pasted after `--token` on a command line (a leading `-` reads as an
+    option; `_` is kept out too for the same eye)."""
+    while True:
+        token = generate(32)
+        if token and token[0] not in "-_":
+            return token
+
+
 def load_or_create_token(path: Path | str) -> str:
     """The token in ``path``, created (0600) when the file is missing."""
     p = Path(path)
@@ -68,7 +78,7 @@ def load_or_create_token(path: Path | str) -> str:
         if token:
             return token
     p.parent.mkdir(parents=True, exist_ok=True)
-    token = secrets.token_urlsafe(32)
+    token = fresh_token()
     p.write_text(token + "\n", encoding="utf-8")
     try:
         p.chmod(0o600)
