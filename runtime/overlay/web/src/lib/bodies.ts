@@ -35,7 +35,13 @@ export interface BodyDevice {
   name: string;
   /** True for the phone the Body runs on. */
   self: boolean;
+  /** `self`, a phone paired over ADB (`adb`), or another phone's Body reached over HTTP (`http`). */
+  kind?: 'self' | 'adb' | 'http';
   host: string | null;
+  /** The remote Body's MCP URL, for `http` devices. */
+  url?: string | null;
+  /** Groups a procedure can target as a whole (`family`, `bench`). */
+  groups?: string[];
   last_seen: string | null;
   reachable: boolean;
 }
@@ -125,7 +131,7 @@ export function captureDataUrl(capture: Pick<BodyCapture, 'mime' | 'data'>): str
 }
 
 export function pairBodyDevice(
-  request: { name: string; host: string; code: string; notes?: string },
+  request: { name: string; host: string; code: string; notes?: string; groups?: string },
   server?: string,
 ): Promise<BodyPairResult> {
   return apiFetch<BodyPairResult>('/api/bodies/pair', {

@@ -14,7 +14,7 @@ import { formatRelative } from '@/lib/format';
 import { t } from '@/lib/i18n';
 import { cancelSop, listRuns, listSops, runSop, runStatusBadge, type SopRunSummary, type SopSummary } from '@/lib/sops';
 import { usePolling } from '@/hooks/usePolling';
-import { deviceOptionLabel, isPlaybook, partitionRuns, playbookPayload, runRefusal, sopEngineOff, sopOffText } from './home.logic';
+import { expandTarget, isPlaybook, partitionRuns, playbookPayload, runRefusal, runTargets, sopEngineOff, sopOffText } from './home.logic';
 
 function errorText(reason: unknown): string {
   return reason instanceof Error ? reason.message : String(reason);
@@ -293,11 +293,25 @@ function RunDialog({ sop, onClose, onStarted }: { sop: SopSummary | null; onClos
     setBusy(true);
     setError(null);
     try {
-      const payload = playbook ? playbookPayload(device, sop.name === 'phone-debloat' ? keep : undefined) : undefined;
-      const { run_id } = await runSop(sop.name, payload);
+      if (!playbook) {
+        const { run_id } = await runSop(sop.name);
+        onStarted();
+        onClose();
+        navigate(`/runs/${encodeURIComponent(sop.name)}/${encodeURIComponent(run_id)}`);
+        return;
+      }
+      // One run per phone: a group fans out, one procedure run each, in name order.
+      const phones = expandTarget(devices ?? [], device);
+      if (phones.length === 0) throw new Error('That group has no phones in it.');
+      const started: string[] = [];
+      for (const phone of phones) {
+        const { run_id } = await runSop(sop.name, playbookPayload(phone, sop.name === 'phone-debloat' ? keep : undefined));
+        started.push(run_id);
+      }
       onStarted();
       onClose();
-      navigate(`/runs/${encodeURIComponent(sop.name)}/${encodeURIComponent(run_id)}`);
+      const only = started.length === 1 ? started[0] : undefined;
+      navigate(only ? `/runs/${encodeURIComponent(sop.name)}/${encodeURIComponent(only)}` : '/runs');
     } catch (reason) {
       setError(runRefusal(errorText(reason)));
     } finally {
@@ -305,8 +319,8 @@ function RunDialog({ sop, onClose, onStarted }: { sop: SopSummary | null; onClos
     }
   };
 
-  const options = (devices ?? []).map((d) => ({ value: d.name, label: deviceOptionLabel(d) }));
-  if (options.length === 0) options.push({ value: 'self', label: 'self (this phone)' });
+  const options = runTargets(devices ?? []);
+  const fanOut = expandTarget(devices ?? [], device).length;
 
   return (
     <ConfirmDialog
@@ -325,6 +339,11 @@ function RunDialog({ sop, onClose, onStarted }: { sop: SopSummary | null; onClos
                   Which phone
                   <Select value={device} onChange={setDevice} options={options} className="mt-1 min-w-40" aria-label="Which phone" />
                 </label>
+                {fanOut > 1 && (
+                  <p className="text-xs text-pc-text-faint">
+                    {fanOut} runs will start, one per phone, each waiting for its own approval.
+                  </p>
+                )}
                 {sop.name === 'phone-debloat' && (
                   <label className="block text-xs text-pc-text-muted">
                     Leave these alone (package names, comma-separated; optional)

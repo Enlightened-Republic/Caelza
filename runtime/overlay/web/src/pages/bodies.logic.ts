@@ -24,6 +24,24 @@ export function serviceLine(
   };
 }
 
+/** How a device is reached, in two words. */
+export function deviceKindLabel(device: Pick<BodyDevice, 'self' | 'kind' | 'url' | 'host'>): string {
+  const kind = device.kind ?? (device.self ? 'self' : device.url ? 'http' : 'adb');
+  if (kind === 'self') return 'this phone';
+  if (kind === 'http') return 'Body over HTTP';
+  return 'over ADB';
+}
+
+/** The device's groups, deduplicated and trimmed, for chips. */
+export function deviceGroups(device: Pick<BodyDevice, 'groups'>): string[] {
+  const out: string[] = [];
+  for (const g of device.groups ?? []) {
+    const t = g.trim();
+    if (t && !out.includes(t)) out.push(t);
+  }
+  return out;
+}
+
 export function deviceLabel(device: Pick<BodyDevice, 'name' | 'self'>): string {
   return device.self ? 'This phone' : device.name;
 }

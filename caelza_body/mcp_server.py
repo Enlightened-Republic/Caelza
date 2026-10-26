@@ -10,6 +10,9 @@ list before any removal. The Runtime's approval policy adds a second gate on
 top (``body/caelza-body.example.toml``).
 
     caelza-body serve        # stdio MCP server (what the Runtime runs)
+    caelza-body serve --http # the same over Streamable HTTP + bearer token, for
+                             # a hub Runtime or another Body across Tailscale
+    caelza-body fleet        # the phones this Body reaches; join / forget / tag
     caelza-body list-tools   # JSON of every tool, its schema and safety hints
     caelza-body probe        # register everything; exit 0 if the Body is sane
     caelza-body playbooks    # the phone playbooks (body/sops); --install copies
@@ -37,6 +40,7 @@ from mcp import types
 from mcp.server.lowlevel import Server
 from mcp.server.stdio import stdio_server
 
+from caelza_body import fleet
 from caelza_body.agent import config as _config
 from caelza_body.agent import playbooks
 from caelza_body.agent import tools
@@ -78,7 +82,7 @@ READ_ONLY = frozenset({
 #: runs arbitrary commands. destructiveHint=True; the ``always_ask`` list.
 DESTRUCTIVE = frozenset({
     "device_uninstall", "device_disable", "device_settings_put", "device_appops",
-    "device_pair", "device_unpair", "device_shell",
+    "device_pair", "device_unpair", "device_join", "device_shell",
     "shell_run",
     "self_write_file", "self_commit", "self_request_restart",
 })
@@ -86,7 +90,7 @@ DESTRUCTIVE = frozenset({
 #: Acts on the world but is reversible or self-contained (a capture, a tap,
 #: speaking, running the test suite). Neither hint is set.
 NEUTRAL = frozenset({
-    "device_input",
+    "device_input", "device_tag",
     "sensors_camera_photo", "sensors_mic_record", "sensors_tts_speak",
     "sensors_clipboard_set", "sensors_torch",
     "self_run_tests",
@@ -284,23 +288,81 @@ def list_playbooks(settings: BodySettings, install: str | None, force: bool) -> 
     return 0
 
 
+def fleet_command(a, settings: BodySettings) -> int:
+    """`caelza-body fleet [list|join|forget|tag]`: the registry through the
+    same tools the agent uses, so the CLI and the agent agree."""
+    if a.action == "list":
+        listed = json.loads(tools.dispatch("device_list", {}))
+        for name, row in listed.items():
+            where = row.get("url") or row.get("host") or "this phone"
+            groups = ", ".join(row.get("groups") or []) or "-"
+            state = "reachable" if row.get("reachable") else "unreachable"
+            print(f"{name:<16} {row.get('kind', '?'):<5} {state:<11} groups {groups:<20} {where}")
+        return 0
+    if not a.name:
+        print(f"fleet {a.action} needs a device name", file=sys.stderr)
+        return 2
+    if a.action == "join":
+        if not a.url or not (a.token or a.token_file):
+            print("fleet join needs --url and --token (or --token-file)", file=sys.stderr)
+            return 2
+        token = a.token or fleet.read_token(a.token_file)
+        out = tools.dispatch("device_join", {"name": a.name, "url": a.url, "token": token,
+                                             "groups": a.groups, "notes": a.notes})
+    elif a.action == "forget":
+        out = tools.dispatch("device_unpair", {"name": a.name})
+    else:
+        out = tools.dispatch("device_tag", {"name": a.name, "groups": a.groups})
+    print(out)
+    return 1 if out.startswith("error:") else 0
+
+
+def build_parser() -> argparse.ArgumentParser:
+    common = argparse.ArgumentParser(add_help=False)
+    common.add_argument("--home", type=Path, default=None,
+                        help="Body state dir (default: $CAELZA_BODY_HOME, else ~/.caelza-body)")
+    common.add_argument("--repo-root", type=Path, default=None,
+                        help="the Body checkout the self_* tools edit (default: this package's repo)")
+    common.add_argument("--tools", default=",".join(GROUPS),
+                        help=f"comma-separated groups to expose (default: all of {', '.join(GROUPS)})")
+
+    p = argparse.ArgumentParser(prog="caelza-body",
+                                description="The Caelza Body as an MCP server (stdio, or HTTP for a fleet).")
+    sub = p.add_subparsers(dest="command")
+    serve = sub.add_parser("serve", parents=[common], help="serve the Body's tools over MCP")
+    serve.add_argument("--http", action="store_true",
+                       help="Streamable HTTP with a bearer token instead of stdio (a hub reaches this phone)")
+    serve.add_argument("--host", default=fleet.DEFAULT_HOST,
+                       help=f"bind address for --http (default {fleet.DEFAULT_HOST}; use the phone's Tailscale address for a hub)")
+    serve.add_argument("--port", type=int, default=fleet.DEFAULT_PORT, help=f"port for --http (default {fleet.DEFAULT_PORT})")
+    serve.add_argument("--token-file", type=Path, default=None,
+                       help=f"bearer token file for --http (default <home>/{fleet.TOKEN_FILE}, created when missing)")
+    serve.add_argument("--allow-host", action="append", default=[], metavar="HOST",
+                       help="an extra Host header to accept (a MagicDNS name); repeatable")
+    sub.add_parser("list-tools", parents=[common], help="every tool, its schema and safety hints, as JSON")
+    sub.add_parser("probe", parents=[common], help="register everything; exit 0 if the Body is sane")
+    pb = sub.add_parser("playbooks", parents=[common], help="the phone playbooks (body/sops)")
+    pb.add_argument("--install", metavar="DIR", nargs="?", const=DEFAULT_SOPS_DIR, default=None,
+                    help=f"copy the shipped SOPs into DIR (default {DEFAULT_SOPS_DIR}); "
+                         "a copy you edited is kept unless --force")
+    pb.add_argument("--force", action="store_true",
+                    help="with --install: overwrite copies that differ from the shipped ones")
+    fl = sub.add_parser("fleet", parents=[common], help="the phones this Body reaches")
+    fl.add_argument("action", nargs="?", choices=("list", "join", "forget", "tag"), default="list")
+    fl.add_argument("name", nargs="?", help="the device name for join / forget / tag")
+    fl.add_argument("--url", help="join: the remote Body's MCP URL (http://<tailscale-ip>:42618/mcp)")
+    fl.add_argument("--token", help="join: the remote's bearer token")
+    fl.add_argument("--token-file", type=Path, help="join: read the token from this file instead")
+    fl.add_argument("--groups", default="", help="join / tag: comma-separated groups")
+    fl.add_argument("--notes", default="", help="join: a note for the registry")
+    return p
+
+
 def main(argv: list[str] | None = None) -> int:
-    p = argparse.ArgumentParser(
-        prog="caelza-body",
-        description="The Caelza Body as an MCP server (stdio).")
-    p.add_argument("command", nargs="?", choices=("serve", "list-tools", "probe", "playbooks"),
-                   default="serve")
-    p.add_argument("--install", metavar="DIR", nargs="?", const=DEFAULT_SOPS_DIR, default=None,
-                   help=f"playbooks: copy the shipped SOPs into DIR (default {DEFAULT_SOPS_DIR}); "
-                        "a copy you edited is kept unless --force")
-    p.add_argument("--force", action="store_true",
-                   help="playbooks --install: overwrite copies that differ from the shipped ones")
-    p.add_argument("--home", type=Path, default=None,
-                   help="Body state dir (default: $CAELZA_BODY_HOME, else ~/.caelza-body)")
-    p.add_argument("--repo-root", type=Path, default=None,
-                   help="the Body checkout the self_* tools edit (default: this package's repo)")
-    p.add_argument("--tools", default=",".join(GROUPS),
-                   help=f"comma-separated groups to expose (default: all of {', '.join(GROUPS)})")
+    argv = list(sys.argv[1:] if argv is None else argv)
+    if not argv or argv[0].startswith("-"):
+        argv.insert(0, "serve")  # `caelza-body` alone serves, as it always did
+    p = build_parser()
     a = p.parse_args(argv)
     groups = tuple(g.strip() for g in a.tools.split(",") if g.strip())
 
@@ -319,6 +381,21 @@ def main(argv: list[str] | None = None) -> int:
         return probe(names, groups, settings)
     if a.command == "playbooks":
         return list_playbooks(settings, a.install, a.force)
+    if a.command == "fleet":
+        return fleet_command(a, settings)
+
+    if a.http:
+        token_file = a.token_file or fleet.token_path(settings.body_home)
+        token = fleet.load_or_create_token(token_file)
+        print(f"{SERVER_NAME} {SERVER_VERSION}: {len(names)} tools ({','.join(groups)}), "
+              f"home={settings.body_home}", file=sys.stderr, flush=True)
+        print(f"http://{a.host}:{a.port}{fleet.MCP_PATH}  (bearer token in {token_file}; "
+              f"/health answers without it)", file=sys.stderr, flush=True)
+        if a.host not in ("127.0.0.1", "localhost", "::1"):
+            print("bound beyond loopback: keep this behind Tailscale or a firewall; "
+                  "the token is the only lock", file=sys.stderr, flush=True)
+        fleet.serve_http(build_server(), token, host=a.host, port=a.port, allow_hosts=a.allow_host)
+        return 0
 
     print(f"{SERVER_NAME} {SERVER_VERSION}: {len(names)} tools ({','.join(groups)}), "
           f"home={settings.body_home}", file=sys.stderr, flush=True)

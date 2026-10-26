@@ -24,6 +24,8 @@ import {
 } from '@/lib/bodies';
 import {
   batterySummary,
+  deviceGroups,
+  deviceKindLabel,
   deviceLabel,
   filterPackages,
   groupLabel,
@@ -254,7 +256,8 @@ function DevicesCard({
         {devices && <Badge tone="neutral">{paired.length} paired</Badge>}
       </div>
       <p className="text-xs text-pc-text-faint">
-        This phone is the Body. Paired phones are reached over ADB wireless debugging; the Body remembers them in its device registry.
+        This phone is the Body. Paired phones are reached over ADB wireless debugging; a phone running its own Body joins over HTTP
+        (<code className="font-mono">caelza-body fleet join</code>). Groups let a procedure run on several at once.
       </p>
 
       {error && <ErrorBox>{error}</ErrorBox>}
@@ -269,7 +272,12 @@ function DevicesCard({
             <li key={d.name} className="flex flex-wrap items-center gap-2 rounded-[var(--radius-md)] border border-pc-border bg-pc-elevated p-3 text-sm">
               <Smartphone size={16} className="shrink-0 text-pc-accent" aria-hidden="true" />
               <span className="font-medium text-pc-text">{deviceLabel(d)}</span>
+              {!d.self && <span className="text-xs text-pc-text-faint">{deviceKindLabel(d)}</span>}
               {d.host && <span className="font-mono text-xs text-pc-text-faint">{d.host}</span>}
+              {d.url && <span className="truncate font-mono text-xs text-pc-text-faint">{d.url}</span>}
+              {deviceGroups(d).map((g) => (
+                <Badge key={g} tone="neutral">{g}</Badge>
+              ))}
               <Badge tone={d.reachable ? 'ok' : 'error'}>{d.reachable ? 'reachable' : 'unreachable'}</Badge>
               {relativeAge(d.last_seen) && <span className="text-xs text-pc-text-faint">seen {relativeAge(d.last_seen)}</span>}
               {!d.self && canUnpair && (
@@ -332,6 +340,7 @@ function PairForm({ server, onDone, onCancel }: { server?: string; onDone: (text
   const [host, setHost] = useState('');
   const [code, setCode] = useState('');
   const [notes, setNotes] = useState('');
+  const [groups, setGroups] = useState('');
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState<string | null>(null);
 
@@ -341,7 +350,10 @@ function PairForm({ server, onDone, onCancel }: { server?: string; onDone: (text
     setBusy(true);
     setError(null);
     try {
-      const r = await pairBodyDevice({ name: name.trim(), host: host.trim(), code: code.trim(), notes: notes.trim() || undefined }, server);
+      const r = await pairBodyDevice(
+        { name: name.trim(), host: host.trim(), code: code.trim(), notes: notes.trim() || undefined, groups: groups.trim() || undefined },
+        server,
+      );
       if (r.status === 'ok') onDone(r.text);
       else setError(r.text);
     } catch (reason) {
@@ -368,6 +380,7 @@ function PairForm({ server, onDone, onCancel }: { server?: string; onDone: (text
         <input className="input-electric" value={host} onChange={(e) => setHost(e.target.value)} placeholder="IP:port, e.g. 10.0.0.5:37123" aria-label="Host and port" />
         <input className="input-electric" value={code} onChange={(e) => setCode(e.target.value)} placeholder="Pairing code" inputMode="numeric" aria-label="Pairing code" />
         <input className="input-electric" value={notes} onChange={(e) => setNotes(e.target.value)} placeholder="Notes (optional)" aria-label="Notes" />
+        <input className="input-electric" value={groups} onChange={(e) => setGroups(e.target.value)} placeholder="Groups, comma-separated (optional)" aria-label="Groups" />
       </div>
       {error && <ErrorBox><pre className="whitespace-pre-wrap font-mono">{error}</pre></ErrorBox>}
       <div className="flex gap-2">

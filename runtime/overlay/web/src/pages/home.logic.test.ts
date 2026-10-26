@@ -5,6 +5,7 @@ import {
   commitmentTone,
   deviceOptionLabel,
   dueLabel,
+  expandTarget,
   formatUptime,
   isPlaybook,
   mindTile,
@@ -12,6 +13,7 @@ import {
   playbookPayload,
   recentSessions,
   runRefusal,
+  runTargets,
   runtimeTile,
   sessionLabel,
   sleepLine,
@@ -166,4 +168,20 @@ test('the run endpoint refusals come back in plain words', () => {
   assert.match(runRefusal('API 409: run deferred: admission hold'), /already in flight/);
   assert.match(runRefusal('API 400: payload is not valid JSON'), /must be JSON/);
   assert.equal(runRefusal('API 502: upstream gone'), 'API 502: upstream gone');
+});
+
+test('a Run can target one phone or a whole group', () => {
+  const devices = [
+    { name: 'self', self: true, kind: 'self' as const, host: null, last_seen: null, reachable: true, groups: [] },
+    { name: 'gma', self: false, kind: 'adb' as const, host: '10.0.0.5:5555', last_seen: null, reachable: false, groups: ['family'] },
+    { name: 'phone', self: false, kind: 'http' as const, host: null, url: 'http://100.64.0.9:42618/mcp', last_seen: null, reachable: true, groups: ['family', 'bench'] },
+  ];
+  assert.deepEqual(runTargets(devices).map((t) => t.value), ['self', 'gma', 'phone', 'group:bench', 'group:family']);
+  assert.equal(runTargets(devices)[2]?.label, 'phone · over HTTP');
+  assert.equal(runTargets(devices)[4]?.label, 'every phone in family (2)');
+  assert.deepEqual(expandTarget(devices, 'group:family'), ['gma', 'phone']);
+  assert.deepEqual(expandTarget(devices, 'group:nope'), []);
+  assert.deepEqual(expandTarget(devices, 'gma'), ['gma']);
+  assert.deepEqual(expandTarget(devices, ' '), ['self']);
+  assert.deepEqual(runTargets([]).map((t) => t.value), ['self']);
 });

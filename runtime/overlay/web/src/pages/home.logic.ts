@@ -230,7 +230,45 @@ export function playbookPayload(device: string, keep?: string): string {
 
 /** One line a device picker can show for a Body device. */
 export function deviceOptionLabel(d: BodyDevice): string {
-  return `${d.name}${d.self ? ' (this phone)' : ''}${d.reachable ? '' : ' · unreachable'}`;
+  const how = d.kind === 'http' ? ' · over HTTP' : '';
+  return `${d.name}${d.self ? ' (this phone)' : how}${d.reachable ? '' : ' · unreachable'}`;
+}
+
+/** A Run target: one device, or every device in a group (`group:<name>`). */
+export interface RunTarget {
+  value: string;
+  label: string;
+}
+
+export const GROUP_TARGET_PREFIX = 'group:';
+
+/** The devices first (this phone leading), then each group with its member count. */
+export function runTargets(devices: BodyDevice[]): RunTarget[] {
+  const targets: RunTarget[] = devices.map((d) => ({ value: d.name, label: deviceOptionLabel(d) }));
+  const groups = new Map<string, number>();
+  for (const d of devices) {
+    for (const g of d.groups ?? []) {
+      const t = g.trim();
+      if (t) groups.set(t, (groups.get(t) ?? 0) + 1);
+    }
+  }
+  for (const [g, n] of [...groups.entries()].sort(([a], [b]) => a.localeCompare(b))) {
+    targets.push({ value: `${GROUP_TARGET_PREFIX}${g}`, label: `every phone in ${g} (${n})` });
+  }
+  if (targets.length === 0) targets.push({ value: 'self', label: 'self (this phone)' });
+  return targets;
+}
+
+/** The device names a target stands for: the device itself, or a group's members in name order. */
+export function expandTarget(devices: BodyDevice[], target: string): string[] {
+  if (target.startsWith(GROUP_TARGET_PREFIX)) {
+    const g = target.slice(GROUP_TARGET_PREFIX.length);
+    return devices
+      .filter((d) => (d.groups ?? []).some((x) => x.trim() === g))
+      .map((d) => d.name)
+      .sort();
+  }
+  return [target.trim() || 'self'];
 }
 
 /** The run endpoint's refusals in plain words; anything unknown passes through. */

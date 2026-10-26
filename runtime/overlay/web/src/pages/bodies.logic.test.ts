@@ -2,6 +2,8 @@ import assert from 'node:assert/strict';
 import test from 'node:test';
 import {
   batterySummary,
+  deviceGroups,
+  deviceKindLabel,
   deviceLabel,
   filterPackages,
   groupLabel,
@@ -100,4 +102,15 @@ test('package filter, pairing input checks and ages', () => {
   assert.equal(relativeAge('2026-10-16T12:00:00Z', now), '5 d ago');
   assert.equal(relativeAge(null, now), null);
   assert.equal(relativeAge('yesterday-ish', now), null);
+});
+
+test('a device says how it is reached and which groups it is in', () => {
+  assert.equal(deviceKindLabel({ self: true, kind: 'self', url: null, host: null }), 'this phone');
+  assert.equal(deviceKindLabel({ self: false, kind: 'http', url: 'http://100.64.0.9:42618/mcp', host: null }), 'Body over HTTP');
+  assert.equal(deviceKindLabel({ self: false, kind: 'adb', url: null, host: '10.0.0.5:5555' }), 'over ADB');
+  // An older gateway without `kind`: inferred from what the row carries.
+  assert.equal(deviceKindLabel({ self: false, url: 'http://x/mcp', host: null }), 'Body over HTTP');
+  assert.equal(deviceKindLabel({ self: false, url: null, host: '10.0.0.5:5555' }), 'over ADB');
+  assert.deepEqual(deviceGroups({ groups: [' family', 'family', 'bench', ''] }), ['family', 'bench']);
+  assert.deepEqual(deviceGroups({}), []);
 });

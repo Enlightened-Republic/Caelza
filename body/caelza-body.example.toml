@@ -67,6 +67,7 @@ always_ask = [
   "body__device_appops",
   "body__device_pair",
   "body__device_unpair",
+  "body__device_join",
   "body__device_shell",
   "body__shell_run",
   "body__self_write_file",
