@@ -68,9 +68,11 @@ loads them once `[sop] sops_dir = "shared/sops"` is set
 the dashboard's Procedures library with a **Run** button that asks which
 phone, and the agent can start them from a chat with `sop_execute`.
 
-The trigger payload is `{"device": "<name>"}` (`self`, or a paired phone's
-registered name) and, for the debloat, an optional `keep` list. The Run
-button sends it; a chat start gets it from the agent.
+The trigger payload is `{"device": "<name>"}` (`self`, a phone paired over
+ADB, or a phone's own Body joined over HTTP, see `body/README.md` "Fleet")
+and, for the debloat, an optional `keep` list. The Run button sends it; a
+chat start gets it from the agent. Choosing a group in the Run dialog starts
+one run per phone in it, each with its own gate.
 
 ## Evals
 

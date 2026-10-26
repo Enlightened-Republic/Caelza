@@ -28,9 +28,11 @@ On the phone, in the Body checkout (`install.sh` already does the install):
 
 ```bash
 pip install -e .            # puts `caelza-body` on PATH
-caelza-body probe           # {"ok": true, "tools": 39, ...} and exit 0
+caelza-body probe           # {"ok": true, "tools": 41, ...} and exit 0
 caelza-body list-tools      # every tool, its schema and safety hints, as JSON
 caelza-body serve           # the stdio server; this is what the Runtime runs
+caelza-body serve --http    # the same over Streamable HTTP + a bearer token, for a hub (see Fleet)
+caelza-body fleet           # the phones this Body reaches; `fleet join` adds a phone's Body
 caelza-body playbooks       # the phone playbooks (body/sops); --install puts them where the Runtime loads SOPs
 ```
 
@@ -53,8 +55,8 @@ and the class is what the example risk profile is generated from.
 | class | MCP hints | Runtime policy | tools |
 |---|---|---|---|
 | **read-only** | `readOnlyHint`, `idempotentHint` | `auto_approve` | `device_list`, `device_packages`, `device_logcat`, `device_settings`, `device_ui_dump`, `device_screencap`, `device_debloat_plan`, `device_suspects`, `device_foreground`, `device_health`, `sensors_battery`, `sensors_notifications`, `sensors_clipboard_get`, `sensors_location`, `self_read_file`, `self_list_tree`, `web_search`, `web_read`, `web_map`, `web_crawl_result` |
-| **destructive** | `destructiveHint` | `always_ask` | `device_uninstall`, `device_disable`, `device_settings_put`, `device_appops`, `device_pair`, `device_unpair`, `device_shell`, `shell_run`, `self_write_file`, `self_commit`, `self_request_restart` |
-| **neutral** | none | the profile's normal policy | `device_input`, `sensors_camera_photo`, `sensors_mic_record`, `sensors_tts_speak`, `sensors_clipboard_set`, `sensors_torch`, `self_run_tests`, `web_crawl` |
+| **destructive** | `destructiveHint` | `always_ask` | `device_uninstall`, `device_disable`, `device_settings_put`, `device_appops`, `device_pair`, `device_unpair`, `device_join`, `device_shell`, `shell_run`, `self_write_file`, `self_commit`, `self_request_restart` |
+| **neutral** | none | the profile's normal policy | `device_input`, `device_tag`, `sensors_camera_photo`, `sensors_mic_record`, `sensors_tts_speak`, `sensors_clipboard_set`, `sensors_torch`, `self_run_tests`, `web_crawl` |
 
 The memory tools (`memory_recall`, `memory_remember`, `memory_reset`) are not
 served: the Mind owns memory now ([`../mind/README.md`](../mind/README.md)).
@@ -97,6 +99,54 @@ loop (the rest of M2: the Runtime owns the turn, the supervisor guards the
 Body code and the Runtime binary) is a per-phone switch once the Runtime is
 running there (M1).
 
+## Fleet: a hub and its phones
+
+Deployment shape 2 (vision §3): the Runtime and the Mind on a hub, each phone
+running only its Body. Two pieces, both in `caelza_body/fleet.py` (M6):
+
+**Serving.** `caelza-body serve --http` puts the same tools on Streamable
+HTTP, the transport the Runtime's `transport = "http"` speaks, behind a
+bearer token that is created on first run in `~/.caelza-body/run/http-token`
+(mode 0600). It binds loopback unless `--host` says otherwise; the phone's
+Tailscale address is the intended otherwise, and the server says so on
+stderr. `/health` answers without the token (name, version, tool count) so
+reachability and a bad token read differently; `/mcp` refuses anything but
+the right `Authorization: Bearer`. Host headers are checked (DNS-rebinding
+protection): the bind address and loopback by default, `--allow-host
+niba.tail.ts.net` for a MagicDNS name.
+
+**Reaching.** On the hub, `caelza-body fleet join grandma --url
+http://100.64.0.9:42618/mcp --token <token> --groups family` (or the agent's
+`device_join`) checks the remote answers as a Body, stores the token in
+`~/.caelza-body/fleet/grandma.token` (never in `devices.json`) and registers
+the phone. From then on **every tool call whose `device` names it runs on that
+phone**, as a call on its own `self`: `device_health(device="grandma")`,
+`device_uninstall(pkg, reason, device="grandma")`, and, new in M6, the
+sensors too (`sensors_battery(device="grandma")`, a photo from her camera).
+Images come back as images and are saved under this Body's `tmp/`. The
+playbooks, the dashboard and the risk profile do not know the difference: the
+`device` in a procedure's trigger payload is `self`, an ADB-paired phone or a
+joined Body, and `body__device_uninstall` asks the owner either way. The
+remote Body audit-logs and snapshots on its phone as if the agent ran there;
+the hub adds one line per forwarded destructive call to `logs/fleet.log`.
+
+`device_list` shows the fleet with kinds (`self`, `adb`, `http`), reachability
+(a remote's `/health`) and **groups**. `device_pair … groups="family"`,
+`device_tag`, or `caelza-body fleet tag grandma --groups family` set them; the
+Procedures page's Run offers "every phone in family" and starts one run per
+phone, each with its own gate. An ADB-paired phone cannot answer a sensor
+(there is no termux-api behind `adb`), and `shell_run`, the `self_*` and the
+`web_*` tools stay this Body's own.
+
+[`../runtime/caelza.hub.example.toml`](../runtime/caelza.hub.example.toml) is
+the hub's Runtime config: the hub's own `caelza-body serve` is the Body the
+Runtime talks to, with the joined phones behind it. A phone can also be a
+Runtime MCP server directly (`transport = "http"`, `url`, the token in
+`headers.Authorization`); its tools then arrive as `body-grandma__<tool>`,
+which the Bodies page lists but the playbooks do not name, so the fleet Body
+is the recommended path. Keep the HTTP endpoint behind Tailscale or a
+firewall: the token is the only lock.
+
 ## On the dashboard
 
 The Runtime's dashboard has a **Bodies** page (`/bodies`, M4 phase 2b): this
@@ -132,8 +182,8 @@ table, the gates, the evals and how to run them against an emulator.
 
 ## Next
 
-- `transport = "http"` so a hub Runtime reaches phones over Tailscale
-  (deployment shape 2 in the vision doc).
+- The supervisor guards the Runtime binary too (vision §3.5): fetch a release,
+  verify, probe, swap, roll back (the rest of M6).
 - The supervisor probes `caelza-body probe` alongside the loop's probe, and
   self-modification commits that break the server roll back the same way.
 - Shizuku as an alternative to ADB for `device_*` on the phone itself (§3.3).

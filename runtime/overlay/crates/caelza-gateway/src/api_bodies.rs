@@ -74,6 +74,7 @@ pub(crate) const DESTRUCTIVE: &[&str] = &[
     "device_appops",
     "device_pair",
     "device_unpair",
+    "device_join",
     "device_shell",
     "shell_run",
     "self_write_file",
@@ -227,8 +228,8 @@ pub(crate) fn json_or_text(text: &str) -> Value {
     serde_json::from_str::<Value>(text.trim()).unwrap_or_else(|_| json!({"text": text}))
 }
 
-/// `device_list` answers `{<name>: {host, last_seen, reachable}, self: {reachable}}`.
-/// Rows: this phone first, then the paired phones by name.
+/// `device_list` answers `{<name>: {kind, host | url, groups, last_seen, reachable}, self: {reachable}}`.
+/// Rows: this phone first, then the paired phones and joined Bodies by name.
 pub(crate) fn device_rows(value: &Value) -> Vec<Value> {
     let Some(map) = value.as_object() else {
         return Vec::new();
@@ -236,10 +237,31 @@ pub(crate) fn device_rows(value: &Value) -> Vec<Value> {
     let mut rows: Vec<Value> = map
         .iter()
         .map(|(name, entry)| {
+            let kind = entry
+                .get("kind")
+                .and_then(Value::as_str)
+                .map(str::to_string)
+                .unwrap_or_else(|| {
+                    if name == "self" {
+                        "self".to_string()
+                    } else if entry.get("url").and_then(Value::as_str).is_some() {
+                        "http".to_string()
+                    } else {
+                        "adb".to_string()
+                    }
+                });
+            let groups: Vec<String> = entry
+                .get("groups")
+                .and_then(Value::as_array)
+                .map(|g| g.iter().filter_map(Value::as_str).map(str::to_string).collect())
+                .unwrap_or_default();
             json!({
                 "name": name,
                 "self": name == "self",
+                "kind": kind,
                 "host": entry.get("host").cloned().unwrap_or(Value::Null),
+                "url": entry.get("url").cloned().unwrap_or(Value::Null),
+                "groups": groups,
                 "last_seen": entry.get("last_seen").cloned().unwrap_or(Value::Null),
                 "reachable": entry.get("reachable").and_then(Value::as_bool).unwrap_or(false),
             })
@@ -403,6 +425,9 @@ pub struct PairBody {
     pub code: String,
     #[serde(default)]
     pub notes: Option<String>,
+    /// Comma-separated groups a procedure can target as a whole.
+    #[serde(default)]
+    pub groups: Option<String>,
     #[serde(default)]
     pub server: Option<String>,
 }
@@ -676,6 +701,14 @@ pub async fn handle_bodies_pair(
         .filter(|n| !n.is_empty())
     {
         args["notes"] = json!(notes);
+    }
+    if let Some(groups) = body
+        .groups
+        .as_deref()
+        .map(str::trim)
+        .filter(|g| !g.is_empty())
+    {
+        args["groups"] = json!(groups);
     }
     let result = match call(&server, "device_pair", args).await {
         Ok(v) => v,

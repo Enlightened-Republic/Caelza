@@ -212,3 +212,7 @@ def register() -> None:
         state = "on" if on else "off"
         res = _run(["termux-torch", state])
         return res if res.startswith("error:") else f"torch {state}"
+
+    # Every sensor can be asked of a joined Body (`device="grandma"` runs it on
+    # grandma's phone); locally they stay this phone's own.
+    tools.accept_device("sensors_", "a sensor")

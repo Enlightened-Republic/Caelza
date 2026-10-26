@@ -7,12 +7,14 @@ use `_unknown(device)` for the "is this device known?" guard.
 """
 from __future__ import annotations
 
+import re
 import shlex
 import threading
 import time
 from datetime import datetime, timezone
 from pathlib import Path
 
+from caelza_body import fleet
 from caelza_body.agent import adb as _adb_mod
 from caelza_body.agent import proc
 from caelza_body.agent import tools
@@ -80,6 +82,16 @@ def _connect_self_quietly() -> None:
         pass
 
 
+_NAME = re.compile(r"[A-Za-z0-9][A-Za-z0-9._-]*")
+
+
+def _bad_name(name: str) -> str | None:
+    """A device name is a single word that is not `self`."""
+    if name == "self" or not _NAME.fullmatch(name or ""):
+        return f"error: {name!r} is not a device name (letters, digits, '.', '_' or '-', not 'self')"
+    return None
+
+
 def _unknown(device: str) -> str | None:
     """Return an `error:` string if `device` is not resolvable, else None."""
     try:
@@ -129,7 +141,9 @@ def _screencap_bytes(serial: str) -> tuple[bytes | None, str]:
 def register() -> None:
     @tools.tool(
         "device_list",
-        "List paired devices with reachability, plus this phone ('self').",
+        "List the fleet: this phone ('self'), the phones paired over ADB "
+        "(kind 'adb') and the joined Bodies reached over HTTP (kind 'http'), "
+        "each with reachability and groups.",
         {"type": "object", "properties": {}},
     )
     def device_list():
@@ -143,13 +157,22 @@ def register() -> None:
                 online.add(parts[0])
         out: dict[str, dict] = {}
         for name, entry in registry.all().items():
-            host = entry.get("host", "")
-            out[name] = {
-                "host": host,
+            kind = registry.kind_of(entry)
+            row: dict = {
+                "kind": kind,
                 "last_seen": entry.get("last_seen"),
-                "reachable": bool(host) and host in online,
+                "groups": list(entry.get("groups") or []),
+                "notes": entry.get("notes", ""),
             }
-        out["self"] = {"reachable": adb.connect_self()}
+            if kind == "http":
+                row["url"] = entry.get("url")
+                row["reachable"] = fleet.reachability(entry)
+            else:
+                host = entry.get("host", "")
+                row["host"] = host
+                row["reachable"] = bool(host) and host in online
+            out[name] = row
+        out["self"] = {"kind": "self", "reachable": adb.connect_self(), "groups": []}
         return out
 
     @tools.tool(
@@ -232,27 +255,101 @@ def register() -> None:
 
     @tools.tool(
         "device_pair",
-        "Pair with a device over adb wireless debugging and register it.",
+        "Pair with a device over adb wireless debugging and register it. "
+        "`groups` is a comma-separated list (e.g. 'family') a procedure can "
+        "target as a whole.",
         {"type": "object",
          "properties": {"name": {"type": "string"},
                         "host": {"type": "string"},
                         "code": {"type": "string"},
-                        "notes": {"type": "string", "default": ""}},
+                        "notes": {"type": "string", "default": ""},
+                        "groups": {"type": "string", "default": ""}},
          "required": ["name", "host", "code"]},
     )
-    def device_pair(name: str, host: str, code: str, notes: str = ""):
-        return adb.pair(name, host, code, notes)
+    def device_pair(name: str, host: str, code: str, notes: str = "", groups: str = ""):
+        err = _bad_name(name)
+        if err:
+            return err
+        out = adb.pair(name, host, code, notes)
+        if groups and out.startswith("paired"):
+            registry.set_groups(name, groups)
+        return out
 
     @tools.tool(
         "device_unpair",
-        "Forget a paired device (remove it from the registry).",
+        "Forget a device: a paired phone or a joined Body leaves the registry "
+        "(a joined Body's token file is deleted too).",
         {"type": "object",
          "properties": {"name": {"type": "string"}},
          "required": ["name"]},
     )
     def device_unpair(name: str):
+        entry = registry.get(name)
+        if entry and entry.get("token_file"):
+            try:
+                Path(entry["token_file"]).unlink(missing_ok=True)
+            except OSError:
+                pass
         registry.remove(name)
         return f"unpaired {name!r}"
+
+    @tools.tool(
+        "device_join",
+        "Join another phone's Body to this fleet: that phone runs "
+        "`caelza-body serve --http` (reached over Tailscale) and this registers "
+        "it under a name after checking it answers. From then on any tool call "
+        "naming that device runs on that phone. The token goes into this Body's "
+        "state dir, never into the registry file.",
+        {"type": "object",
+         "properties": {"name": {"type": "string"},
+                        "url": {"type": "string",
+                                "description": "http://<tailscale-ip>:42618/mcp"},
+                        "token": {"type": "string",
+                                  "description": "the remote's bearer token (its run/http-token)"},
+                        "groups": {"type": "string", "default": ""},
+                        "notes": {"type": "string", "default": ""}},
+         "required": ["name", "url", "token"]},
+    )
+    def device_join(name: str, url: str, token: str, groups: str = "", notes: str = ""):
+        err = _bad_name(name)
+        if err:
+            return err
+        url = url.strip()
+        if not url.startswith(("http://", "https://")):
+            return f"error: url must start with http:// or https://, got {url!r}"
+        if not url.rstrip("/").endswith(fleet.MCP_PATH):
+            url = url.rstrip("/") + fleet.MCP_PATH
+        token = token.strip()
+        if not token:
+            return "error: token is empty"
+        try:
+            info = fleet.RemoteBody(url, token).probe()
+        except Exception as e:  # noqa: BLE001 - the reason is the answer
+            return f"error: {url} did not answer as a Body: {type(e).__name__}: {e}"
+        token_file = _BODY_HOME / "fleet" / f"{name}.token"
+        token_file.parent.mkdir(parents=True, exist_ok=True)
+        token_file.write_text(token + "\n", encoding="utf-8")
+        try:
+            token_file.chmod(0o600)
+        except OSError:
+            pass
+        registry.add_remote(name, url, str(token_file), notes, groups)
+        return f"joined '{name}' at {url} ({len(info['tools'])} tools, caelza-body {info['version']})"
+
+    @tools.tool(
+        "device_tag",
+        "Set a device's groups (comma-separated; empty clears them) so a "
+        "procedure can be run on the whole group.",
+        {"type": "object",
+         "properties": {"name": {"type": "string"},
+                        "groups": {"type": "string"}},
+         "required": ["name", "groups"]},
+    )
+    def device_tag(name: str, groups: str):
+        out = registry.set_groups(name, groups)
+        if out is None:
+            return f"error: unknown device {name!r}"
+        return f"{name}: groups {', '.join(out) or '(none)'}"
 
     @tools.tool(
         "device_input",

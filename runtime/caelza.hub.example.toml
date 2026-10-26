@@ -1,0 +1,125 @@
+# Caelza on a hub — deployment shape 2: the Runtime and the Mind on a Pi, a
+# NUC or a VPS; the phones run only the Body and are reached over Tailscale.
+#
+# On each phone (Termux):
+#   caelza-body serve --http --host <the phone's Tailscale address>
+#   cat ~/.caelza-body/run/http-token                   # the bearer token
+# On the hub, once per phone:
+#   caelza-body fleet join grandma --url http://100.64.0.9:42618/mcp --token <token> --groups family
+#
+# The hub's own Body (`caelza-body serve`, below) is the one the Runtime talks
+# to. Every tool call naming a joined phone (`device = "grandma"`) runs on that
+# phone; the playbooks, the risk profile and the dashboard do not know the
+# difference. Start with `caelza quickstart`, then merge these blocks in.
+
+schema_version = 3
+
+[gateway]
+host = "127.0.0.1"                # reach the dashboard over Tailscale with `tailscale serve`, or bind the Tailscale address
+port = 42617
+
+[channels.telegram.home]
+enabled = true
+# bot_token: `caelza config set channels.telegram.home.bot_token`
+
+[peer_groups.telegram_home]
+channel = "telegram.home"
+external_peers = ["111111111"]
+
+[agents.main]
+channels = ["telegram.home"]
+mcp_bundles = ["mind", "body"]
+risk_profile = "hub"
+
+# The Mind: the native backend over xanima-server (mind/caelza-mind.example.toml)
+# is the usual hub wiring; the stdio MCP server works too.
+[[mcp.servers]]
+name = "brain"
+transport = "stdio"
+command = "xanima"
+env = { SHARPWAVE_AGENT_ID = "main" }
+tool_timeout_secs = 20
+
+# The hub's Body: the fleet. `pip install -e .` in the Body checkout on the hub.
+[[mcp.servers]]
+name = "body"
+transport = "stdio"
+command = "caelza-body"
+args = ["serve"]
+tool_timeout_secs = 180            # a forwarded mic recording takes up to 60 s, plus the hop
+
+# A phone can also be a Runtime MCP server of its own, with no hub Body in
+# between. Its tools then arrive as `body-grandma__<tool>` (the Bodies page
+# lists every `body-*` server), but the playbooks name `body__<tool>`, so the
+# fleet Body above is the recommended path. The token is a secret:
+#   caelza config set mcp.servers.body-grandma.headers.Authorization
+# [[mcp.servers]]
+# name = "body-grandma"
+# transport = "http"
+# url = "http://100.64.0.9:42618/mcp"
+# tool_timeout_secs = 120
+
+[mcp_bundles.mind]
+servers = ["brain"]
+
+[mcp_bundles.body]
+servers = ["body"]
+
+# Procedures: the four phone playbooks, installed by `caelza-body playbooks --install`.
+# The Procedures page runs one on a phone or on every phone in a group.
+[sop]
+sops_dir = "shared/sops"
+
+# The same gates as on a phone (body/caelza-body.example.toml): reads run
+# without a prompt, anything irreversible, privileged or arbitrary asks first,
+# on whichever phone it runs.
+[risk_profiles.hub]
+level = "supervised"
+require_approval_for_medium_risk = true
+block_high_risk_commands = true
+auto_approve = [
+  "brain__brain_query",
+  "brain__brain_stats",
+  "brain__brain_history",
+  "brain__brain_expand",
+  "brain__brain_edges",
+  "brain__brain_status",
+  "brain__brain_briefing",
+  "body__device_list",
+  "body__device_packages",
+  "body__device_logcat",
+  "body__device_settings",
+  "body__device_ui_dump",
+  "body__device_screencap",
+  "body__device_debloat_plan",
+  "body__device_suspects",
+  "body__device_foreground",
+  "body__device_health",
+  "body__sensors_battery",
+  "body__sensors_notifications",
+  "body__sensors_clipboard_get",
+  "body__sensors_location",
+  "body__self_read_file",
+  "body__self_list_tree",
+  "body__web_search",
+  "body__web_read",
+  "body__web_map",
+  "body__web_crawl_result",
+]
+always_ask = [
+  "brain__brain_reset",
+  "brain__brain_forget",
+  "brain__brain_retract",
+  "body__device_uninstall",
+  "body__device_disable",
+  "body__device_settings_put",
+  "body__device_appops",
+  "body__device_pair",
+  "body__device_unpair",
+  "body__device_join",
+  "body__device_shell",
+  "body__shell_run",
+  "body__self_write_file",
+  "body__self_commit",
+  "body__self_request_restart",
+]
