@@ -10,7 +10,7 @@ from caelza_body.agent import tools
 
 _REPO: Path | None = None
 _HOME: Path | None = None
-DENY_SUFFIXES = ("supervisor.py",)
+DENY_SUFFIXES = ("supervisor.py", "runtime_guard.py")
 
 
 def configure(repo_root, body_home):
@@ -46,8 +46,8 @@ def _resolve(path: str) -> Path:
     p = (_REPO / path).resolve()
     if _REPO not in p.parents and p != _REPO:
         raise PermissionError(f"outside repo: {path}")
-    if p == (_REPO / "caelza_body" / "supervisor.py"):
-        raise PermissionError("immutable file: supervisor.py")
+    if p in ((_REPO / "caelza_body" / "supervisor.py"), (_REPO / "caelza_body" / "runtime_guard.py")):
+        raise PermissionError(f"immutable file: {p.name}")
     if any(str(p).casefold().endswith(s.casefold()) for s in DENY_SUFFIXES):
         raise PermissionError(f"immutable file: {path}")
     parts = set(p.parts)

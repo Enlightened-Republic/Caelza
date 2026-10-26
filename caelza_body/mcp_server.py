@@ -13,6 +13,8 @@ top (``body/caelza-body.example.toml``).
     caelza-body serve --http # the same over Streamable HTTP + bearer token, for
                              # a hub Runtime or another Body across Tailscale
     caelza-body fleet        # the phones this Body reaches; join / forget / tag
+    caelza-body runtime      # the Runtime binary under the supervisor's guard:
+                             # status / update (fetch, verify, probe, swap) / rollback / link
     caelza-body list-tools   # JSON of every tool, its schema and safety hints
     caelza-body probe        # register everything; exit 0 if the Body is sane
     caelza-body playbooks    # the phone playbooks (body/sops); --install copies
@@ -30,6 +32,7 @@ import argparse
 import base64
 import json
 import logging
+import os
 import sys
 import tomllib
 from dataclasses import dataclass
@@ -41,6 +44,7 @@ from mcp.server.lowlevel import Server
 from mcp.server.stdio import stdio_server
 
 from caelza_body import fleet
+from caelza_body import runtime_guard
 from caelza_body.agent import config as _config
 from caelza_body.agent import playbooks
 from caelza_body.agent import tools
@@ -317,6 +321,39 @@ def fleet_command(a, settings: BodySettings) -> int:
     return 1 if out.startswith("error:") else 0
 
 
+def runtime_command(a, settings: BodySettings) -> int:
+    """`caelza-body runtime [status|update|rollback|link]` over `runtime_guard`."""
+    home = settings.body_home
+    if a.action == "status":
+        print(json.dumps(runtime_guard.status(home), indent=2))
+        return 0
+    if a.action == "rollback":
+        rolled = runtime_guard.rollback(home)
+        if rolled:
+            runtime_guard.request_restart(home, "rolled back by hand", rolled)
+            print(f"current -> {rolled}; the supervisor restarts the Runtime on it")
+            return 0
+        print("nothing to roll back to: no last-good other than current", file=sys.stderr)
+        return 1
+    if a.action == "link":
+        link = runtime_guard.link_into_path(home, a.bindir)
+        if link is None:
+            print("no runtime installed, or no $PREFIX/bin to link into (pass --bindir)", file=sys.stderr)
+            return 1
+        print(f"{link} -> {os.readlink(link)}")
+        return 0
+    token = a.token or os.environ.get("GITHUB_TOKEN")
+    try:
+        result = runtime_guard.update(home, repo=a.repo, target=a.target, tag=a.tag, token=token,
+                                      archive=a.archive, config_dir=a.config_dir, port=a.probe_port,
+                                      timeout=a.probe_timeout, log=lambda m: print(m, file=sys.stderr))
+    except Exception as e:  # noqa: BLE001 - the reason is the answer
+        print(f"update failed: {type(e).__name__}: {e}", file=sys.stderr)
+        return 1
+    print(json.dumps(result, indent=2))
+    return 0 if result.get("promoted") or result.get("detail") == "already current" else 1
+
+
 def build_parser() -> argparse.ArgumentParser:
     common = argparse.ArgumentParser(add_help=False)
     common.add_argument("--home", type=Path, default=None,
@@ -355,6 +392,17 @@ def build_parser() -> argparse.ArgumentParser:
     fl.add_argument("--token-file", type=Path, help="join: read the token from this file instead")
     fl.add_argument("--groups", default="", help="join / tag: comma-separated groups")
     fl.add_argument("--notes", default="", help="join: a note for the registry")
+    rt = sub.add_parser("runtime", parents=[common], help="the Runtime binary under the supervisor's guard")
+    rt.add_argument("action", nargs="?", choices=("status", "update", "rollback", "link"), default="status")
+    rt.add_argument("--tag", help="update: a release tag (default: the latest release)")
+    rt.add_argument("--repo", default=runtime_guard.DEFAULT_REPO, help="update: the GitHub repo with the releases")
+    rt.add_argument("--target", default=None, help=f"update: the release target (default for this machine: {runtime_guard.default_target()})")
+    rt.add_argument("--token", default=None, help="update: a GitHub token for a private repo (default $GITHUB_TOKEN)")
+    rt.add_argument("--archive", type=Path, default=None, help="update: install this release tarball instead of fetching one")
+    rt.add_argument("--config-dir", type=Path, default=None, help="update: the Runtime's config dir to probe with and snapshot (default ~/.caelza)")
+    rt.add_argument("--probe-port", type=int, default=runtime_guard.PROBE_PORT, help="update: the port the probe gateway listens on")
+    rt.add_argument("--probe-timeout", type=float, default=runtime_guard.PROBE_TIMEOUT, help="update: seconds to wait for /health")
+    rt.add_argument("--bindir", type=Path, default=None, help="link: the bin dir to put the caelza symlink in (default $PREFIX/bin)")
     return p
 
 
@@ -383,6 +431,8 @@ def main(argv: list[str] | None = None) -> int:
         return list_playbooks(settings, a.install, a.force)
     if a.command == "fleet":
         return fleet_command(a, settings)
+    if a.command == "runtime":
+        return runtime_command(a, settings)
 
     if a.http:
         token_file = a.token_file or fleet.token_path(settings.body_home)

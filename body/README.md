@@ -34,6 +34,7 @@ caelza-body serve           # the stdio server; this is what the Runtime runs
 caelza-body serve --http    # the same over Streamable HTTP + a bearer token, for a hub (see Fleet)
 caelza-body fleet           # the phones this Body reaches; `fleet join` adds a phone's Body
 caelza-body playbooks       # the phone playbooks (body/sops); --install puts them where the Runtime loads SOPs
+caelza-body runtime update  # the Runtime binary under the supervisor's guard: fetch a release, verify, probe, swap
 ```
 
 `--home DIR` overrides the state dir (default `$CAELZA_BODY_HOME`, then
@@ -147,6 +148,43 @@ which the Bodies page lists but the playbooks do not name, so the fleet Body
 is the recommended path. Keep the HTTP endpoint behind Tailscale or a
 firewall: the token is the only lock.
 
+## The Runtime under the guard
+
+Vision §3.5: the Runtime binary is built by CI from this repo
+(`.github/workflows/release.yml`), and the supervisor pulls it onto the phone
+the way the Body's own code is promoted. `caelza_body/runtime_guard.py`,
+stdlib only and as immutable as the supervisor, does the work (M6):
+
+```sh
+caelza-body runtime update            # the latest release for this machine (GITHUB_TOKEN for a private repo)
+caelza-body runtime update --tag v0.1.0
+caelza-body runtime update --archive caelza-0.1.0-aarch64-linux-android.tar.gz   # no network
+caelza-body runtime status            # current, last-good, what is installed
+caelza-body runtime rollback          # current -> last-good, by hand
+caelza-body runtime link              # $PREFIX/bin/caelza -> the current binary
+```
+
+`update` finds the release's archive for this target (`aarch64-linux-android`
+in Termux), downloads it and its `.sha256`, verifies, unpacks into
+`~/.caelza-body/runtime/<version>/` (refusing an archive that escapes its
+directory), and **probes** the new binary before trusting it: `caelza
+--version` must answer with the release's version, and `caelza gateway start`
+on a probe port must serve `/health` within a minute. Only then it snapshots
+`~/.caelza` (the config, the agents' files, the shared SOPs and skills; never
+the data) into `~/.caelza-body/snapshots/`, points `current` and `last-good`
+at the version, and asks the supervisor to restart the Runtime. A binary that
+does not hold is deleted and the one running stays current; nothing else is
+touched.
+
+The supervisor runs `caelza daemon` from `runtime/current` as a child beside
+the agent, restarts it when the guard asks, and on a crash loop points
+`current` back at `last-good` and restarts it; a crash loop on last-good
+itself halts the Runtime and alerts for a human, the same ladder the Body's
+own code gets. With no runtime installed the supervisor leaves the Runtime
+to whatever runs it today (the Termux:Boot script from
+`runtime/termux-install.sh`); after the first `runtime update` plus
+`runtime link`, that script and the shell run the guarded binary too.
+
 ## On the dashboard
 
 The Runtime's dashboard has a **Bodies** page (`/bodies`, M4 phase 2b): this
@@ -182,8 +220,8 @@ table, the gates, the evals and how to run them against an emulator.
 
 ## Next
 
-- The supervisor guards the Runtime binary too (vision §3.5): fetch a release,
-  verify, probe, swap, roll back (the rest of M6).
+- Forge (vision §3.5): the agent proposes Runtime changes as pull requests
+  over the git channel, CI builds the release, the guard above pulls it.
 - The supervisor probes `caelza-body probe` alongside the loop's probe, and
   self-modification commits that break the server roll back the same way.
 - Shizuku as an alternative to ADB for `device_*` on the phone itself (§3.3).

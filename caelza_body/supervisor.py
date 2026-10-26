@@ -1,7 +1,10 @@
 """Niba supervisor. IMMUTABLE — the agent must never edit this file.
 
 Stdlib only. Owns the git repo, supervises the agent child, and guarantees
-recovery to the last known-good commit.
+recovery to the last known-good commit. Since M6 it also runs the Runtime
+binary (`caelza daemon`) from `~/.caelza-body/runtime/current` and rolls it
+back to `last-good` on a crash loop (`caelza_body/runtime_guard.py`, also
+immutable, does the fetching, probing and swapping on request).
 """
 from __future__ import annotations
 
@@ -10,6 +13,8 @@ import signal
 import subprocess
 from pathlib import Path
 from typing import TextIO
+
+from caelza_body import runtime_guard
 
 LAST_GOOD_TAG = "niba-last-good"
 
@@ -304,21 +309,28 @@ def rollback(repo, body_home, reason):
 
 class Supervisor:
     def __init__(self, repo, body_home, *, alert, spawn_agent, spawn_probe,
-                 spawn_sidecar, clock=time.monotonic, sleep=time.sleep):
+                 spawn_sidecar, spawn_runtime=None, clock=time.monotonic, sleep=time.sleep):
         self.repo = Path(repo)
         self.body_home = Path(body_home)
         self.alert = alert
         self._spawn_agent = spawn_agent
         self._spawn_probe = spawn_probe
         self._spawn_sidecar = spawn_sidecar
+        #: Returns a Child running `caelza daemon` from the current runtime,
+        #: or None when no runtime is installed. Unset: the Runtime is not ours.
+        self._spawn_runtime = spawn_runtime
         self._clock = clock
         self._sleep = sleep
         self.agent = None
         self.sidecar = None
+        self.runtime = None
         self._sidecar_next_try = 0.0
         self.crashes = CrashLoop()
+        self.runtime_crashes = CrashLoop()
         self._last_good_looping = False
+        self._runtime_last_good_looping = False
         self._halted = False
+        self._runtime_halted = False
         self._agent_started_at = 0.0
         if last_good(self.repo) is None:
             set_last_good(self.repo, current_commit(self.repo))
@@ -343,8 +355,57 @@ class Supervisor:
         self.agent.start()
         self._agent_started_at = self._real_now()
 
+    def _start_runtime(self):
+        child = self._spawn_runtime()
+        if child is None:
+            self.runtime = None
+            return
+        self.runtime = child
+        self.runtime.start()
+
+    def _tick_runtime(self):
+        """Run the Runtime binary and keep it on a binary that holds.
+
+        A restart request (`runtime_guard.update` promoted a probed
+        version) restarts the child on `current`. A crash loop rolls
+        `current` back to `last-good` and restarts; a crash loop on
+        last-good itself halts the Runtime and asks for a human.
+        """
+        if self._spawn_runtime is None or self._runtime_halted:
+            return
+        req = runtime_guard.read_restart_request(self.body_home)
+        if req:
+            runtime_guard.clear_restart_request(self.body_home)
+            if self.runtime is not None:
+                self.runtime.stop()
+            self.runtime_crashes.reset()
+            self._runtime_last_good_looping = False
+            self.alert(f"runtime: restarting on {req.get('version') or '?'}: {req.get('reason', '')}")
+            self._start_runtime()
+            return
+        if self.runtime is None:
+            self._start_runtime()
+            return
+        if not self.runtime.running:
+            now = self._clock()
+            self.runtime_crashes.record_exit(now)
+            if self.runtime_crashes.tripped(now):
+                if self._runtime_last_good_looping:
+                    self.alert("runtime: the last-good binary is crash-looping. stopping it. manual fix needed.")
+                    self._runtime_halted = True
+                    return
+                rolled = runtime_guard.rollback(self.body_home)
+                if rolled:
+                    self.alert(f"runtime crash-looped, rolled back to last-good {rolled}.")
+                else:
+                    self.alert("runtime crash-looped and there is no other last-good binary; restarting it once more.")
+                self.runtime_crashes.reset()
+                self._runtime_last_good_looping = True
+            self._start_runtime()
+
     def tick(self):
         self._ensure_sidecar()
+        self._tick_runtime()
         if self._halted:
             return
         if self.agent is None:
@@ -405,6 +466,8 @@ class Supervisor:
                 self.agent.stop()
             if self.sidecar:
                 self.sidecar.stop()
+            if self.runtime:
+                self.runtime.stop()
 
 
 def main():  # pragma: no cover - wiring, exercised in staging
@@ -440,8 +503,18 @@ def main():  # pragma: no cover - wiring, exercised in staging
         # fights it for the SQLite lock. No sidecar.
         return None
 
+    def spawn_runtime():
+        # The Runtime binary the guard installed (`caelza-body runtime update`);
+        # none installed means the Runtime is run some other way (or not yet).
+        binary = runtime_guard.current_binary(body_home)
+        if binary is None:
+            return None
+        return Child("runtime", [str(binary), "daemon"], cwd=body_home, log_dir=logs,
+                     env={**env, "CAELZA_SUPERVISED": "1"})
+
     Supervisor(repo, body_home, alert=alert, spawn_agent=spawn_agent,
-               spawn_probe=spawn_probe, spawn_sidecar=spawn_sidecar).run()
+               spawn_probe=spawn_probe, spawn_sidecar=spawn_sidecar,
+               spawn_runtime=spawn_runtime).run()
 
 
 if __name__ == "__main__":

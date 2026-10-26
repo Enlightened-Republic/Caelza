@@ -19,6 +19,10 @@
 #                               starts `caelza daemon` after a reboot)
 #
 # The Body (sensors, ADB, the supervisor) is a separate install: ../install.sh.
+# Once the Body is installed, `caelza-body runtime update` fetches the same
+# release under the supervisor's guard (verified, probed, last-good kept,
+# rolled back on a crash loop) and `caelza-body runtime link` points
+# $PREFIX/bin/caelza at it; this script is the plain, unguarded install.
 # Re-running is safe; every step is idempotent.
 set -eu
 
