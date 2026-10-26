@@ -3,15 +3,22 @@ import test from 'node:test';
 import {
   bodyTile,
   commitmentTone,
+  deviceOptionLabel,
   dueLabel,
   formatUptime,
+  isPlaybook,
   mindTile,
   partitionRuns,
+  playbookPayload,
   recentSessions,
+  runRefusal,
   runtimeTile,
   sessionLabel,
   sleepLine,
   sopEngineOff,
+  sopOffText,
+  SOP_ENGINE_NOT_RUNNING_TEXT,
+  SOP_OFF_TEXT,
 } from './home.logic.ts';
 
 test('a disabled SOP engine is a state, not an error', () => {
@@ -137,4 +144,26 @@ test('sessions, due dates and sleep read tidily', () => {
     sleepLine({ at: 1, ago: '3 hours ago', summary: { nodesBefore: 120, nodesAfter: 118, pruned: 4, newContradictions: 1, flaggedForReview: 2 } }),
     'slept 3 hours ago: 120 → 118 nodes, 4 pruned, 1 new contradiction, 2 flagged for review',
   );
+});
+
+test('the phone playbooks get a Run that names the phone', () => {
+  assert.ok(isPlaybook('phone-debloat') && isPlaybook('phone-malware-removal'));
+  assert.ok(!isPlaybook('deploy-prod') && !isPlaybook('my-phone-thing'));
+  assert.equal(playbookPayload('self'), '{"device":"self"}');
+  assert.equal(playbookPayload('  '), '{"device":"self"}');
+  assert.equal(playbookPayload('grandma', ' com.metro.minus1, com.android.chrome '), '{"device":"grandma","keep":"com.metro.minus1, com.android.chrome"}');
+  assert.equal(deviceOptionLabel({ name: 'self', self: true, host: null, last_seen: null, reachable: true }), 'self (this phone)');
+  assert.equal(deviceOptionLabel({ name: 'grandma', self: false, host: '10.0.0.5:5555', last_seen: null, reachable: false }), 'grandma · unreachable');
+});
+
+test('the run endpoint refusals come back in plain words', () => {
+  assert.equal(runRefusal('API 503: {"error":"SOP subsystem not enabled"}'), SOP_ENGINE_NOT_RUNNING_TEXT);
+  assert.equal(runRefusal('API 503: {"error":"SOP subsystem not enabled"}', false), SOP_OFF_TEXT);
+  assert.equal(sopOffText(false), SOP_OFF_TEXT);
+  assert.match(sopOffText(true), /caelza daemon/);
+  assert.match(runRefusal("API 422: SOP 'x' cannot be started here: step(s) [1, 2] resolve no owning agent"), /no owning agent/);
+  assert.match(runRefusal('API 404: not found'), /not loaded/);
+  assert.match(runRefusal('API 409: run deferred: admission hold'), /already in flight/);
+  assert.match(runRefusal('API 400: payload is not valid JSON'), /must be JSON/);
+  assert.equal(runRefusal('API 502: upstream gone'), 'API 502: upstream gone');
 });

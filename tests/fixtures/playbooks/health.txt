@@ -1,0 +1,77 @@
+@@caelza:identity
+T-Mobile
+TMRV075G
+16
+2026-09-05
+36
+@@caelza:boot
+green
+1
+0
+@@caelza:battery
+Current Battery Service state:
+  AC powered: false
+  USB powered: true
+  Wireless powered: false
+  Dock powered: false
+  Max charging current: 500000
+  Max charging voltage: 5000000
+  Charge counter: 2890000
+  status: 2
+  health: 2
+  present: true
+  level: 87
+  scale: 100
+  voltage: 4123
+  temperature: 285
+  technology: Li-ion
+@@caelza:storage
+Filesystem      1K-blocks     Used Available Use% Mounted on
+/dev/block/dm-52 115343360 81204224  34139136  71% /data
+@@caelza:memory
+MemTotal:        5689112 kB
+MemFree:          612340 kB
+MemAvailable:    3012456 kB
+Buffers:           41212 kB
+Cached:          2301044 kB
+@@caelza:uptime
+193822.41 702311.02
+@@caelza:thermal
+Thermal Status: 0
+38000
+@@caelza:top
+Tasks: 612 total,   1 running, 611 sleeping,   0 stopped,   0 zombie
+  Mem:   5555M total,  4983M used,   571M free,    41M buffers
+ Swap:   3072M total,   912M used,  2159M free,  2246M cached
+800%cpu  14%user   0%nice  22%sys 764%idle   0%iow   0%irq   0%sirq   0%host
+  PID USER         PR  NI VIRT  RES  SHR S[%CPU] %MEM     TIME+ ARGS
+ 1823 system       18  -2  25G 331M 189M S 10.0   5.9 311:02.14 system_server
+ 2991 u0_a233      20   0  22G 198M 102M S  3.3   3.5  44:10.90 com.termux
+ 1102 root         RT   0    0    0    0 S  3.3   0.0  12:00.01 [kworker/u16:3]
+ 3310 u0_a51       10 -10  21G 240M 140M S  3.3   4.3 100:11.02 com.android.systemui
+@@caelza:crashes
+10-24 09:12:01.123 14022 14022 E AndroidRuntime: FATAL EXCEPTION: main
+10-24 09:12:01.123 14022 14022 E AndroidRuntime: Process: com.example.flashlightpro, PID: 14022
+10-23 22:40:12.001 11890 11890 E AndroidRuntime: FATAL EXCEPTION: main
+10-23 22:40:12.001 11890 11890 E AndroidRuntime: Process: com.example.flashlightpro, PID: 11890
+@@caelza:settings
+adb_wifi_enabled=1
+adb_enabled=1
+development_settings_enabled=1
+stay_on_while_plugged_in=0
+window_animation_scale=1.0
+transition_animation_scale=1.0
+animator_duration_scale=1.0
+package_verifier_user_consent=1
+@@caelza:whitelist
+user,com.termux,10233
+system-excidle,com.tailscale.ipn,10240
+@@caelza:packages
+package:com.termux
+package:com.termux.api
+package:com.tailscale.ipn
+@@caelza:network
+lo 127.0.0.1/8
+wlan0 192.168.1.23/24
+tun0 100.101.102.103/32
+@@caelza:end

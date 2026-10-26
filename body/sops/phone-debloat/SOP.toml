@@ -1,0 +1,20 @@
+# Caelza phone playbook: debloat. One of the four procedures in body/sops,
+# installed into the Runtime's sops dir by `caelza-body playbooks --install`
+# and checked by `caelza sop validate phone-debloat`. body/sops/README.md
+# explains how the playbooks run and where their gates are.
+[sop]
+name = "phone-debloat"
+description = "Remove carrier app pushers, adware and preloaded games from a phone and disable its carrier telemetry, from the Body's curated list, after the owner has read the plan. Reversible: the Body snapshots the package list first, `pm install-existing` and `pm enable` undo it."
+version = "1.0.0"
+priority = "normal"
+# The reads run without a prompt; the one step that changes the phone carries
+# `requires_confirmation` and parks the run until the owner approves it.
+execution_mode = "auto"
+# The agent that runs the steps. The dashboard's Run button starts the
+# procedure outside any agent turn and refuses one with no owner.
+agent = "main"
+max_concurrent = 1
+admission_policy = "hold"
+
+[[triggers]]
+type = "manual"

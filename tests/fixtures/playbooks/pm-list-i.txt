@@ -1,0 +1,7 @@
+package:com.example.flashlightpro  installer=com.google.android.packageinstaller
+package:com.govee.home  installer=com.android.vending
+package:com.tailscale.ipn  installer=null
+package:com.termux  installer=org.fdroid.fdroid
+package:com.termux.api  installer=org.fdroid.fdroid
+package:com.cleaner.boost.master  installer=null
+@@caelza:end

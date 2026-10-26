@@ -1,0 +1,4 @@
+  mCurrentFocus=Window{7d3a1c2 u0 com.example.flashlightpro/com.example.flashlightpro.ui.OfferActivity}
+  mFocusedApp=ActivityRecord{a1b2c3 u0 com.example.flashlightpro/.ui.OfferActivity t412}
+    topResumedActivity=ActivityRecord{a1b2c3 u0 com.example.flashlightpro/.ui.OfferActivity t412}
+@@caelza:end

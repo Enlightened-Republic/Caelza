@@ -7,7 +7,9 @@
 #   1. installs the Termux packages the Body needs
 #   2. clones (or updates) the repo to $CAELZA_DIR  (default ~/caelza)
 #   3. pip-installs the Body package
-#   4. hands off to `python scripts/setup.py`, which walks the steps that need
+#   4. installs the phone playbooks (body/sops) into ~/.caelza/shared/sops,
+#      where the Runtime's SOP engine loads them
+#   5. hands off to `python scripts/setup.py`, which walks the steps that need
 #      a human (battery whitelist, MiniMax login, ADB pairing, Telegram token)
 #
 # Flags / env:
@@ -46,6 +48,10 @@ fi
 
 say "installing the Body package"
 pip install -q -e "$DIR" 2>/dev/null || pip install -q --break-system-packages -e "$DIR"
+
+say "installing the phone playbooks → ~/.caelza/shared/sops"
+python -m caelza_body.mcp_server playbooks --install --repo-root "$DIR" >/dev/null \
+  || say "playbooks not installed (run: caelza-body playbooks --install)"
 
 if [ ! -f "$DIR/caelza_body/agent/prompt.md" ]; then
   cp "$DIR/caelza_body/agent/prompt.example.md" "$DIR/caelza_body/agent/prompt.md"

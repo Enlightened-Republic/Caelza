@@ -73,6 +73,16 @@ servers = ["brain"]
 servers = ["body"]
 
 # ---------------------------------------------------------------------------
+# Procedures: the SOP engine, off until sops_dir is set. "shared/sops" resolves
+# against the directory holding this config (~/.caelza/shared/sops), which is
+# where `caelza-body playbooks --install` puts the four phone playbooks
+# (body/sops: phone-debloat, phone-malware-removal, phone-new-setup,
+# phone-diagnostics). They run as `agents.main`; the step that changes the
+# phone waits for your approval on the Procedures page or in Telegram.
+[sop]
+sops_dir = "shared/sops"
+
+# ---------------------------------------------------------------------------
 # Risk profile for an agent that holds a phone. Supervised: pure reads run
 # without a prompt, anything irreversible or arbitrary asks the owner on
 # Telegram, everything else follows the supervised defaults. The Body already
@@ -98,6 +108,10 @@ auto_approve = [
   "body__device_settings",
   "body__device_ui_dump",
   "body__device_screencap",
+  "body__device_debloat_plan",
+  "body__device_suspects",
+  "body__device_foreground",
+  "body__device_health",
   "body__sensors_battery",
   "body__sensors_notifications",
   "body__sensors_clipboard_get",

@@ -1,0 +1,17 @@
+# Caelza phone playbook: new-phone setup. One of the four procedures in
+# body/sops, installed into the Runtime's sops dir by
+# `caelza-body playbooks --install` and checked by
+# `caelza sop validate phone-new-setup`.
+[sop]
+name = "phone-new-setup"
+description = "Turn a phone into a Caelza body, or just set it up well: read its identity and the setup checklist, then, with the owner's approval, exempt Termux from battery optimisation, grant Termux:API its permissions and keep the screen on while charging. Reports what still needs a hand on the phone."
+version = "1.0.0"
+priority = "normal"
+# Reads run without a prompt; the one step that writes settings parks the run.
+execution_mode = "auto"
+agent = "main"
+max_concurrent = 1
+admission_policy = "hold"
+
+[[triggers]]
+type = "manual"

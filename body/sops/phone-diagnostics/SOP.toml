@@ -1,0 +1,22 @@
+# Caelza phone playbook: diagnostics. One of the four procedures in body/sops,
+# installed into the Runtime's sops dir by `caelza-body playbooks --install`
+# and checked by `caelza sop validate phone-diagnostics`.
+[sop]
+name = "phone-diagnostics"
+description = "A read-only health check of a phone: battery, storage, memory, uptime, heat, the top CPU users, recent crashes, network, patch level and the setup checklist, in plain words with what needs attention first. Changes nothing."
+version = "1.0.0"
+priority = "low"
+# Every step is a read, so the run needs no gate at all.
+execution_mode = "auto"
+agent = "main"
+max_concurrent = 1
+admission_policy = "coalesce"
+
+[[triggers]]
+type = "manual"
+
+# A morning check-up as well: uncomment to run it on a schedule. Cron runs
+# headless, which the `agent` above allows.
+# [[triggers]]
+# type = "cron"
+# expression = "0 7 * * *"
