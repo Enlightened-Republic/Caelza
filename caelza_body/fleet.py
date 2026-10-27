@@ -31,6 +31,7 @@ import hmac
 import json
 import logging
 import mimetypes
+import os
 import secrets
 import time
 from pathlib import Path
@@ -60,6 +61,37 @@ def token_path(body_home: Path | str) -> Path:
     return Path(body_home) / TOKEN_FILE
 
 
+def fresh_token(generate=secrets.token_urlsafe) -> str:
+    """A new bearer token that starts with a letter or digit, so it can be
+    pasted after `--token` on a command line (a leading `-` reads as an
+    option; `_` is kept out too for the same eye)."""
+    while True:
+        token = generate(32)
+        if token and token[0] not in "-_":
+            return token
+
+
+def write_secret(path: Path | str, text: str) -> Path:
+    """Write a token file nobody else can read, from its first byte: the
+    directory 0700, the file created 0600 rather than written and then
+    chmodded (an existing file is re-moded too)."""
+    p = Path(path)
+    p.parent.mkdir(parents=True, exist_ok=True)
+    for target, mode in ((p.parent, 0o700),):
+        try:
+            target.chmod(mode)
+        except OSError:
+            pass
+    fd = os.open(p, os.O_WRONLY | os.O_CREAT | os.O_TRUNC, 0o600)
+    with os.fdopen(fd, "w", encoding="utf-8") as fh:
+        fh.write(text)
+    try:
+        p.chmod(0o600)
+    except OSError:
+        pass
+    return p
+
+
 def load_or_create_token(path: Path | str) -> str:
     """The token in ``path``, created (0600) when the file is missing."""
     p = Path(path)
@@ -67,13 +99,8 @@ def load_or_create_token(path: Path | str) -> str:
         token = p.read_text(encoding="utf-8").strip()
         if token:
             return token
-    p.parent.mkdir(parents=True, exist_ok=True)
-    token = secrets.token_urlsafe(32)
-    p.write_text(token + "\n", encoding="utf-8")
-    try:
-        p.chmod(0o600)
-    except OSError:
-        pass
+    token = fresh_token()
+    write_secret(p, token + "\n")
     return token
 
 
@@ -82,9 +109,15 @@ def read_token(path: Path | str) -> str:
 
 
 def bearer_ok(header: str | None, token: str) -> bool:
+    """`Authorization: Bearer <token>` against the token, in constant time.
+    Non-ASCII (headers arrive latin-1 decoded) is a plain refusal, not the
+    `TypeError` `compare_digest` raises for it."""
     if not header or not header.startswith("Bearer "):
         return False
-    return hmac.compare_digest(header[len("Bearer "):].strip(), token)
+    candidate = header[len("Bearer "):].strip()
+    if not candidate or not candidate.isascii() or not token.isascii():
+        return False
+    return hmac.compare_digest(candidate, token)
 
 
 # ---------------------------------------------------------------------------
@@ -289,6 +322,10 @@ def _save_images(name: str, images: list[tuple[bytes, str]]) -> None:
         emit_image(str(path), mime)
 
 
+#: Arguments the audit line never shows: a joined Body's token, a pairing code.
+SECRET_ARGS = frozenset({"token", "code", "password", "secret"})
+
+
 def _log_forward(name: str, tool: str, args: dict, outcome: str) -> None:
     from caelza_body import mcp_server
 
@@ -299,17 +336,37 @@ def _log_forward(name: str, tool: str, args: dict, outcome: str) -> None:
         return
     logf = home / FLEET_LOG
     logf.parent.mkdir(parents=True, exist_ok=True)
-    shown = {k: v for k, v in args.items() if k != "device"}
+    shown = {k: ("<redacted>" if k in SECRET_ARGS else v) for k, v in args.items() if k != "device"}
     with logf.open("a", encoding="utf-8") as fh:
         fh.write(f"{time.strftime('%Y-%m-%dT%H:%M:%S%z')}\t{name}\t{tool}\t{json.dumps(shown)}\t{outcome}\n")
+
+
+def takes_device(tool: str) -> bool:
+    """Does this tool's schema have a `device` argument? Only those are
+    forwarded: `device_join(..., device="grandma")` names no phone to run
+    on, it is a stray argument, and the call stays local (where the schema
+    check refuses it) instead of carrying a token across the fleet."""
+    from caelza_body.agent import tools
+
+    schema = tools._SCHEMAS.get(tool) or {}
+    return "device" in schema.get("function", {}).get("parameters", {}).get("properties", {})
+
+
+def leaf_exception(e: BaseException) -> BaseException:
+    """The first real error inside anyio's exception groups, so the model
+    reads `ConnectError: connection refused` rather than `ExceptionGroup:
+    unhandled errors in a TaskGroup`."""
+    while isinstance(e, BaseExceptionGroup) and e.exceptions:
+        e = e.exceptions[0]
+    return e
 
 
 def forward(tool: str, args: dict, remote_factory=remote_for) -> str | None:
     """Forward ``tool(args)`` to the Body that ``args['device']`` names, as a
     call on that Body's own phone. None when the call is local (no ``device``,
-    ``self``, or an ADB-paired phone)."""
+    ``self``, an ADB-paired phone, or a tool that takes no ``device``)."""
     device = args.get("device")
-    if not isinstance(device, str):
+    if not isinstance(device, str) or not takes_device(tool):
         return None
     entry = remote_entry(device)
     if entry is None:
@@ -320,8 +377,9 @@ def forward(tool: str, args: dict, remote_factory=remote_for) -> str | None:
         remote = remote_factory(entry)
         text, images, is_error = remote.call(tool, remote_args)
     except Exception as e:  # noqa: BLE001 - a dead remote is a result, not a crash
-        _log_forward(device, tool, args, f"unreachable: {type(e).__name__}")
-        return f"error: {device!r} ({entry['url']}) did not answer: {type(e).__name__}: {e}"
+        cause = leaf_exception(e)
+        _log_forward(device, tool, args, f"unreachable: {type(cause).__name__}")
+        return f"error: {device!r} ({entry['url']}) did not answer: {type(cause).__name__}: {cause}"
     _save_images(device, images)
     _log_forward(device, tool, args, "error" if is_error else "ok")
     if is_error and not text.startswith("error:"):

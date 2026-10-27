@@ -270,6 +270,9 @@ def register() -> None:
         err = _bad_name(name)
         if err:
             return err
+        existing = registry.get(name)
+        if existing is not None and registry.kind_of(existing) == "http":
+            return f"error: {name!r} is a joined Body (its token file would be orphaned); device_unpair it first, then pair"
         out = adb.pair(name, host, code, notes)
         if groups and out.startswith("paired"):
             registry.set_groups(name, groups)
@@ -322,17 +325,15 @@ def register() -> None:
         token = token.strip()
         if not token:
             return "error: token is empty"
+        existing = registry.get(name)
+        if existing is not None and registry.kind_of(existing) != "http":
+            return f"error: {name!r} is a phone paired over ADB; device_unpair it first, then join"
         try:
             info = fleet.RemoteBody(url, token).probe()
         except Exception as e:  # noqa: BLE001 - the reason is the answer
-            return f"error: {url} did not answer as a Body: {type(e).__name__}: {e}"
-        token_file = _BODY_HOME / "fleet" / f"{name}.token"
-        token_file.parent.mkdir(parents=True, exist_ok=True)
-        token_file.write_text(token + "\n", encoding="utf-8")
-        try:
-            token_file.chmod(0o600)
-        except OSError:
-            pass
+            cause = fleet.leaf_exception(e)
+            return f"error: {url} did not answer as a Body: {type(cause).__name__}: {cause}"
+        token_file = fleet.write_secret(_BODY_HOME / "fleet" / f"{name}.token", token + "\n")
         registry.add_remote(name, url, str(token_file), notes, groups)
         return f"joined '{name}' at {url} ({len(info['tools'])} tools, caelza-body {info['version']})"
 

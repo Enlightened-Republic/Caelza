@@ -11,6 +11,7 @@ from __future__ import annotations
 
 import json
 import os
+import re
 import shutil
 import stat
 from datetime import datetime, timezone
@@ -256,6 +257,51 @@ def test_debloat_plan_tool_runs_the_classifier_over_the_phone(recorded_phone):
     pinned = call("device_debloat_plan", device="self", keep="com.metro.minus1, com.metropcs.metrozone")
     assert pinned["pinned"] == ["com.metro.minus1", "com.metropcs.metrozone"]
     assert not {"com.metro.minus1", "com.metropcs.metrozone"} & {i["pkg"] for i in pinned["remove"]}
+
+
+def test_device_admins_are_read_from_both_dump_shapes():
+    dump = ("Current Device Policy Manager state:\n  Enabled Device Admins (User 0, provisioningState: 0):\n"
+            "    com.spy.app/.AdminReceiver:\n      uid=10234\n      policies:\n        force-lock\n"
+            "    com.corp.mdm/com.corp.mdm.Receiver:\n"
+            "  mDeviceOwner=admin=ComponentInfo{com.corp.mdm/com.corp.mdm.Receiver}\n")
+    assert pb.parse_device_admins(dump) == {"com.spy.app", "com.corp.mdm"}
+    assert pb.parse_device_admins("") == set()
+    # The shell-side grep keeps those lines (and nothing says `grep` on the phone sees ERE differently).
+    kept = [ln for ln in dump.splitlines() if re.search(pb.ADMIN_GREP, ln)]
+    assert kept == ["    com.spy.app/.AdminReceiver:", "    com.corp.mdm/com.corp.mdm.Receiver:",
+                    "  mDeviceOwner=admin=ComponentInfo{com.corp.mdm/com.corp.mdm.Receiver}"]
+
+
+def test_a_store_install_the_table_knows_as_a_preload_goes_to_review():
+    pkgs = {"com.king.candycrushsaga", "com.aura.oobe.metro", "com.android.settings"}
+    plan = pb.debloat_plan(pkgs, third_party={"com.king.candycrushsaga", "com.aura.oobe.metro"},
+                           installers={"com.king.candycrushsaga": "com.android.vending", "com.aura.oobe.metro": None})
+    assert [i["pkg"] for i in plan["remove"]] == ["com.aura.oobe.metro"]
+    assert plan["review"][0]["pkg"] == "com.king.candycrushsaga"
+    assert "installed from com.android.vending" in plan["review"][0]["why"] and plan["review"][0]["installer"] == "com.android.vending"
+    # Without installer information the table stands, as before.
+    assert "com.king.candycrushsaga" in {i["pkg"] for i in pb.debloat_plan(pkgs, third_party={"com.king.candycrushsaga"})["remove"]}
+
+
+def test_a_preload_is_not_a_sideload_and_the_permission_grep_keeps_the_late_ones():
+    sysapp = pb.risk_flags("com.metro.minus1", installer=None, info={"system": True, "permissions": []}, appops={}, now=NOW)
+    assert sysapp["sideloaded"] is False and sysapp["flags"] == [] and sysapp["system"] is True
+    perms = ["android.permission.ACCESS_NETWORK_STATE", "android.permission.SEND_SMS",
+             "android.permission.WRITE_SETTINGS", "android.permission.INTERNET", "android.permission.READ_SMS"]
+    kept = [p for p in perms if re.search(pb.SENSITIVE_PERMISSION_GREP, p)]
+    assert kept == ["android.permission.SEND_SMS", "android.permission.WRITE_SETTINGS", "android.permission.READ_SMS"]
+
+
+def test_positional_getprop_sections_keep_their_places():
+    assert pb._positional("TCL\nTMRV075G\n14\n\n34\n\n") == ["TCL", "TMRV075G", "14", "", "34"]
+    checks = pb.setup_checks({}, "", "", "green\n\n0\n")  # ro.boot.flash.locked unset on this build
+    assert checks["verified_boot"] == "green" and checks["bootloader_locked"] is None
+    assert pb.setup_checks({}, "", "", "green\n1\n0\n")["bootloader_locked"] is True
+
+
+def test_a_script_cut_off_before_its_marker_is_an_error_not_a_shorter_answer(recorded_phone):
+    err, out = playbook._shell("self", "true")  # the recorded phone knows no such script: no marker comes back
+    assert err and "cut off" in err and out == ""
 
 
 def test_suspects_tool_names_the_sideloaded_apps_highest_risk_first(recorded_phone):

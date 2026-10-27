@@ -31,6 +31,7 @@ config = "~/.caelza/config.toml"
 targets = ["x86_64-unknown-linux-gnu", "aarch64-unknown-linux-gnu", "aarch64-linux-android"]   # what release.yml builds; Android is marked experimental there
 cross_build = "./runtime/build.sh --target aarch64-linux-android"   # NDK on PATH or $ANDROID_NDK_HOME
 termux_install = "runtime/termux-install.sh"   # one line in Termux: latest release → $PREFIX/bin/caelza + dashboard
+guarded_install = "caelza-body runtime update && caelza-body runtime link"   # the same release under the supervisor's guard (probe, last-good, rollback)
 phone_config = "runtime/caelza.phone.example.toml"   # Telegram + Mind + Body + risk profile, merged after `caelza quickstart`
 dashboard_dir = "~/.local/share/caelza/web/dist"   # one of the gateway's auto-detected locations
 daemon = "caelza daemon"          # gateway (127.0.0.1:42617) + channels + cron; Termux:Boot script via CAELZA_BOOT=1
@@ -124,6 +125,9 @@ fleet = "caelza_body/fleet.py"
 fleet_serve = "caelza-body serve --http --host <tailscale-ip>"   # token in ~/.caelza-body/run/http-token; /health open, /mcp locked
 fleet_join = "caelza-body fleet join <name> --url http://<ip>:42618/mcp --token <token> --groups <g>"   # or the agent's device_join
 hub_config = "runtime/caelza.hub.example.toml"
+# M6 (Runtime guard): the supervisor runs and guards the Runtime binary (vision §3.5).
+runtime_guard = "caelza_body/runtime_guard.py"        # stdlib, immutable: fetch a release, verify, probe, snapshot ~/.caelza, swap, roll back
+runtime_update = "caelza-body runtime update"         # -> ~/.caelza-body/runtime/<version>, current + last-good symlinks; `runtime link` -> $PREFIX/bin/caelza
 
 # ---------------------------------------------------------------------------
 # App — the Caelza Android app + web app (PWA of the Runtime dashboard).

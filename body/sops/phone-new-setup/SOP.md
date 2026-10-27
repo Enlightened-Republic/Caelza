@@ -33,6 +33,7 @@ only for checklist items that were missing, and every one is reversible
    a charger). Say which missing items this procedure can fix from here and
    which need the owner's hand on the phone. No changes in this step.
    - tools: body__device_health, body__device_list
+   - allow-tools: body__device_health, body__device_list
 
 2. **Make it a body** — Approval of this step is the owner's go-ahead for the
    fixes listed in the previous step. Run only these, only for items the
@@ -59,3 +60,4 @@ only for checklist items that were missing, and every one is reversible
    still there, phone-diagnostics for a baseline. State the outcome in one
    plain sentence so it is remembered.
    - tools: body__device_health
+   - allow-tools: body__device_health

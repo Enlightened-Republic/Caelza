@@ -38,11 +38,20 @@ class DeviceRegistry:
 
     def __init__(self, path: Path):
         self.path = Path(path)
+        self._stamp = None
         self._data = self._load()
+
+    def _stat(self):
+        try:
+            st = self.path.stat()
+        except OSError:
+            return None
+        return (st.st_mtime_ns, st.st_size)
 
     def _load(self) -> dict[str, dict]:
         """Load registry from disk. Returns empty dict if missing, unreadable,
         corrupt, or not a JSON object — never raises into startup."""
+        self._stamp = self._stat()
         if not self.path.exists():
             return {}
         try:
@@ -51,13 +60,22 @@ class DeviceRegistry:
             return {}
         return data if isinstance(data, dict) else {}
 
+    def _refresh(self) -> None:
+        """Re-read the file when someone else wrote it: `caelza-body fleet
+        join` runs beside a long-lived Body, and the Body must see the new
+        phone, and must not drop it with its next save."""
+        if self._stat() != self._stamp:
+            self._data = self._load()
+
     def _save(self) -> None:
         """Persist current state to disk atomically (write tmp, then rename), so
-        a kill mid-write can't leave truncated JSON that reads back as empty."""
+        a kill mid-write can't leave truncated JSON that reads back as empty;
+        the tmp name is per process, so two writers never race on one."""
         self.path.parent.mkdir(parents=True, exist_ok=True)
-        tmp = self.path.with_suffix(self.path.suffix + ".tmp")
+        tmp = self.path.with_name(f".{self.path.name}.{os.getpid()}.tmp")
         tmp.write_text(json.dumps(self._data, indent=2))
         os.replace(tmp, self.path)
+        self._stamp = self._stat()
 
     def _now_iso(self) -> str:
         """Current time in ISO 8601 format."""
@@ -65,6 +83,7 @@ class DeviceRegistry:
 
     def add(self, name: str, host: str, notes: str = "", groups=None) -> None:
         """Register a phone paired over ADB."""
+        self._refresh()
         now = self._now_iso()
         self._data[name] = {
             "host": host,
@@ -77,6 +96,7 @@ class DeviceRegistry:
 
     def add_remote(self, name: str, url: str, token_file: str, notes: str = "", groups=None) -> None:
         """Register a phone that runs its own Body, reached over HTTP."""
+        self._refresh()
         now = self._now_iso()
         self._data[name] = {
             "url": url,
@@ -90,19 +110,23 @@ class DeviceRegistry:
 
     def remove(self, name: str) -> None:
         """Remove a device. No-op if not found."""
+        self._refresh()
         self._data.pop(name, None)
         self._save()
 
     def get(self, name: str) -> dict | None:
         """Get device entry, or None if not found."""
+        self._refresh()
         return self._data.get(name)
 
     def all(self) -> dict[str, dict]:
         """Return a copy of all registered devices (mutating it won't persist)."""
+        self._refresh()
         return dict(self._data)
 
     def touch(self, name: str) -> None:
         """Update last_seen timestamp for a device."""
+        self._refresh()
         if name in self._data:
             self._data[name]["last_seen"] = self._now_iso()
             self._save()
@@ -120,6 +144,7 @@ class DeviceRegistry:
 
     def set_groups(self, name: str, groups) -> list[str] | None:
         """Replace a device's groups; None when the device is unknown."""
+        self._refresh()
         entry = self._data.get(name)
         if entry is None:
             return None
@@ -129,6 +154,7 @@ class DeviceRegistry:
 
     def groups(self) -> dict[str, list[str]]:
         """``{group: [device names]}``, names sorted, groups sorted."""
+        self._refresh()
         out: dict[str, list[str]] = {}
         for name, entry in self._data.items():
             for g in _groups(entry.get("groups")):

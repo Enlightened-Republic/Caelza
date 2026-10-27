@@ -34,6 +34,7 @@ caelza-body serve           # the stdio server; this is what the Runtime runs
 caelza-body serve --http    # the same over Streamable HTTP + a bearer token, for a hub (see Fleet)
 caelza-body fleet           # the phones this Body reaches; `fleet join` adds a phone's Body
 caelza-body playbooks       # the phone playbooks (body/sops); --install puts them where the Runtime loads SOPs
+caelza-body runtime update  # the Runtime binary under the supervisor's guard: fetch a release, verify, probe, swap
 ```
 
 `--home DIR` overrides the state dir (default `$CAELZA_BODY_HOME`, then
@@ -128,7 +129,15 @@ playbooks, the dashboard and the risk profile do not know the difference: the
 `device` in a procedure's trigger payload is `self`, an ADB-paired phone or a
 joined Body, and `body__device_uninstall` asks the owner either way. The
 remote Body audit-logs and snapshots on its phone as if the agent ran there;
-the hub adds one line per forwarded destructive call to `logs/fleet.log`.
+the hub adds one line per forwarded destructive call to `logs/fleet.log`,
+with a `token` or `code` argument redacted. Only a tool whose schema has a
+`device` argument is forwarded: `device_join(..., device="grandma")` names no
+phone to run on, so it stays local and is refused there, and a joined phone's
+token never travels in a stray argument. The registry file is re-read when
+another process wrote it, so `caelza-body fleet join` beside a running Body
+is seen at once and kept by the Body's next save; a name cannot flip between
+a paired phone and a joined Body without `device_unpair` first; token files
+are created 0600 inside 0700 directories.
 
 `device_list` shows the fleet with kinds (`self`, `adb`, `http`), reachability
 (a remote's `/health`) and **groups**. `device_pair … groups="family"`,
@@ -146,6 +155,63 @@ Runtime MCP server directly (`transport = "http"`, `url`, the token in
 which the Bodies page lists but the playbooks do not name, so the fleet Body
 is the recommended path. Keep the HTTP endpoint behind Tailscale or a
 firewall: the token is the only lock.
+
+## The Runtime under the guard
+
+Vision §3.5: the Runtime binary is built by CI from this repo
+(`.github/workflows/release.yml`), and the supervisor pulls it onto the phone
+the way the Body's own code is promoted. `caelza_body/runtime_guard.py`,
+stdlib only and as immutable as the supervisor, does the work (M6):
+
+```sh
+caelza-body runtime update            # the latest release for this machine (GITHUB_TOKEN for a private repo)
+caelza-body runtime update --tag v0.1.0
+caelza-body runtime update --archive caelza-0.1.0-aarch64-linux-android.tar.gz   # no network
+caelza-body runtime status            # current, last-good, what is installed
+caelza-body runtime rollback          # current -> last-good, by hand
+caelza-body runtime link              # $PREFIX/bin/caelza -> the current binary
+```
+
+`update` finds the release's archive for this target (`aarch64-linux-android`
+in Termux), downloads it and its `.sha256`, verifies, unpacks into
+`~/.caelza-body/runtime/<version>/` (refusing an archive that escapes its
+directory), and **probes** the new binary before trusting it: `caelza
+--version` must answer with the release's version, and `caelza gateway start`
+on a probe port must serve `/health` within a minute. Only then it snapshots
+`~/.caelza` (the config, the agents' files, the shared SOPs and skills; never
+the data) into `~/.caelza-body/snapshots/`, points `current` and `last-good`
+at the version, and asks the supervisor to restart the Runtime. A binary that
+does not hold is deleted and the one running stays current; nothing else is
+touched.
+
+The probe runs the new gateway on a **copy** of `~/.caelza` (the config, its
+`.secret_key`, the shared SOPs and skills, the agents' files minus their
+workspaces) in the work dir: the live dir belongs to the Runtime that is
+running, which holds its lock and its data there. The probe also refuses a
+probe port that something else already answers on, so a stale gateway can
+never vouch for a new binary. `update` moves `current` to the new version and
+leaves `last-good` on the version that was running; the supervisor promotes
+the new one to `last-good` once it has held for ten minutes. A version that
+is current is never reinstalled over itself, and `prune` keeps current,
+last-good and the version still running.
+
+The supervisor runs `caelza daemon` from `runtime/current` as a child beside
+the agent, restarts it when the guard asks, and on a crash loop points
+`current` back at `last-good` and restarts it; a crash loop on last-good
+itself halts the Runtime and alerts for a human, the same ladder the Body's
+own code gets. A later `runtime update` (or `runtime rollback`) revives a
+halted Runtime: its restart request is read first. Before blaming a crash
+loop on the binary the supervisor checks whether another Runtime already
+answers on the gateway port (a `caelza daemon` started by hand, or by an old
+Termux:Boot script): then it halts without rolling back and says so. Whatever
+goes wrong inside the Runtime guard is alerted, never raised, so the agent's
+own ladder keeps running; Ctrl-C, SIGTERM and an unexpected error all end
+with the children stopped. With no runtime installed the supervisor leaves
+the Runtime to whatever runs it today (the Termux:Boot script from
+`runtime/termux-install.sh`); after the first `runtime update` plus `runtime
+link`, that script steps aside (`update` and `link` add the line that exits
+when `runtime/current` exists; a fresh install ships with it) and the shell
+runs the guarded binary.
 
 ## On the dashboard
 
@@ -180,10 +246,19 @@ run until the owner approves it on the Procedures page (which gives each a
 in the Runtime config loads them. [`sops/README.md`](sops/README.md) has the
 table, the gates, the evals and how to run them against an emulator.
 
+The reads behind them err on the owner's side: `device_debloat_plan` reads
+who installed each third-party package and sends one the owner installed from
+a store to `review` even when the table knows its name as a carrier preload;
+`device_suspects` and `device_foreground` read ordinary device admins (the
+`pkg/.Receiver:` lines, not only owners), grep the sensitive permissions
+before the list is cut, and do not call a preload a sideload; every remote
+script must come back with its end marker, or it is reported as cut off
+rather than parsed short.
+
 ## Next
 
-- The supervisor guards the Runtime binary too (vision §3.5): fetch a release,
-  verify, probe, swap, roll back (the rest of M6).
+- Forge (vision §3.5): the agent proposes Runtime changes as pull requests
+  over the git channel, CI builds the release, the guard above pulls it.
 - The supervisor probes `caelza-body probe` alongside the loop's probe, and
   self-modification commits that break the server roll back the same way.
 - Shizuku as an alternative to ADB for `device_*` on the phone itself (§3.3).

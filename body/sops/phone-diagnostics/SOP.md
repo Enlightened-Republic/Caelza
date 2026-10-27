@@ -17,6 +17,7 @@ registered name); default `self`. Nothing in this procedure changes the phone.
    lines for the recent errors. Keep the raw numbers for the next step; do
    not explain yet.
    - tools: body__device_health, body__sensors_battery, body__device_logcat
+   - allow-tools: body__device_health, body__sensors_battery, body__device_logcat
 
 2. **Report** — Explain the readings to the owner in plain words, starting with
    the `attention` list the health tool returned, then battery (level,

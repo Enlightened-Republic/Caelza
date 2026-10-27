@@ -151,13 +151,18 @@ def classify(pkg: str) -> tuple[str, str]:
     return "", ""
 
 
-def debloat_plan(packages, third_party=(), disabled=(), keep=()) -> dict:
+def debloat_plan(packages, third_party=(), disabled=(), keep=(), installers=None) -> dict:
     """Sort every installed package into remove / disable / optional / keep /
     review. `third_party` is `pm list packages -3`, `disabled` is `-d`
     (already-disabled packages are reported, not planned), `keep` is the
-    owner's own never-touch list."""
+    owner's own never-touch list, `installers` is `{pkg: installer}` from
+    `pm list packages -i`: a third-party package the owner installed from a
+    store is theirs whatever the table says (the table knows Candy Crush as
+    a carrier preload; `pm uninstall` would take the owner's game and its
+    progress), so it goes to review, never to remove or disable."""
     third = set(third_party)
     off = set(disabled)
+    installers = installers or {}
     pinned = {p.strip() for p in keep if p.strip()}
     out = {"remove": [], "disable": [], "optional": [], "review": []}
     kept = 0
@@ -167,6 +172,11 @@ def debloat_plan(packages, third_party=(), disabled=(), keep=()) -> dict:
             kept += 1
             continue
         cls, why = classify(pkg)
+        store = installers.get(pkg) if pkg in third else None
+        if cls in ("remove", "disable") and store in STORE_INSTALLERS:
+            out["review"].append({"pkg": pkg, "third_party": True, "installer": store,
+                                  "why": f"the list calls it {why}, but it was installed from {store}, so it is the owner's own; yours to judge"})
+            continue
         if cls in ("remove", "disable", "optional"):
             if pkg in off:
                 skipped.append(pkg)
@@ -302,9 +312,20 @@ def parse_component_list(text: str) -> set[str]:
     return {part.split("/", 1)[0] for part in text.split(":") if part.strip()}
 
 
+_ADMIN_LINE = re.compile(r"^\s*([A-Za-z][\w.]*)/[\w.$]+:\s*$", re.M)
+
+
 def parse_device_admins(text: str) -> set[str]:
-    """Packages named as device admins in `dumpsys device_policy`."""
-    return set(re.findall(r"ComponentInfo\{([\w.]+)/", text)) | set(re.findall(r"admin=([\w.]+)/", text))
+    """Packages named as device admins in `dumpsys device_policy`. An
+    enabled admin (the stalkerware trick) prints as `pkg/.Receiver:` under
+    "Enabled Device Admins"; only a device or profile owner prints
+    `admin=ComponentInfo{pkg/...}`. Both are read."""
+    found = set(re.findall(r"ComponentInfo\{([\w.]+)/", text)) | set(re.findall(r"admin=([\w.]+)/", text))
+    return found | set(_ADMIN_LINE.findall(text))
+
+
+#: The shell-side `grep -E` that keeps the admin lines of `dumpsys device_policy`.
+ADMIN_GREP = r"admin=|ComponentInfo|^ *[A-Za-z][A-Za-z0-9_.]*/[A-Za-z0-9_.$]*:$"
 
 
 SENSITIVE_PERMISSIONS = {
@@ -321,6 +342,11 @@ SENSITIVE_PERMISSIONS = {
     "android.permission.BIND_NOTIFICATION_LISTENER_SERVICE": "notification_listener",
     "android.permission.WRITE_SETTINGS": "write_settings",
 }
+
+#: The shell-side `grep -E` that keeps the sensitive permissions of a
+#: `dumpsys package` before the list is cut; an alphabetical `head` would
+#: drop SEND_SMS and WRITE_SETTINGS on any app with many permissions.
+SENSITIVE_PERMISSION_GREP = r"\.(" + "|".join(sorted(p.rsplit(".", 1)[1] for p in SENSITIVE_PERMISSIONS)) + ")$"
 
 _FLAG_WEIGHT = {
     "sideloaded": 1, "recent": 1, "overlay": 2, "accessibility": 3, "device_admin": 3,
@@ -341,8 +367,8 @@ def risk_flags(pkg: str, *, installer: str | None, info: dict, appops: dict[str,
     low / medium / high. A sideloaded app with nothing else is low: the owner
     may well have put it there."""
     flags: list[str] = []
-    if installer not in STORE_INSTALLERS and not is_trusted_sideload(pkg):
-        flags.append("sideloaded")
+    if installer not in STORE_INSTALLERS and not is_trusted_sideload(pkg) and not info.get("system"):
+        flags.append("sideloaded")  # a preload has no installer either, and is not a sideload
     if appops.get("SYSTEM_ALERT_WINDOW") == "allow":
         flags.append("overlay")
     if pkg in set(accessibility):
@@ -431,6 +457,16 @@ def _kv_colon(text: str) -> dict[str, str]:
 
 def _lines(text: str) -> list[str]:
     return [ln.strip() for ln in text.splitlines() if ln.strip()]
+
+
+def _positional(text: str) -> list[str]:
+    """One value per line with the positions kept: `getprop` prints an empty
+    line for a property the build does not set, and a section read by
+    position must not shift onto the next value."""
+    lines = [ln.strip() for ln in text.splitlines()]
+    while lines and not lines[-1]:
+        lines.pop()
+    return lines
 
 
 def parse_battery(text: str) -> dict:
@@ -556,7 +592,7 @@ def setup_checks(settings: dict[str, str], whitelist: str, packages: str, boot: 
     """The new-phone checklist as booleans the SOP can read off."""
     wl = whitelist
     pkgs = parse_packages(packages)
-    boot_lines = _lines(boot)
+    boot_lines = _positional(boot)
     scales = [settings.get(k, "") for k in ("window_animation_scale", "transition_animation_scale", "animator_duration_scale")]
     return {
         "wireless_debugging": settings.get("adb_wifi_enabled") == "1",
@@ -571,7 +607,7 @@ def setup_checks(settings: dict[str, str], whitelist: str, packages: str, boot: 
         "tailscale_installed": "com.tailscale.ipn" in pkgs,
         "termux_battery_unrestricted": ",com.termux," in wl or wl.rstrip().endswith(",com.termux"),
         "termux_api_battery_unrestricted": ",com.termux.api," in wl,
-        "verified_boot": boot_lines[0] if boot_lines else None,
+        "verified_boot": (boot_lines[0] or None) if boot_lines else None,
         "bootloader_locked": (boot_lines[1] == "1") if len(boot_lines) > 1 and boot_lines[1] in ("0", "1") else None,
     }
 
@@ -581,13 +617,13 @@ def parse_health(text: str) -> dict:
     s = split_sections(text)
     if "end" not in s:
         return {"error": "health script did not finish", "sections": sorted(s)}
-    ident = _lines(s.get("identity", ""))
+    ident = _positional(s.get("identity", ""))
     identity = {
-        "manufacturer": ident[0] if len(ident) > 0 else None,
-        "model": ident[1] if len(ident) > 1 else None,
-        "android": ident[2] if len(ident) > 2 else None,
-        "security_patch": ident[3] if len(ident) > 3 else None,
-        "sdk": ident[4] if len(ident) > 4 else None,
+        "manufacturer": (ident[0] or None) if len(ident) > 0 else None,
+        "model": (ident[1] or None) if len(ident) > 1 else None,
+        "android": (ident[2] or None) if len(ident) > 2 else None,
+        "security_patch": (ident[3] or None) if len(ident) > 3 else None,
+        "sdk": (ident[4] or None) if len(ident) > 4 else None,
     }
     settings = parse_settings_block(s.get("settings", ""))
     network = [ln for ln in _lines(s.get("network", "")) if not ln.startswith("lo ")]
