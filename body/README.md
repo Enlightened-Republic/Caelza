@@ -55,8 +55,8 @@ and the class is what the example risk profile is generated from.
 
 | class | MCP hints | Runtime policy | tools |
 |---|---|---|---|
-| **read-only** | `readOnlyHint`, `idempotentHint` | `auto_approve` | `device_list`, `device_packages`, `device_logcat`, `device_settings`, `device_ui_dump`, `device_screencap`, `device_debloat_plan`, `device_suspects`, `device_foreground`, `device_health`, `sensors_battery`, `sensors_notifications`, `sensors_clipboard_get`, `sensors_location`, `self_read_file`, `self_list_tree`, `web_search`, `web_read`, `web_map`, `web_crawl_result` |
-| **destructive** | `destructiveHint` | `always_ask` | `device_uninstall`, `device_disable`, `device_settings_put`, `device_appops`, `device_pair`, `device_unpair`, `device_join`, `device_shell`, `shell_run`, `self_write_file`, `self_commit`, `self_request_restart` |
+| **read-only** | `readOnlyHint`, `idempotentHint` | `auto_approve` | `device_list`, `device_packages`, `device_logcat`, `device_settings`, `device_ui_dump`, `device_screencap`, `device_debloat_plan`, `device_suspects`, `device_foreground`, `device_health`, `sensors_battery`, `sensors_notifications`, `sensors_clipboard_get`, `sensors_location`, `self_read_file`, `self_list_tree`, `web_search`, `web_read`, `web_map`, `web_crawl_result`, `runtime_status` |
+| **destructive** | `destructiveHint` | `always_ask` | `device_uninstall`, `device_disable`, `device_settings_put`, `device_appops`, `device_pair`, `device_unpair`, `device_join`, `device_shell`, `shell_run`, `self_write_file`, `self_commit`, `self_request_restart`, `runtime_update` |
 | **neutral** | none | the profile's normal policy | `device_input`, `device_tag`, `sensors_camera_photo`, `sensors_mic_record`, `sensors_tts_speak`, `sensors_clipboard_set`, `sensors_torch`, `self_run_tests`, `web_crawl` |
 
 The memory tools (`memory_recall`, `memory_remember`, `memory_reset`) are not
@@ -255,10 +255,34 @@ before the list is cut, and do not call a preload a sideload; every remote
 script must come back with its end marker, or it is reported as cut off
 rather than parsed short.
 
-## Next
+## Forge
 
-- Forge (vision §3.5): the agent proposes Runtime changes as pull requests
-  over the git channel, CI builds the release, the guard above pulls it.
+The agent improves its own engine without holding the compiler (vision §3.5,
+M6; [`../docs/forge.md`](../docs/forge.md) is the walkthrough). Two
+procedures in `sops/` and a tool group close the loop:
+
+- `forge-propose` frames a Runtime change, reads the files as they are on
+  `main`, drafts the new content and the pull request, and after the owner's
+  gate writes a `forge/<topic>` branch and a **draft PR** through
+  `git_forge`, the Runtime's forge tool over its git channel (a GitHub App on
+  the repo; [`../runtime/caelza.forge.example.toml`](../runtime/caelza.forge.example.toml)).
+  CI builds and tests the branch; a human merges; a `v*` tag releases.
+- `forge-release` starts from the channel's `release.published` event (or by
+  hand with a tag): it reads the release and whether this machine's archive
+  is in it, tells the owner, and after their gate calls `runtime_update`.
+- The `runtime` group (`caelza-body serve --tools …,runtime`, on the machine
+  that runs the Runtime): `runtime_status` is `caelza-body runtime status`
+  plus whether an update is running and the tail of its log;
+  `runtime_update(reason, tag?)` starts `caelza-body runtime update` detached
+  (the guard above does the rest and the supervisor restarts the Runtime),
+  logging to `logs/runtime-update.log` and auditing the reason. It is
+  destructive and always asks.
+
+The release workflow builds every archive with `--features channel-git`
+(upstream keeps the git channel out of its lean default), and `build.sh`
+passes the same flag.
+
+## Next
 - The supervisor probes `caelza-body probe` alongside the loop's probe, and
   self-modification commits that break the server roll back the same way.
 - Shizuku as an alternative to ADB for `device_*` on the phone itself (§3.3).

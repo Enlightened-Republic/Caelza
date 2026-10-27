@@ -31,7 +31,10 @@ usage() { sed -n '2,13p' "${BASH_SOURCE[0]}"; }
 log()   { printf '\033[1;36m[caelza]\033[0m %s\n' "$*"; }
 die()   { printf '\033[1;31m[caelza] error:\033[0m %s\n' "$*" >&2; exit 1; }
 
-FROM=""; MODE="build"; JOBS=""; FEATURES=""; ALLOW_RESIDUAL=0; SKIP_ASSETS=0; TARGET=""
+# Features beyond upstream's lean default: the git channel is Forge (the agent
+# proposes Runtime changes as pull requests; docs/forge.md). The release
+# workflow passes the same flag; `--features` overrides.
+FROM=""; MODE="build"; JOBS=""; FEATURES="${CAELZA_FEATURES-channel-git}"; ALLOW_RESIDUAL=0; SKIP_ASSETS=0; TARGET=""
 while [[ $# -gt 0 ]]; do
   case "$1" in
     --from) FROM="$2"; shift 2 ;;

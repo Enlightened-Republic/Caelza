@@ -43,6 +43,11 @@ runtime/
 ./runtime/build.sh --from ~/src/zeroclaw   # reuse a checkout already at the pinned commit
 ```
 
+`build.sh` builds with `--features channel-git` (the Forge's git channel,
+[`../docs/forge.md`](../docs/forge.md), which upstream keeps out of its lean
+default), the same flag the release workflow passes; `CAELZA_FEATURES=` drops
+it, `--features <list>` replaces it.
+
 Requirements: Rust `>= 1.96` (upstream `rust-version`), `git`, `perl`, `tar`,
 and `python3` with Pillow for the brand assets (or `--skip-assets`). The web
 dashboard is **not** rebuilt by this script; upstream builds it in CI with

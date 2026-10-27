@@ -1,0 +1,58 @@
+# Caelza Forge — the agent proposes changes to its own Runtime as pull requests
+# to this repo, CI builds the release, the guard pulls it (vision §3.5, M6).
+# docs/forge.md is the walkthrough. Merge these blocks into ~/.caelza/config.toml
+# beside the phone (runtime/caelza.phone.example.toml) or hub example.
+#
+# Needs a Runtime built with the git channel: the release workflow builds every
+# archive with `--features channel-git`, and `caelza channel list` shows "Git"
+# as compiled. A source build adds the same flag (`runtime/build.sh` does).
+
+schema_version = 3
+
+# ---------------------------------------------------------------------------
+# The repo, as a GitHub App (docs/forge.md §2). The app needs Contents: read &
+# write, Pull requests: read & write, Issues: read & write, Metadata: read,
+# Actions: read; webhook off (the channel polls, no public URL). The private
+# key is a secret and never lives in this file:
+#   caelza config set channels.git.forge.private_key     # paste the PEM, masked
+# (or private_key_path = "/data/data/com.termux/files/home/.caelza/forge-app.pem", mode 600)
+[channels.git.forge]
+enabled = true
+provider = "github"
+app_id = 123456
+# installation_id = 7890123          # only when the app is installed on more than one account
+repos = ["Enlightened-Republic/Caelza"]
+poll_interval_secs = 60              # 2 requests per repo per tick on the conversational default
+mention_only = true                  # on an issue or PR, the agent answers when the app is @mentioned
+
+# What the repo tells the agent. A published release starts the forge-release
+# procedure, which asks the owner before the guard updates the Runtime; a
+# failed CI run, a merge and review comments on a forge PR reach the agent as
+# messages on that PR's thread. Routing an event type is subscribing to it.
+[channels.git.forge.events]
+"release.published" = { sop = "forge-release" }
+"workflow_run.failed" = { message = true }
+"pull_request.merged" = { message = true }
+"pull_request_review_comment.created" = { message = true }
+
+# Who may talk to the agent on the repo: GitHub logins. The app's own comments
+# are always ignored; other bots too unless listen_to_bots is set.
+[peer_groups.git_forge]
+channel = "git.forge"
+external_peers = ["EnlightenedRepublic"]
+
+# The agent listens on the repo as well as its chat channel.
+[agents.main]
+channels = ["telegram.home", "git.forge"]
+
+# ---------------------------------------------------------------------------
+# Gates. Add to the agent's risk profile (phone or hub):
+#
+#   always_ask   += ["git_forge", "body__runtime_update"]
+#   auto_approve += ["body__runtime_status"]
+#
+# `git_forge` is one tool for every forge operation, reads included, so
+# `always_ask` means the owner sees each call; the forge-propose procedure's
+# own gate (its Propose step) is the second lock. An owner who trusts that
+# gate can leave `git_forge` to the profile's normal policy instead.
+# `body__runtime_update` restarts the Runtime, so it always asks.

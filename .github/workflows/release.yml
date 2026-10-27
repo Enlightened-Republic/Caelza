@@ -140,7 +140,8 @@ jobs:
         env:
           CARGO_TARGET_DIR: ${{ github.workspace }}/runtime/.build/target
           CAELZA_BUILD_ID: ${{ github.ref_name }}
-        run: cargo build --release --locked -p caelza --target ${{ matrix.target }} ${{ matrix.jobs && format('--jobs {0}', matrix.jobs) || '' }}
+        # channel-git: the Forge (docs/forge.md) needs the git channel, which upstream keeps out of its lean default.
+        run: cargo build --release --locked -p caelza --features channel-git --target ${{ matrix.target }} ${{ matrix.jobs && format('--jobs {0}', matrix.jobs) || '' }}
       - name: Release the build memory
         if: always() && matrix.swap && steps.dist_memory.outputs.swap_file
         timeout-minutes: 5

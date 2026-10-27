@@ -66,6 +66,7 @@ pub(crate) const READ_ONLY: &[&str] = &[
     "web_read",
     "web_map",
     "web_crawl_result",
+    "runtime_status",
 ];
 pub(crate) const DESTRUCTIVE: &[&str] = &[
     "device_uninstall",
@@ -80,6 +81,7 @@ pub(crate) const DESTRUCTIVE: &[&str] = &[
     "self_write_file",
     "self_commit",
     "self_request_restart",
+    "runtime_update",
 ];
 
 /// How the Body is wired for this install, read from the live config.

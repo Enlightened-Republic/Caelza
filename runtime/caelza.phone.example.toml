@@ -126,6 +126,7 @@ auto_approve = [
   "body__web_read",
   "body__web_map",
   "body__web_crawl_result",
+  "body__runtime_status",
 ]
 always_ask = [
   # Mind: forgetting is forever
@@ -145,4 +146,5 @@ always_ask = [
   "body__self_write_file",
   "body__self_commit",
   "body__self_request_restart",
+  "body__runtime_update",
 ]
