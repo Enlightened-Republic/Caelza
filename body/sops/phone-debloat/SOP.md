@@ -36,6 +36,7 @@ reinstalls a third-party one, `pm enable <pkg>` re-enables a disabled one.
    disable mean and that both are reversible. Use exact package names. Do not
    change anything in this step.
    - tools: body__device_debloat_plan, body__device_health
+   - allow-tools: body__device_debloat_plan, body__device_health
 
 2. **Apply what was approved** — Approval of this step is the owner's go-ahead
    for the plan as written in the previous step, plus any optional or review
@@ -57,3 +58,4 @@ reinstalls a third-party one, `pm enable <pkg>` re-enables a disabled one.
    after, and how to undo each kind of change. The snapshot path is in the
    Body's audit log (`~/.caelza-body/logs/device-actions.log`).
    - tools: body__device_debloat_plan, body__device_health
+   - allow-tools: body__device_debloat_plan, body__device_health

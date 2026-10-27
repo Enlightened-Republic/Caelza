@@ -69,6 +69,7 @@ servers = ["body"]
 # The Procedures page runs one on a phone or on every phone in a group.
 [sop]
 sops_dir = "shared/sops"
+step_scope_enforce = true          # a step's `allow-tools` binds the agent (see the phone example)
 
 # The same gates as on a phone (body/caelza-body.example.toml): reads run
 # without a prompt, anything irreversible, privileged or arbitrary asks first,

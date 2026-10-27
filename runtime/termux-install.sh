@@ -107,6 +107,9 @@ if [ "${CAELZA_BOOT:-0}" = "1" ]; then
   cat > "$HOME/.termux/boot/caelza-runtime" <<'EOF'
 #!/data/data/com.termux/files/usr/bin/sh
 # Termux:Boot — start the Caelza runtime (gateway + channels + cron) after a reboot.
+# Once the Body's guard holds a Runtime (`caelza-body runtime update`), the
+# supervisor runs it; a second daemon would only fight it for the port.
+[ -e "$HOME/.caelza-body/runtime/current" ] && exit 0
 termux-wake-lock
 exec caelza daemon >> "$HOME/.caelza/logs/daemon.log" 2>&1
 EOF

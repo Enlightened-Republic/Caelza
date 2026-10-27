@@ -81,6 +81,10 @@ servers = ["body"]
 # phone waits for your approval on the Procedures page or in Telegram.
 [sop]
 sops_dir = "shared/sops"
+# A step's `allow-tools` binds the agent to those tools for that step: the
+# playbooks' read steps list only reads, the gated step only what it applies.
+# Off (the upstream default), the lists are advisory.
+step_scope_enforce = true
 
 # ---------------------------------------------------------------------------
 # Risk profile for an agent that holds a phone. Supervised: pure reads run

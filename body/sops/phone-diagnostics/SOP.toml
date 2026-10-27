@@ -9,8 +9,10 @@ priority = "low"
 # Every step is a read, so the run needs no gate at all.
 execution_mode = "auto"
 agent = "main"
-max_concurrent = 1
-admission_policy = "coalesce"
+# One run per phone (see phone-debloat/SOP.toml): `coalesce` would answer the
+# second phone of a group with the first phone's run.
+max_concurrent = 8
+admission_policy = "parallel"
 
 [[triggers]]
 type = "manual"

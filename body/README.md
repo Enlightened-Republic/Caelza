@@ -129,7 +129,15 @@ playbooks, the dashboard and the risk profile do not know the difference: the
 `device` in a procedure's trigger payload is `self`, an ADB-paired phone or a
 joined Body, and `body__device_uninstall` asks the owner either way. The
 remote Body audit-logs and snapshots on its phone as if the agent ran there;
-the hub adds one line per forwarded destructive call to `logs/fleet.log`.
+the hub adds one line per forwarded destructive call to `logs/fleet.log`,
+with a `token` or `code` argument redacted. Only a tool whose schema has a
+`device` argument is forwarded: `device_join(..., device="grandma")` names no
+phone to run on, so it stays local and is refused there, and a joined phone's
+token never travels in a stray argument. The registry file is re-read when
+another process wrote it, so `caelza-body fleet join` beside a running Body
+is seen at once and kept by the Body's next save; a name cannot flip between
+a paired phone and a joined Body without `device_unpair` first; token files
+are created 0600 inside 0700 directories.
 
 `device_list` shows the fleet with kinds (`self`, `adb`, `http`), reachability
 (a remote's `/health`) and **groups**. `device_pair … groups="family"`,
@@ -176,14 +184,34 @@ at the version, and asks the supervisor to restart the Runtime. A binary that
 does not hold is deleted and the one running stays current; nothing else is
 touched.
 
+The probe runs the new gateway on a **copy** of `~/.caelza` (the config, its
+`.secret_key`, the shared SOPs and skills, the agents' files minus their
+workspaces) in the work dir: the live dir belongs to the Runtime that is
+running, which holds its lock and its data there. The probe also refuses a
+probe port that something else already answers on, so a stale gateway can
+never vouch for a new binary. `update` moves `current` to the new version and
+leaves `last-good` on the version that was running; the supervisor promotes
+the new one to `last-good` once it has held for ten minutes. A version that
+is current is never reinstalled over itself, and `prune` keeps current,
+last-good and the version still running.
+
 The supervisor runs `caelza daemon` from `runtime/current` as a child beside
 the agent, restarts it when the guard asks, and on a crash loop points
 `current` back at `last-good` and restarts it; a crash loop on last-good
 itself halts the Runtime and alerts for a human, the same ladder the Body's
-own code gets. With no runtime installed the supervisor leaves the Runtime
-to whatever runs it today (the Termux:Boot script from
-`runtime/termux-install.sh`); after the first `runtime update` plus
-`runtime link`, that script and the shell run the guarded binary too.
+own code gets. A later `runtime update` (or `runtime rollback`) revives a
+halted Runtime: its restart request is read first. Before blaming a crash
+loop on the binary the supervisor checks whether another Runtime already
+answers on the gateway port (a `caelza daemon` started by hand, or by an old
+Termux:Boot script): then it halts without rolling back and says so. Whatever
+goes wrong inside the Runtime guard is alerted, never raised, so the agent's
+own ladder keeps running; Ctrl-C, SIGTERM and an unexpected error all end
+with the children stopped. With no runtime installed the supervisor leaves
+the Runtime to whatever runs it today (the Termux:Boot script from
+`runtime/termux-install.sh`); after the first `runtime update` plus `runtime
+link`, that script steps aside (`update` and `link` add the line that exits
+when `runtime/current` exists; a fresh install ships with it) and the shell
+runs the guarded binary.
 
 ## On the dashboard
 
@@ -217,6 +245,15 @@ run until the owner approves it on the Procedures page (which gives each a
 `install.sh` does the same on a phone, and `[sop] sops_dir = "shared/sops"`
 in the Runtime config loads them. [`sops/README.md`](sops/README.md) has the
 table, the gates, the evals and how to run them against an emulator.
+
+The reads behind them err on the owner's side: `device_debloat_plan` reads
+who installed each third-party package and sends one the owner installed from
+a store to `review` even when the table knows its name as a carrier preload;
+`device_suspects` and `device_foreground` read ordinary device admins (the
+`pkg/.Receiver:` lines, not only owners), grep the sensitive permissions
+before the list is cut, and do not call a preload a sideload; every remote
+script must come back with its end marker, or it is reported as cut off
+rather than parsed short.
 
 ## Next
 

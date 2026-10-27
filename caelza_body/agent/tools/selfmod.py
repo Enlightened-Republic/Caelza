@@ -10,7 +10,11 @@ from caelza_body.agent import tools
 
 _REPO: Path | None = None
 _HOME: Path | None = None
-DENY_SUFFIXES = ("supervisor.py", "runtime_guard.py")
+#: `caelza_body/<name>.py` is immutable, and so is anything else under
+#: `caelza_body/` with that stem: a `caelza_body/supervisor/` package would win
+#: the import over the module and run agent-written code in the supervisor.
+#: `caelza_body/__init__.py` is imported by the supervisor too, so it is held.
+DENY_NAMES = ("supervisor", "runtime_guard", "__init__")
 
 
 def configure(repo_root, body_home):
@@ -46,10 +50,9 @@ def _resolve(path: str) -> Path:
     p = (_REPO / path).resolve()
     if _REPO not in p.parents and p != _REPO:
         raise PermissionError(f"outside repo: {path}")
-    if p in ((_REPO / "caelza_body" / "supervisor.py"), (_REPO / "caelza_body" / "runtime_guard.py")):
-        raise PermissionError(f"immutable file: {p.name}")
-    if any(str(p).casefold().endswith(s.casefold()) for s in DENY_SUFFIXES):
-        raise PermissionError(f"immutable file: {path}")
+    rel = p.relative_to(_REPO).parts if p != _REPO else ()
+    if len(rel) >= 2 and rel[0] == "caelza_body" and rel[1].split(".", 1)[0].casefold() in DENY_NAMES:
+        raise PermissionError(f"immutable file: caelza_body/{rel[1]}")
     parts = set(p.parts)
     if ".git" in parts:
         raise PermissionError("the git dir is off-limits")

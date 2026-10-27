@@ -304,11 +304,19 @@ function RunDialog({ sop, onClose, onStarted }: { sop: SopSummary | null; onClos
       const phones = expandTarget(devices ?? [], device);
       if (phones.length === 0) throw new Error('That group has no phones in it.');
       const started: string[] = [];
+      let folded = 0;
       for (const phone of phones) {
         const { run_id } = await runSop(sop.name, playbookPayload(phone, sop.name === 'phone-debloat' ? keep : undefined));
-        started.push(run_id);
+        // A `coalesce` admission policy answers with a run already going instead of starting one.
+        if (started.includes(run_id)) folded += 1;
+        else started.push(run_id);
       }
       onStarted();
+      if (folded > 0) {
+        throw new Error(
+          `Started ${started.length} run${started.length === 1 ? '' : 's'}; ${folded} phone${folded === 1 ? ' was' : 's were'} folded into a run that was already going (the procedure's admission policy). Wait for those runs to finish, then run the rest.`,
+        );
+      }
       onClose();
       const only = started.length === 1 ? started[0] : undefined;
       navigate(only ? `/runs/${encodeURIComponent(sop.name)}/${encodeURIComponent(only)}` : '/runs');

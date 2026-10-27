@@ -166,6 +166,9 @@ test('the run endpoint refusals come back in plain words', () => {
   assert.match(runRefusal("API 422: SOP 'x' cannot be started here: step(s) [1, 2] resolve no owning agent"), /no owning agent/);
   assert.match(runRefusal('API 404: not found'), /not loaded/);
   assert.match(runRefusal('API 409: run deferred: admission hold'), /already in flight/);
+  // The engine answers a held run with 503 too; that is not "the engine is off".
+  assert.match(runRefusal("API 503: SOP 'phone-debloat' held (a run is already in flight)"), /already in flight/);
+  assert.match(runRefusal("API 503: SOP 'phone-diagnostics' execution slots full"), /already in flight/);
   assert.match(runRefusal('API 400: payload is not valid JSON'), /must be JSON/);
   assert.equal(runRefusal('API 502: upstream gone'), 'API 502: upstream gone');
 });

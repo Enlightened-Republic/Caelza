@@ -273,14 +273,15 @@ export function expandTarget(devices: BodyDevice[], target: string): string[] {
 
 /** The run endpoint's refusals in plain words; anything unknown passes through. */
 export function runRefusal(message: string, listed = true): string {
+  // Admission before "engine off": the engine answers a held or deferred run with 503 as well.
+  if (/^API 409\b/.test(message) || /held \(|already (running|in flight)|execution slots|admission|deferred|cooldown/i.test(message)) {
+    return 'A run of this procedure is already in flight. Wait for it, or stop it first.';
+  }
   if (sopEngineOff(message)) return sopOffText(listed);
   if (/no owning agent|cannot be started here|unowned/i.test(message)) {
     return 'This procedure has no owning agent, so it cannot start from the dashboard. Set `agent` in its SOP.toml, or start it from a chat.';
   }
   if (/^API 404\b/.test(message)) return 'The procedure is not loaded. Install or save it, then refresh.';
-  if (/^API 409\b/.test(message) || /already (running|in flight)|admission|deferred|cooldown/i.test(message)) {
-    return 'A run of this procedure is already in flight. Wait for it, or stop it first.';
-  }
   if (/^API 400\b/.test(message) && /payload/i.test(message)) return 'The payload was refused: it must be JSON, like {"device": "self"}.';
   return message;
 }

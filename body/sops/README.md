@@ -42,6 +42,18 @@ who finds that too much can move `body__device_disable` and
 `body__device_uninstall` out of `always_ask` for the agent that runs
 playbooks; the procedure's own gate remains.
 
+Every step also lists `allow-tools`: the reads a read step may make, and for
+the gated step only what it applies. With `[sop] step_scope_enforce = true`
+(set in `runtime/caelza.phone.example.toml` and the hub example) the engine
+binds the agent to that list for the step, so a destructive tool cannot be
+called from a read step at all; off (the upstream default) the lists are
+advisory and the risk profile is the only gate on the tool.
+
+The Procedures page fans a group out as one run per phone, so every playbook
+admits runs in `parallel` (up to `max_concurrent = 8`), each parked at its
+own gate. `hold` would defer every phone after the first and `coalesce` would
+answer the second phone with the first phone's run.
+
 The Body's safety semantics hold underneath both: a `reason` on every
 destructive call, the audit log at `~/.caelza-body/logs/device-actions.log`,
 a package snapshot before every removal or disable (the call is refused when

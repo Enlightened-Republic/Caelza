@@ -12,9 +12,13 @@ loops. With `CAELZA_BIN` set, the probe also runs against the real binary.
 from __future__ import annotations
 
 import hashlib
+import http.client
 import io
 import json
 import os
+import re
+import shutil
+import signal
 import socket
 import stat
 import tarfile
@@ -119,12 +123,16 @@ class Fetch:
 
 def test_default_target_follows_the_machine(monkeypatch):
     monkeypatch.setenv("PREFIX", "/data/data/com.termux/files/usr")
+    monkeypatch.setattr(rg.platform, "machine", lambda: "aarch64")
     assert rg.default_target() == "aarch64-linux-android"
+    monkeypatch.setattr(rg.platform, "machine", lambda: "x86_64")
+    assert rg.default_target() == "x86_64-linux-android", "an emulator asks for what the release does not build, and is told so"
     monkeypatch.delenv("PREFIX")
     monkeypatch.setattr(rg.platform, "machine", lambda: "aarch64")
     assert rg.default_target() == "aarch64-unknown-linux-gnu"
     monkeypatch.setattr(rg.platform, "machine", lambda: "x86_64")
     assert rg.default_target() == "x86_64-unknown-linux-gnu"
+    assert sorted(["0.10.0", "0.9.0", "0.1.0", "1.0.0-rc1"], key=rg.version_key) == ["0.1.0", "0.9.0", "0.10.0", "1.0.0-rc1"]
 
 
 def test_release_parsing_picks_the_target_s_archive_and_checksum():
@@ -202,6 +210,34 @@ def test_install_switch_promote_rollback_and_prune(tmp_path):
     assert rg.version_of(tmp_path / "missing") is None
     s = rg.status(home)
     assert s["current"] == "0.1.1" and s["last_good"] == "0.1.2" and s["binary"].endswith("0.1.1/caelza")
+    # A last-good whose binary is gone is nothing to fall back to, not an exception.
+    shutil.rmtree(rg.version_dir(home, "0.1.2"))
+    assert rg.last_good_version(home) == "0.1.2" and rg.rollback(home) is None
+
+
+def test_prune_orders_versions_numerically_and_pins_the_one_still_running(tmp_path):
+    home = tmp_path / "home"
+    for v in ("0.8.0", "0.9.0", "0.10.0", "0.11.0"):
+        d = rg.version_dir(home, v)
+        d.mkdir(parents=True)
+        (d / "caelza").write_text("#!/bin/sh\n")
+    assert rg.installed_versions(home) == ["0.8.0", "0.9.0", "0.10.0", "0.11.0"]
+    rg.promote(home, "0.9.0")   # last-good
+    rg.switch(home, "0.11.0")   # current; 0.10.0 still runs until the supervisor restarts
+    assert rg.prune(home, keep=2, pin=("0.10.0",)) == ["0.8.0"]
+    assert rg.installed_versions(home) == ["0.9.0", "0.10.0", "0.11.0"]
+
+
+def test_install_version_swaps_a_previous_copy_whole(tmp_path):
+    home = tmp_path / "home"
+    a, _ = make_archive(tmp_path / "a", "0.1.0")
+    rg.install_version(home, "0.1.0", rg.unpack(a, tmp_path / "a" / "x"))
+    rg.promote(home, "0.1.0")
+    (rg.version_dir(home, "0.1.0") / "stale").write_text("old")
+    b, _ = make_archive(tmp_path / "b", "0.1.0")
+    rg.install_version(home, "0.1.0", rg.unpack(b, tmp_path / "b" / "x"))
+    assert rg.current_binary(home) is not None and not (rg.version_dir(home, "0.1.0") / "stale").exists()
+    assert not (rg.runtime_root(home) / "0.1.0.old").exists()
 
 
 def test_probe_accepts_a_binary_that_answers_and_refuses_the_others(tmp_path, monkeypatch):
@@ -219,6 +255,44 @@ def test_probe_accepts_a_binary_that_answers_and_refuses_the_others(tmp_path, mo
     ok, detail = rg.probe(binary, port=free_port(), timeout=2)
     assert not ok and detail.startswith("gateway never answered /health")
     assert rg.probe(tmp_path / "nope", port=free_port(), timeout=1) == (False, "caelza --version did not answer")
+
+
+def test_probe_refuses_a_busy_port_and_a_gateway_that_dies_right_after_answering(tmp_path):
+    archive, _ = make_archive(tmp_path, "0.1.0")
+    binary = rg.unpack(archive, tmp_path / "x") / "caelza"
+    with socket.socket() as taken:
+        taken.bind(("127.0.0.1", 0))
+        taken.listen(1)
+        port = taken.getsockname()[1]
+        ok, detail = rg.probe(binary, port=port, timeout=5)
+    assert not ok and detail.startswith(f"probe port {port} is in use"), "a stale listener must not vouch for the new binary"
+
+    class Dying:  # answers /health once, then is gone
+        pid = 0
+        returncode = 0
+
+        def __init__(self):
+            self.polls = 0
+
+        def poll(self):
+            self.polls += 1
+            return None if self.polls == 1 else 0
+
+    ok, detail = rg.probe(binary, port=free_port(), timeout=5, popen=lambda *a, **k: Dying(),
+                          fetch=lambda url, headers=None, timeout=0: b"ok")
+    assert not ok and "right after answering /health" in detail
+
+
+def test_the_token_does_not_follow_a_redirect_to_another_host():
+    handler = rg._RedirectWithoutToken()
+    req = rg.urllib.request.Request("https://api.github.com/repos/x/y/releases/assets/1",
+                                    headers={"Authorization": "token t", "Accept": "application/octet-stream"})
+    hdrs = http.client.HTTPMessage()
+    new = handler.redirect_request(req, io.BytesIO(b""), 302, "Found", hdrs, "https://objects.githubusercontent.com/a?sig=1")
+    assert new.full_url.startswith("https://objects.githubusercontent.com/")
+    assert not new.has_header("Authorization") and new.get_header("Accept") == "application/octet-stream"
+    same = handler.redirect_request(req, io.BytesIO(b""), 302, "Found", hdrs, "https://api.github.com/elsewhere")
+    assert same.get_header("Authorization") == "token t"
 
 
 @pytest.mark.skipif(not os.environ.get("CAELZA_BIN"), reason="set CAELZA_BIN to probe the real binary")
@@ -300,6 +374,65 @@ def test_update_promotes_a_release_that_probes_ok_and_leaves_the_rest_alone(tmp_
     with pytest.raises(ValueError, match="checksum mismatch"):
         rg.update(home, target=TARGET, config_dir=cfg, port=free_port(), fetch=tampered)
     assert rg.installed_versions(home) == ["0.1.0"]
+
+
+def test_update_probes_on_a_copy_of_the_config_and_keeps_last_good_on_what_was_running(tmp_path, monkeypatch):
+    home = tmp_path / "home"
+    cfg = tmp_path / ".caelza"
+    (cfg / "shared" / "sops" / "phone-debloat").mkdir(parents=True)
+    (cfg / "agents" / "main" / "workspace").mkdir(parents=True)
+    (cfg / "data").mkdir()
+    (cfg / "config.toml").write_text("schema_version = 3\n")
+    (cfg / ".secret_key").write_bytes(b"k" * 32)
+    (cfg / "shared" / "sops" / "phone-debloat" / "SOP.toml").write_text("[sop]\n")
+    (cfg / "agents" / "main" / "SOUL.md").write_text("Cael\n")
+    (cfg / "agents" / "main" / "workspace" / "big.bin").write_bytes(b"\0" * 10)
+    (cfg / "data" / "config-lifecycle.lock").write_text("")  # the running Runtime's
+    seen: list[dict] = []
+    real_probe = rg.probe
+
+    def spy(binary, **kw):
+        copy = kw["config_dir"]
+        seen.append({"binary": Path(binary), "config_dir": copy,
+                     "files": sorted(str(p.relative_to(copy)) for p in copy.rglob("*"))})
+        return real_probe(binary, **kw)
+
+    monkeypatch.setattr(rg, "probe", spy)
+    first, sha1 = make_archive(tmp_path / "a", "0.1.0")
+    first.with_name(first.name + ".sha256").write_text(sha1)
+    out = rg.update(home, target=TARGET, archive=first, config_dir=cfg, port=free_port(), timeout=20)
+    assert out["promoted"] and out["last_good"] == "0.1.0" == rg.current_version(home), "the first install is the only good one"
+    probe = seen[-1]
+    assert str(probe["binary"]).startswith(str(home / "tmp")), "probed in the work dir, before anything is installed"
+    assert str(probe["config_dir"]).startswith(str(home / "tmp")) and probe["config_dir"] != cfg
+    assert probe["files"] == [".secret_key", "agents", "agents/main", "agents/main/SOUL.md", "config.toml",
+                              "shared", "shared/sops", "shared/sops/phone-debloat", "shared/sops/phone-debloat/SOP.toml"]
+    assert not list((home / "tmp").iterdir())
+
+    second, sha2 = make_archive(tmp_path / "b", "0.2.0")
+    second.with_name(second.name + ".sha256").write_text(sha2)
+    out = rg.update(home, target=TARGET, archive=second, config_dir=cfg, port=free_port(), timeout=20)
+    assert out["promoted"] and out["previous"] == "0.1.0" and out["last_good"] == "0.1.0"
+    assert rg.current_version(home) == "0.2.0" and rg.last_good_version(home) == "0.1.0", "the supervisor promotes once it holds"
+    assert rg.read_restart_request(home)["version"] == "0.2.0"
+
+    # The current version is never reinstalled over itself (that would pull the running binary away).
+    out = rg.update(home, target=TARGET, archive=second, config_dir=cfg, port=free_port(), timeout=20)
+    assert out["detail"] == "already current" and rg.current_binary(home).is_file()
+    assert rg.installed_versions(home) == ["0.1.0", "0.2.0"]
+
+    # A dangling current (its directory removed by hand) does not block the next update.
+    shutil.rmtree(rg.version_dir(home, "0.2.0"))
+    fetch = Fetch("0.2.0", second, sha2)
+    out = rg.update(home, target=TARGET, config_dir=cfg, port=free_port(), timeout=20, fetch=fetch)
+    assert out["promoted"] and rg.current_binary(home).is_file()
+    assert rg.last_good_version(home) == "0.1.0"
+
+    # A bare version as --tag means the v-tag.
+    tagged = Fetch("0.3.0", *make_archive(tmp_path / "c", "0.3.0"), tag_only=True)
+    with pytest.raises(rg.urllib.error.HTTPError):
+        rg.update(home, target=TARGET, tag="9.9.9", config_dir=cfg, fetch=tagged)
+    assert tagged.calls[-1][0].endswith("/releases/tags/v9.9.9")
 
 
 def test_update_from_a_local_archive_needs_no_network(tmp_path):
@@ -408,6 +541,147 @@ def test_supervisor_rolls_the_runtime_back_on_a_crash_loop_then_halts(tmp_path, 
     assert sup.agent.running and not sup._halted
 
 
+def test_a_restart_request_revives_a_halted_runtime(tmp_path, git_repo):
+    home = guarded_home(tmp_path)
+    t = {"now": 0.0}
+    mode = {"exits": 1}
+    spawned: list[FakeChild] = []
+
+    def spawn():
+        spawned.append(FakeChild(exits_with=mode["exits"]))
+        return spawned[-1]
+
+    sup, alerts = make_supervisor(home, git_repo, spawn, lambda: t["now"])
+    for _ in range(8):
+        sup.tick()
+        t["now"] += 1.0
+    assert sup._runtime_halted
+    # The operator installs a fixed release: `runtime update` asks for a restart.
+    mode["exits"] = None
+    rg.request_restart(home, "runtime 0.1.2 probed ok", "0.1.2")
+    before = len(spawned)
+    sup.tick()
+    assert len(spawned) == before + 1 and sup.runtime.running and not sup._runtime_halted
+    assert rg.read_restart_request(home) is None and alerts[-1].startswith("runtime: restarting on 0.1.2")
+
+
+def test_a_dangling_last_good_is_no_rollback_and_the_tick_survives(tmp_path, git_repo):
+    home = guarded_home(tmp_path)
+    shutil.rmtree(rg.version_dir(home, "0.1.0"))  # last-good's binary is gone
+    t = {"now": 0.0}
+    sup, alerts = make_supervisor(home, git_repo, lambda: FakeChild(exits_with=1), lambda: t["now"])
+    for _ in range(8):
+        sup.tick()
+        t["now"] += 1.0
+    assert rg.current_version(home) == "0.1.1", "nothing to roll back to"
+    assert any("no other last-good binary" in a for a in alerts) and sup._runtime_halted
+    assert sup.agent.running and not sup._halted
+
+
+def test_a_guard_error_is_alerted_once_and_the_agent_s_ladder_goes_on(tmp_path, git_repo, monkeypatch):
+    home = guarded_home(tmp_path)
+    sup, alerts = make_supervisor(home, git_repo, lambda: FakeChild(), lambda: 0.0)
+
+    def boom(_home):
+        raise RuntimeError("disk on fire")
+
+    monkeypatch.setattr(rg, "read_restart_request", boom)
+    sup.tick()
+    sup.tick()
+    assert [a for a in alerts if "disk on fire" in a] == [alerts[0]] and "leaving the Runtime alone" in alerts[0]
+    assert sup.agent is not None and sup.agent.running
+    monkeypatch.undo()
+    sup.tick()
+    assert sup.runtime is not None and sup.runtime.running and sup._runtime_error is None
+
+
+def test_another_runtime_on_the_gateway_port_halts_without_a_rollback(tmp_path, git_repo, monkeypatch):
+    home = guarded_home(tmp_path)
+    monkeypatch.setattr(rg, "gateway_answering", lambda config_dir=None, fetch=None: 42617)
+    t = {"now": 0.0}
+    sup, alerts = make_supervisor(home, git_repo, lambda: FakeChild(exits_with=1), lambda: t["now"])
+    for _ in range(4):
+        sup.tick()
+        t["now"] += 1.0
+    assert sup._runtime_halted and rg.current_version(home) == "0.1.1", "not the binary's fault: no rollback"
+    assert any("another Runtime already serves the gateway on port 42617" in a for a in alerts)
+
+
+def test_gateway_port_comes_from_the_config_and_answering_means_someone_serves_it(tmp_path):
+    cfg = tmp_path / ".caelza"
+    cfg.mkdir()
+    assert rg.gateway_port(cfg) == rg.GATEWAY_PORT
+    (cfg / "config.toml").write_text('schema_version = 3\n\n[gateway]\nport = 4242\n')
+    assert rg.gateway_port(cfg) == 4242
+    (cfg / "config.toml").write_text("not = toml =")
+    assert rg.gateway_port(cfg) == rg.GATEWAY_PORT
+    (cfg / "config.toml").write_text('[gateway]\nport = 4242\n')
+
+    def refused(url, headers=None, timeout=0):
+        raise OSError("connection refused")
+
+    assert rg.gateway_answering(cfg, fetch=refused) is None
+    assert rg.gateway_answering(cfg, fetch=lambda url, headers=None, timeout=0: b"ok") == 4242
+
+
+def test_a_new_version_becomes_last_good_once_it_has_held(tmp_path, git_repo):
+    home = guarded_home(tmp_path)  # current 0.1.1, last-good 0.1.0
+    t = {"now": 0.0}
+    sup, alerts = make_supervisor(home, git_repo, lambda: FakeChild(), lambda: t["now"])
+    sup.tick()
+    t["now"] += supervisor.RUNTIME_STABLE_AFTER - 1
+    sup.tick()
+    assert rg.last_good_version(home) == "0.1.0"
+    t["now"] += 2
+    sup.tick()
+    assert rg.last_good_version(home) == "0.1.1" and any("last-good binary now" in a for a in alerts)
+
+
+def test_run_stops_every_child_on_interrupt_and_on_an_error(tmp_path, git_repo):
+    home = guarded_home(tmp_path)
+    for stop_with in (KeyboardInterrupt, RuntimeError):
+        children: list[FakeChild] = []
+
+        def spawn():
+            children.append(FakeChild())
+            return children[-1]
+
+        sup, _ = make_supervisor(home, git_repo, spawn, lambda: 0.0)
+        sup._spawn_agent = spawn
+        calls = {"n": 0}
+
+        def sleep(_s):
+            calls["n"] += 1
+            if calls["n"] == 2:
+                raise stop_with("stop")
+
+        sup._sleep = sleep
+        if stop_with is RuntimeError:
+            with pytest.raises(RuntimeError):
+                sup.run()
+        else:
+            sup.run()
+        assert len(children) >= 2 and all(c.stopped for c in children), stop_with
+    with pytest.raises(KeyboardInterrupt):
+        supervisor._raise_keyboard_interrupt(signal.SIGTERM, None)
+
+
+def test_the_boot_script_steps_aside_once_the_guard_holds_a_runtime(tmp_path):
+    boot = tmp_path / "boot" / "caelza-runtime"
+    boot.parent.mkdir()
+    assert rg.defer_boot_script(boot) is None
+    boot.write_text("#!/bin/sh\n# Termux:Boot\ntermux-wake-lock\nexec caelza daemon >> log 2>&1\n")
+    assert rg.defer_boot_script(boot) == "patched"
+    lines = boot.read_text().splitlines()
+    assert lines.index(rg.BOOT_GUARD.strip()) == lines.index("exec caelza daemon >> log 2>&1") - 1
+    assert rg.defer_boot_script(boot) == "already"
+    other = tmp_path / "boot" / "other"
+    other.write_text("#!/bin/sh\nexec something-else\n")
+    assert rg.defer_boot_script(other) is None and "runtime/current" not in other.read_text()
+    installer = (Path(__file__).resolve().parents[1] / "runtime" / "termux-install.sh").read_text()
+    assert '[ -e "$HOME/.caelza-body/runtime/current" ] && exit 0' in installer, "a fresh install ships the guard line"
+
+
 def test_supervisor_without_a_runtime_installed_does_nothing_for_it(tmp_path, git_repo):
     home = tmp_path / "home"
     (home / "run").mkdir(parents=True)
@@ -454,14 +728,23 @@ def test_runtime_cli_status_update_rollback_and_link(tmp_path, capsys):
     assert srv.main(["runtime", "link", "--bindir", str(tmp_path / "bin"), *common]) == 0
     tools.reset()
     assert (tmp_path / "bin" / "caelza").is_symlink()
+    assert srv.main(["runtime", "update", "--tag", "v9", "--archive", str(second), *common]) == 2
+    tools.reset()
+    assert "do not go together" in capsys.readouterr().err
 
 
 def test_the_guard_is_as_immutable_as_the_supervisor(tmp_path):
     from caelza_body.agent.tools import selfmod
     repo = tmp_path / "repo"
-    (repo / "caelza_body").mkdir(parents=True)
+    (repo / "caelza_body" / "agent").mkdir(parents=True)
+    (repo / "tests").mkdir()
     selfmod.configure(repo, tmp_path / "home")
-    for name in ("supervisor.py", "runtime_guard.py"):
+    for path in ("caelza_body/supervisor.py", "caelza_body/runtime_guard.py", "caelza_body/./runtime_guard.py",
+                 "caelza_body/RUNTIME_GUARD.py", "caelza_body/runtime_guard/__init__.py",
+                 "caelza_body/supervisor/helpers.py", "caelza_body/__init__.py"):
         with pytest.raises(PermissionError, match="immutable"):
-            selfmod._resolve(f"caelza_body/{name}")
-    assert "runtime_guard.py" in selfmod.DENY_SUFFIXES
+            selfmod._resolve(path)
+    # The tests of those files and the agent's own code are the agent's to edit.
+    assert selfmod._resolve("tests/test_runtime_guard.py") == repo / "tests" / "test_runtime_guard.py"
+    assert selfmod._resolve("caelza_body/agent/supervisor_notes.py").name == "supervisor_notes.py"
+    assert re.fullmatch(r"[\w., ()]+", "".join(selfmod.DENY_NAMES))

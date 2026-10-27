@@ -26,17 +26,23 @@ from caelza_body.agent.tools import device
 
 #: `device_suspects` inspects at most this many sideloaded packages per call.
 MAX_SUSPECTS = 25
+#: Every remote script ends by echoing this; output without it was cut off.
+END = "@@caelza:end"
 
 
 def _shell(dev: str, script: str, timeout: int = 60) -> tuple[str | None, str]:
     """Run one remote shell script uncapped; `(error, output)`. Every script
-    ends in an `echo`, so a non-zero exit is adb's own (no device, offline,
-    not installed, timed out), not a `grep` that found nothing."""
+    ends in `echo '@@caelza:end'`, so a non-zero exit is adb's own (no
+    device, offline, not installed, timed out), not a `grep` that found
+    nothing; and output without the marker is a script cut off half way (a
+    wireless-debugging flap), not a shorter answer."""
     out = device.adb.run_uncapped(dev, "shell", script, timeout=timeout)
     rc, body = pb.strip_exit(out)
     text = body.strip()
     if rc == -1 or (rc not in (0, None) and (not text or text.lower().startswith(("error", "adb")))):
         return f"error: adb on {dev!r}: {text[:200] or f'exit {rc}'}", ""
+    if END not in body:
+        return f"error: adb on {dev!r}: the script was cut off before it finished: {text[-200:]!r}", ""
     return None, body
 
 
@@ -74,10 +80,16 @@ def register() -> None:
         all_pkgs = pb.parse_packages(everything)
         if not all_pkgs:
             return f"error: `pm list packages` returned no packages on {device!r}: {everything[:200]}"
-        _, third = _shell(device, "pm list packages -3; echo '@@caelza:end'")
-        _, disabled = _shell(device, "pm list packages -d; echo '@@caelza:end'")
-        plan = pb.debloat_plan(all_pkgs, pb.parse_packages(third), pb.parse_packages(disabled),
-                               keep.split(",") if keep else ())
+        # Third-party packages with who installed them: a store install is the
+        # owner's own, whatever the table says about the package name.
+        err, third = _installers(device, "-3")
+        if err:
+            return err
+        err, disabled = _shell(device, "pm list packages -d; echo '@@caelza:end'")
+        if err:
+            return err
+        plan = pb.debloat_plan(all_pkgs, third, pb.parse_packages(disabled), keep.split(",") if keep else (),
+                               installers={p: meta.get("installer") for p, meta in third.items()})
         plan["device"] = device
         plan["how"] = ("remove: device_uninstall(pkg, reason) per package, which snapshots the package list first; "
                        "disable: device_disable(pkg, reason); optional: only what the owner names; "
@@ -165,10 +177,11 @@ def register() -> None:
         q = shlex.quote(pkg)
         err, detail = _shell(device, f"pm list packages -i {q} 2>/dev/null; "
                                      f"echo '@@caelza:pkg'; dumpsys package {q} 2>/dev/null | "
-                                     f"grep -E 'installerPackageName|installInitiatingPackageName|firstInstallTime|lastUpdateTime|versionName|pkgFlags=|^ *flags=|android\\.permission\\.' | head -60; "
+                                     f"grep -E 'installerPackageName|installInitiatingPackageName|firstInstallTime|lastUpdateTime|versionName|pkgFlags=|^ *flags=' | head -12; "
+                                     f"dumpsys package {q} 2>/dev/null | grep -oE 'android\\.permission\\.[A-Z_]+' | grep -E '{pb.SENSITIVE_PERMISSION_GREP}' | sort -u; "
                                      f"echo '@@caelza:ops'; appops get {q} 2>/dev/null; "
                                      f"echo '@@caelza:accessibility'; settings get secure enabled_accessibility_services; "
-                                     f"echo '@@caelza:admins'; dumpsys device_policy 2>/dev/null | grep -E 'admin=|ComponentInfo' | head -10; "
+                                     f"echo '@@caelza:admins'; dumpsys device_policy 2>/dev/null | grep -E '{pb.ADMIN_GREP}' | head -20; "
                                      f"echo '@@caelza:end'")
         if err:
             fg["error"] = err
@@ -222,12 +235,12 @@ def _suspects_script(pkgs: list[str]) -> str:
         parts.append(
             f"echo '@@caelza:pkg {pkg}'; d=$(dumpsys package {q} 2>/dev/null); "
             f"echo \"$d\" | grep -E 'installerPackageName|installInitiatingPackageName|firstInstallTime|lastUpdateTime|versionName|pkgFlags=|^ *flags=' | head -8; "
-            f"echo \"$d\" | grep -oE 'android\\.permission\\.[A-Z_]+' | sort -u | head -40; "
+            f"echo \"$d\" | grep -oE 'android\\.permission\\.[A-Z_]+' | grep -E '{pb.SENSITIVE_PERMISSION_GREP}' | sort -u; "
             f"echo '@@caelza:ops {pkg}'; appops get {q} 2>/dev/null"
         )
     parts.append("echo '@@caelza:accessibility'; settings get secure enabled_accessibility_services")
     parts.append("echo '@@caelza:listeners'; settings get secure enabled_notification_listeners")
-    parts.append("echo '@@caelza:admins'; dumpsys device_policy 2>/dev/null | grep -E 'admin=|ComponentInfo' | head -10")
+    parts.append(f"echo '@@caelza:admins'; dumpsys device_policy 2>/dev/null | grep -E '{pb.ADMIN_GREP}' | head -20")
     parts.append("echo '@@caelza:end'")
     return "; ".join(parts)
 

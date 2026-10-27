@@ -117,6 +117,28 @@ def test_token_is_created_once_and_private(tmp_path):
     assert not fleet.bearer_ok(first, first) and not fleet.bearer_ok(None, first)
 
 
+def test_bearer_refuses_non_ascii_and_blanks_without_a_traceback():
+    assert not fleet.bearer_ok("Bearer t\xf6ken", "token") and not fleet.bearer_ok("Bearer ", "token")
+    assert not fleet.bearer_ok("Bearer token", "t\xf6ken")
+    assert fleet.bearer_ok("Bearer  token ", "token")
+
+
+def test_secret_files_are_private_from_the_first_byte(tmp_path):
+    p = fleet.write_secret(tmp_path / "fleet" / "x.token", "t\n")
+    assert p.read_text() == "t\n"
+    assert stat.S_IMODE(p.stat().st_mode) == 0o600 and stat.S_IMODE(p.parent.stat().st_mode) == 0o700
+    old = tmp_path / "fleet" / "y.token"
+    old.write_text("old")
+    old.chmod(0o644)
+    assert stat.S_IMODE(fleet.write_secret(old, "new\n").stat().st_mode) == 0o600 and old.read_text() == "new\n"
+
+
+def test_remote_errors_name_the_real_cause():
+    inner = ConnectionRefusedError("connection refused")
+    group = ExceptionGroup("unhandled errors in a TaskGroup", [ExceptionGroup("inner", [inner])])
+    assert fleet.leaf_exception(group) is inner and fleet.leaf_exception(inner) is inner
+
+
 def test_a_fresh_token_never_starts_with_a_dash_or_underscore():
     """`--token <token>` on the command line: a leading `-` would read as an
     option (CI met `-e-F9…` and argparse refused it)."""
@@ -142,6 +164,9 @@ def test_health_is_open_and_mcp_is_locked(remote):
     assert httpx.post(remote["url"], json=body, timeout=5).status_code == 401
     bad = {"Authorization": "Bearer nope", "Accept": "application/json, text/event-stream"}
     assert httpx.post(remote["url"], json=body, headers=bad, timeout=5).status_code == 401
+    # A non-ASCII token is a 401 as well, not a 500 with a traceback in the log.
+    odd = httpx.Headers([(b"authorization", "Bearer t\xf6ken".encode("latin-1")), (b"accept", b"application/json, text/event-stream")])
+    assert httpx.post(remote["url"], json=body, headers=odd, timeout=5).status_code == 401
 
 
 def test_a_remote_body_answers_the_mcp_round_trip(remote):
@@ -254,8 +279,40 @@ def test_forward_is_local_for_self_adb_and_no_device_and_plain_when_the_remote_i
     (hub / "t").write_text("t\n")
     out = fleet.forward("device_health", {"device": "phone"})
     assert out.startswith("error: 'phone' (http://127.0.0.1:9/mcp) did not answer")
+    assert "ExceptionGroup" not in out, "the model reads the real cause, not anyio's wrapper"
     assert "device_health" not in (hub / fleet.FLEET_LOG).read_text() if (hub / fleet.FLEET_LOG).exists() else True
     assert fleet.reachability(device.registry.get("phone")) is False
+
+
+def test_only_tools_that_take_a_device_are_forwarded_and_secrets_stay_out_of_the_audit_log(hub):
+    device.registry.add_remote("phone", "http://127.0.0.1:1/mcp", str(hub / "fleet" / "phone.token"))
+    fleet.write_secret(hub / "fleet" / "phone.token", "t\n")
+    assert fleet.takes_device("device_health") and fleet.takes_device("sensors_battery")
+    assert not fleet.takes_device("device_join") and not fleet.takes_device("nope")
+    calls: list = []
+
+    class Stub:
+        def call(self, name, args):
+            calls.append((name, args))
+            return "ok", [], False
+
+    # device_join has no `device` argument: a stray one is no address, and the call stays local.
+    assert fleet.forward("device_join", {"name": "zz", "url": "http://x/mcp", "token": "SECRET", "device": "phone"},
+                         remote_factory=lambda entry: Stub()) is None
+    assert calls == [] and not (hub / fleet.FLEET_LOG).exists()
+    out = call("device_join", name="zz", url="http://127.0.0.1:9/mcp", token="SECRET", device="phone")
+    assert out.startswith("error:") and not (hub / fleet.FLEET_LOG).exists()
+    # What the audit line would show if a secret-looking argument ever reached it.
+    fleet._log_forward("phone", "device_join", {"name": "zz", "token": "SECRET", "device": "phone"}, "ok")
+    line = (hub / fleet.FLEET_LOG).read_text()
+    assert "SECRET" not in line and '"token": "<redacted>"' in line and '"name": "zz"' in line
+
+
+def test_a_name_cannot_flip_between_a_paired_phone_and_a_joined_body(hub):
+    device.registry.add("gma", "10.0.0.5:5555")
+    assert call("device_join", name="gma", url="http://127.0.0.1:9/mcp", token="t").startswith("error: 'gma' is a phone paired over ADB")
+    device.registry.add_remote("phone", "http://127.0.0.1:9/mcp", str(hub / "fleet" / "phone.token"))
+    assert call("device_pair", name="phone", host="h", code="1").startswith("error: 'phone' is a joined Body")
 
 
 # --- the registry ----------------------------------------------------------------
@@ -270,6 +327,19 @@ def test_registry_keeps_kinds_and_groups(tmp_path):
     assert r.set_groups("phone", "family") == ["family"] and r.set_groups("nope", "x") is None
     again = DeviceRegistry(tmp_path / "d.json")
     assert again.get("phone")["token_file"] == "/x/phone.token" and again.in_group("family") == ["gma", "phone"]
+
+
+def test_registry_sees_a_join_made_beside_it_and_keeps_it_on_its_next_save(tmp_path):
+    path = tmp_path / "d.json"
+    body_side = DeviceRegistry(path)
+    body_side.add("gma", "10.0.0.5:5555")
+    cli_side = DeviceRegistry(path)  # `caelza-body fleet join` in another process
+    cli_side.add_remote("phone", "http://100.64.0.9:42618/mcp", "/x/phone.token")
+    assert body_side.get("phone")["url"] == "http://100.64.0.9:42618/mcp", "the running Body sees the join"
+    body_side.set_groups("gma", "family")
+    assert set(DeviceRegistry(path).all()) == {"gma", "phone"}, "the Body's next save keeps the phone"
+    assert cli_side.in_group("family") == ["gma"]
+    assert not list(tmp_path.glob("*.tmp")) and not list(tmp_path.glob(".*.tmp"))
 
 
 # --- the CLI ---------------------------------------------------------------------

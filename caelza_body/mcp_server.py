@@ -341,7 +341,12 @@ def runtime_command(a, settings: BodySettings) -> int:
             print("no runtime installed, or no $PREFIX/bin to link into (pass --bindir)", file=sys.stderr)
             return 1
         print(f"{link} -> {os.readlink(link)}")
+        if runtime_guard.defer_boot_script() == "patched":
+            print("the Termux:Boot script now leaves the Runtime to the supervisor")
         return 0
+    if a.tag and a.archive:
+        print("--tag and --archive do not go together: the archive is the release", file=sys.stderr)
+        return 2
     token = a.token or os.environ.get("GITHUB_TOKEN")
     try:
         result = runtime_guard.update(home, repo=a.repo, target=a.target, tag=a.tag, token=token,

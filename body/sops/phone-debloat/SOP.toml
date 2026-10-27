@@ -13,8 +13,12 @@ execution_mode = "auto"
 # The agent that runs the steps. The dashboard's Run button starts the
 # procedure outside any agent turn and refuses one with no owner.
 agent = "main"
-max_concurrent = 1
-admission_policy = "hold"
+# One run per phone: the Procedures page fans a group out as one run each, so
+# runs of this procedure overlap by design, each parked at its own gate.
+# `hold` would defer every phone after the first; `coalesce` would fold it
+# into the first phone's run.
+max_concurrent = 8
+admission_policy = "parallel"
 
 [[triggers]]
 type = "manual"

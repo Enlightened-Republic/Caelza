@@ -30,10 +30,13 @@ import platform
 import re
 import shutil
 import signal
+import socket
 import subprocess
 import tarfile
 import time
+import tomllib
 import urllib.error
+import urllib.parse
 import urllib.request
 from dataclasses import dataclass
 from pathlib import Path
@@ -46,13 +49,24 @@ LAST_GOOD = "last-good"
 RESTART_REQUEST = "runtime-restart"
 PROBE_PORT = 42619
 PROBE_TIMEOUT = 60.0
+#: `[gateway] port` when the Runtime's config does not say.
+GATEWAY_PORT = 42617
 CONFIG_SNAPSHOTS = "snapshots"
 KEEP_CONFIG_SNAPSHOTS = 10
 #: What a config snapshot carries from ~/.caelza: the config and what the
 #: agent may change through its tools. Data (sessions, memory, run state) stays out.
 CONFIG_SNAPSHOT_PATHS = ("config.toml", "agents", "shared")
+#: What the probe's copy of ~/.caelza carries: the config, the key its secrets
+#: are encrypted with, the SOPs and skills, the agents' files minus their
+#: workspaces. The live dir belongs to the Runtime that is running.
+PROBE_CONFIG_IGNORE = ("workspace", "*.db", "*.db-*", "*.sqlite*")
+#: The Runtime installer's Termux:Boot script, which steps aside once the
+#: guard holds a Runtime (`defer_boot_script`).
+BOOT_SCRIPT = Path("~/.termux/boot/caelza-runtime")
+BOOT_GUARD = '[ -e "$HOME/.caelza-body/runtime/current" ] && exit 0  # the supervisor runs the guarded Runtime\n'
 
 _VERSION = re.compile(r"^caelza\s+(\d+\.\d+\.\d+\S*)")
+_SEMVER = re.compile(r"^(\d+)\.(\d+)\.(\d+)(.*)$")
 
 
 # ---------------------------------------------------------------------------
@@ -60,13 +74,22 @@ _VERSION = re.compile(r"^caelza\s+(\d+\.\d+\.\d+\S*)")
 # ---------------------------------------------------------------------------
 
 def default_target() -> str:
-    """The release target for this machine: Termux is Android."""
+    """The release target for this machine: Termux is Android (an x86_64
+    emulator asks for a target the release does not build, and is told so
+    instead of being handed a binary that cannot exec)."""
     machine = platform.machine().lower()
+    arch = "aarch64" if machine in ("aarch64", "arm64") else "x86_64"
     if "com.termux" in os.environ.get("PREFIX", ""):
-        return "aarch64-linux-android"
-    if machine in ("aarch64", "arm64"):
-        return "aarch64-unknown-linux-gnu"
-    return "x86_64-unknown-linux-gnu"
+        return f"{arch}-linux-android"
+    return f"{arch}-unknown-linux-gnu"
+
+
+def version_key(version: str):
+    """Sort key: 0.10.0 after 0.9.0, not between 0.1.0 and 0.2.0."""
+    m = _SEMVER.match(version)
+    if not m:
+        return (0, 0, 0, version)
+    return (int(m.group(1)), int(m.group(2)), int(m.group(3)), m.group(4))
 
 
 def runtime_root(home: Path | str) -> Path:
@@ -105,7 +128,8 @@ def installed_versions(home: Path | str) -> list[str]:
     root = runtime_root(home)
     if not root.is_dir():
         return []
-    return sorted(p.name for p in root.iterdir() if p.is_dir() and not p.is_symlink() and (p / "caelza").is_file())
+    return sorted((p.name for p in root.iterdir() if p.is_dir() and not p.is_symlink() and (p / "caelza").is_file()),
+                  key=version_key)
 
 
 def version_of(binary: Path | str, run=subprocess.run) -> str | None:
@@ -152,9 +176,29 @@ def _headers(token: str | None, accept: str) -> dict[str, str]:
     return h
 
 
+class _RedirectWithoutToken(urllib.request.HTTPRedirectHandler):
+    """GitHub answers an asset download with a 302 to a signed storage URL on
+    another host. The token must not follow it there: the storage host
+    refuses a request carrying two credentials, and the token is nobody
+    else's business."""
+
+    def redirect_request(self, req, fp, code, msg, headers, newurl):
+        new = super().redirect_request(req, fp, code, msg, headers, newurl)
+        if new is not None and urllib.parse.urlsplit(newurl).hostname != urllib.parse.urlsplit(req.full_url).hostname:
+            new.remove_header("Authorization")
+        return new
+
+
+_OPENER = urllib.request.build_opener(_RedirectWithoutToken)
+#: The probe's `/health` poll goes straight to loopback, whatever `http_proxy` says.
+_LOOPBACK_OPENER = urllib.request.build_opener(urllib.request.ProxyHandler({}))
+_LOOPBACK = ("127.0.0.1", "localhost", "::1")
+
+
 def http_get(url: str, headers: dict[str, str] | None = None, timeout: float = 120.0) -> bytes:
     req = urllib.request.Request(url, headers=headers or {})
-    with urllib.request.urlopen(req, timeout=timeout) as resp:  # noqa: S310 - https URLs from the release API
+    opener = _LOOPBACK_OPENER if (urllib.parse.urlsplit(url).hostname or "") in _LOOPBACK else _OPENER
+    with opener.open(req, timeout=timeout) as resp:  # noqa: S310 - https URLs from the release API, or loopback
         return resp.read()
 
 
@@ -244,15 +288,23 @@ def unpack(archive: Path | str, into: Path | str) -> Path:
 
 
 def install_version(home: Path | str, version: str, extracted: Path | str) -> Path:
-    """Move an extracted release into `<home>/runtime/<version>`, replacing a
-    half-installed one; the binary is made executable."""
+    """Move an extracted (and already probed) release into
+    `<home>/runtime/<version>`; one that was there is swapped out whole, so a
+    `last-good` link pointing at the name is never left dangling. The binary
+    is made executable."""
     dest = version_dir(home, version)
-    if dest.exists():
-        shutil.rmtree(dest)
     dest.parent.mkdir(parents=True, exist_ok=True)
-    shutil.move(str(extracted), str(dest))
-    binary = dest / "caelza"
+    extracted = Path(extracted)
+    binary = extracted / "caelza"
     binary.chmod(binary.stat().st_mode | 0o755)
+    old = dest.with_name(dest.name + ".old")
+    if old.exists():
+        shutil.rmtree(old)
+    if dest.exists():
+        os.rename(dest, old)
+    shutil.move(str(extracted), str(dest))
+    if old.exists():
+        shutil.rmtree(old, ignore_errors=True)
     return dest
 
 
@@ -286,6 +338,8 @@ def probe(binary: Path | str, *, config_dir: Path | str | None = None, port: int
         return False, "caelza --version did not answer"
     if expect_version and version.split("+")[0] != expect_version.split("+")[0]:
         return False, f"binary says {version}, release says {expect_version}"
+    if not port_free(port):
+        return False, f"probe port {port} is in use (a stale gateway?); nothing can be learned from /health there"
     argv = [str(binary), "gateway", "start", "-p", str(port)]
     if config_dir:
         argv += ["--config-dir", str(config_dir)]
@@ -305,10 +359,14 @@ def probe(binary: Path | str, *, config_dir: Path | str | None = None, port: int
                     break
                 try:
                     fetch(f"http://127.0.0.1:{port}/health", {}, 5.0)
-                    healthy = True
-                    break
                 except (urllib.error.URLError, OSError, ValueError):
                     sleep(0.5)
+                    continue
+                if proc.poll() is not None:
+                    detail = f"gateway exited {proc.returncode} right after answering /health"
+                    break
+                healthy = True
+                break
         finally:
             if proc.poll() is None:
                 _kill_group(proc)
@@ -320,6 +378,42 @@ def probe(binary: Path | str, *, config_dir: Path | str | None = None, port: int
             pass
         return False, f"{detail}\n{tail}".strip()
     return True, f"caelza {version} answered /health on port {port}"
+
+
+def port_free(port: int) -> bool:
+    """Can a gateway bind the probe port right now?"""
+    with socket.socket() as s:
+        s.setsockopt(socket.SOL_SOCKET, socket.SO_REUSEADDR, 1)
+        try:
+            s.bind(("127.0.0.1", port))
+        except OSError:
+            return False
+    return True
+
+
+def probe_config_copy(config_dir: Path | str, into: Path | str) -> Path | None:
+    """A copy of the owner's `~/.caelza` for the probe gateway to start on.
+
+    The live dir belongs to the Runtime that is running: it holds the
+    config-lifecycle lock in `data/`, and a second gateway on it would exit
+    at once (or, with no Runtime running, write sessions and tokens into the
+    owner's data). The copy carries the config, the key its secrets are
+    encrypted with, the SOPs and skills, and the agents' files minus their
+    workspaces, so the probe still proves the new binary accepts *this*
+    config. None when there is no config (the binary starts on its defaults)."""
+    config_dir = Path(config_dir)
+    if not (config_dir / "config.toml").is_file():
+        return None
+    into = Path(into)
+    into.mkdir(parents=True, exist_ok=True)
+    for name in ("config.toml", ".secret_key"):
+        if (config_dir / name).is_file():
+            shutil.copy2(config_dir / name, into / name)
+    for name in ("shared", "agents"):
+        if (config_dir / name).is_dir():
+            shutil.copytree(config_dir / name, into / name, symlinks=True,
+                            ignore=shutil.ignore_patterns(*PROBE_CONFIG_IGNORE))
+    return into
 
 
 # ---------------------------------------------------------------------------
@@ -349,17 +443,21 @@ def promote(home: Path | str, version: str) -> None:
 
 def rollback(home: Path | str) -> str | None:
     """Point `current` back at `last-good`; the version, or None when there
-    is no last-good to fall back to (or it is already current)."""
+    is no last-good to fall back to (it is already current, or its binary is
+    gone). Never raises: the supervisor calls this inside its tick."""
     good = last_good_version(home)
     if not good or good == current_version(home):
+        return None
+    if not (version_dir(home, good) / "caelza").is_file():
         return None
     switch(home, good)
     return good
 
 
-def prune(home: Path | str, keep: int = 3) -> list[str]:
-    """Drop installed versions beyond the newest `keep`, never current or last-good."""
-    pinned = {current_version(home), last_good_version(home)}
+def prune(home: Path | str, keep: int = 3, pin=()) -> list[str]:
+    """Drop installed versions beyond the newest `keep`, oldest first; never
+    current, last-good, or anything in `pin` (the version still running)."""
+    pinned = {current_version(home), last_good_version(home), *pin}
     versions = installed_versions(home)
     removable = [v for v in versions if v not in pinned]
     removed: list[str] = []
@@ -421,6 +519,54 @@ def clear_restart_request(home: Path | str) -> None:
 
 
 # ---------------------------------------------------------------------------
+# What the supervisor asks before blaming a crash loop on the binary
+# ---------------------------------------------------------------------------
+
+def gateway_port(config_dir: Path | str | None = None) -> int:
+    """`[gateway] port` from the Runtime's config.toml, or the default."""
+    cfg = Path(config_dir) if config_dir else Path.home() / ".caelza"
+    try:
+        data = tomllib.loads((cfg / "config.toml").read_text(encoding="utf-8"))
+        return int(data.get("gateway", {}).get("port", GATEWAY_PORT))
+    except (OSError, ValueError, TypeError, AttributeError, tomllib.TOMLDecodeError):
+        return GATEWAY_PORT
+
+
+def gateway_answering(config_dir: Path | str | None = None, fetch=http_get) -> int | None:
+    """The gateway port when something already serves `/health` there, else
+    None. A second `caelza daemon` (started by hand, or by the old
+    Termux:Boot script) holds the port, so the guarded one exits as soon as
+    it starts; that is not the binary's fault and no reason to roll back."""
+    port = gateway_port(config_dir)
+    try:
+        fetch(f"http://127.0.0.1:{port}/health", {}, 3.0)
+    except (urllib.error.URLError, OSError, ValueError):
+        return None
+    return port
+
+
+def defer_boot_script(script: Path | str | None = None) -> str | None:
+    """Make the Runtime installer's Termux:Boot script step aside once the
+    guard holds a Runtime: a line that exits when `runtime/current` exists,
+    before it starts `caelza daemon`, so a reboot does not start a second
+    daemon beside the supervisor's. "patched", "already", or None when there
+    is no such script (not Termux, or it never started the daemon)."""
+    path = Path(script) if script else BOOT_SCRIPT.expanduser()
+    if not path.is_file():
+        return None
+    text = path.read_text(encoding="utf-8")
+    if "runtime/current" in text:
+        return "already"
+    lines = text.splitlines(keepends=True)
+    for i, line in enumerate(lines):
+        if "caelza daemon" in line and not line.lstrip().startswith("#"):
+            lines.insert(i, BOOT_GUARD)
+            path.write_text("".join(lines), encoding="utf-8")
+            return "patched"
+    return None
+
+
+# ---------------------------------------------------------------------------
 # The pipeline
 # ---------------------------------------------------------------------------
 
@@ -428,28 +574,35 @@ def update(home: Path | str, *, repo: str = DEFAULT_REPO, target: str | None = N
            token: str | None = None, archive: Path | str | None = None, config_dir: Path | str | None = None,
            port: int = PROBE_PORT, timeout: float = PROBE_TIMEOUT, fetch=http_get, run=subprocess.run,
            popen=subprocess.Popen, log=print) -> dict:
-    """Fetch, verify, unpack, probe, snapshot, promote. With `archive`, a local
+    """Fetch, verify, unpack, probe, snapshot, switch. With `archive`, a local
     release tarball (no network, no checksum unless a `.sha256` sits beside
-    it). The new version is promoted only after it answers `/health`; the one
-    running stays current otherwise, and nothing else is touched."""
+    it). The new version is probed in the work dir, on a copy of the config,
+    and installed only after it answers `/health`; the one running stays
+    current otherwise, and nothing else is touched. `current` moves to the
+    new version; `last-good` stays on the one that was running (the first
+    install is both) until the supervisor has seen the new one hold."""
     home = Path(home)
     target = target or default_target()
     config_dir = Path(config_dir) if config_dir else Path.home() / ".caelza"
+    if tag and not tag.startswith("v") and _SEMVER.match(tag):
+        tag = "v" + tag  # the release tags are v<version>
     work = home / "tmp" / f"runtime-update-{time.time_ns()}"
     work.mkdir(parents=True, exist_ok=True)
     try:
         if archive:
-            # A local archive is installed deliberately, current or not.
             archive = Path(archive)
             name = archive.name
             version = name[len("caelza-"):-len(f"-{target}.tar.gz")] if name.startswith("caelza-") and name.endswith(f"-{target}.tar.gz") else archive.stem.replace(".tar", "")
+            if version == current_version(home) and current_binary(home) is not None:
+                log(f"{version} is already current (it stays; a reinstall would pull the running binary out from under the Runtime)")
+                return {"version": version, "promoted": False, "detail": "already current"}
             sha = archive.with_name(name + ".sha256")
             sha_text = sha.read_text() if sha.is_file() else None
             log(f"installing from {archive}")
         else:
             rel = find_release(repo, target, tag, token, fetch=fetch)
             version = rel.version
-            if version == current_version(home):
+            if version == current_version(home) and current_binary(home) is not None:
                 log(f"{rel.tag} is already current")
                 return {"version": version, "promoted": False, "detail": "already current"}
             log(f"found {rel.tag}: {rel.name}")
@@ -461,22 +614,31 @@ def update(home: Path | str, *, repo: str = DEFAULT_REPO, target: str | None = N
         else:
             log("no checksum published; trusting the archive")
         extracted = unpack(archive, work / "x")
-        installed = install_version(home, version, extracted)
-        binary = installed / "caelza"
-        ok, detail = probe(binary, config_dir=config_dir if config_dir.exists() else None, port=port,
-                           timeout=timeout, expect_version=version, run=run, popen=popen, fetch=fetch)
+        binary = extracted / "caelza"
+        binary.chmod(binary.stat().st_mode | 0o755)
+        probe_cfg = probe_config_copy(config_dir, work / "probe-config")
+        ok, detail = probe(binary, config_dir=probe_cfg, port=port, timeout=timeout, expect_version=version,
+                           run=run, popen=popen, fetch=fetch)
         if not ok:
-            shutil.rmtree(installed, ignore_errors=True)
             log(f"probe failed; {version} discarded, {current_version(home) or 'nothing'} stays current")
             return {"version": version, "promoted": False, "detail": detail}
         snap = snapshot_config(config_dir, home)
         previous = current_version(home)
-        promote(home, version)
+        previous_holds = bool(previous) and previous != version and (version_dir(home, previous) / "caelza").is_file()
+        good = last_good_version(home)
+        good_holds = bool(good) and good != version and (version_dir(home, good) / "caelza").is_file()
+        install_version(home, version, extracted)
+        if previous_holds or good_holds:
+            switch(home, version)  # last-good stays on a version that holds; the supervisor promotes this one later
+        else:
+            promote(home, version)  # the first install, or nothing else left to fall back to
         request_restart(home, f"runtime {version} probed ok" + (f" (was {previous})" if previous else ""), version)
-        prune(home)
-        log(f"promoted {version}" + (f"; config snapshot {snap.name}" if snap else ""))
+        prune(home, pin=(previous,) if previous else ())
+        if defer_boot_script() == "patched":
+            log("the Termux:Boot script now leaves the Runtime to the supervisor")
+        log(f"installed {version}, current" + (f"; config snapshot {snap.name}" if snap else ""))
         return {"version": version, "promoted": True, "detail": detail, "previous": previous,
-                "snapshot": str(snap) if snap else None}
+                "last_good": last_good_version(home), "snapshot": str(snap) if snap else None}
     finally:
         shutil.rmtree(work, ignore_errors=True)
 

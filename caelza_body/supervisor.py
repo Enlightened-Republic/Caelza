@@ -165,6 +165,8 @@ HEARTBEAT_MAX_AGE = 60.0
 CRASH_LOOP_N = 3
 CRASH_LOOP_WINDOW = 300.0
 PROBE_TIMEOUT = 60.0
+#: A Runtime version that has run this long becomes `last-good`.
+RUNTIME_STABLE_AFTER = 600.0
 
 
 class CrashLoop:
@@ -309,7 +311,8 @@ def rollback(repo, body_home, reason):
 
 class Supervisor:
     def __init__(self, repo, body_home, *, alert, spawn_agent, spawn_probe,
-                 spawn_sidecar, spawn_runtime=None, clock=time.monotonic, sleep=time.sleep):
+                 spawn_sidecar, spawn_runtime=None, runtime_config_dir=None,
+                 clock=time.monotonic, sleep=time.sleep):
         self.repo = Path(repo)
         self.body_home = Path(body_home)
         self.alert = alert
@@ -319,6 +322,11 @@ class Supervisor:
         #: Returns a Child running `caelza daemon` from the current runtime,
         #: or None when no runtime is installed. Unset: the Runtime is not ours.
         self._spawn_runtime = spawn_runtime
+        #: The Runtime's config dir (`~/.caelza` unless told otherwise), read
+        #: for the gateway port when a crash loop needs explaining.
+        self._runtime_config_dir = runtime_config_dir
+        self._runtime_error = None
+        self._runtime_started_at = None
         self._clock = clock
         self._sleep = sleep
         self.agent = None
@@ -361,18 +369,43 @@ class Supervisor:
             self.runtime = None
             return
         self.runtime = child
+        self._runtime_started_at = self._clock()
         self.runtime.start()
+
+    def _promote_stable_runtime(self):
+        """`runtime update` leaves `last-good` on the version that was running;
+        the new one earns it by running for RUNTIME_STABLE_AFTER."""
+        if self._runtime_started_at is None or self._clock() - self._runtime_started_at < RUNTIME_STABLE_AFTER:
+            return
+        current = runtime_guard.current_version(self.body_home)
+        if current and current != runtime_guard.last_good_version(self.body_home):
+            runtime_guard.promote(self.body_home, current)
+            self.alert(f"runtime {current} has held for {int(RUNTIME_STABLE_AFTER // 60)} minutes; it is the last-good binary now.")
 
     def _tick_runtime(self):
         """Run the Runtime binary and keep it on a binary that holds.
 
         A restart request (`runtime_guard.update` promoted a probed
-        version) restarts the child on `current`. A crash loop rolls
+        version, or `runtime rollback` by hand) restarts the child on
+        `current`, and revives a halted Runtime. A crash loop rolls
         `current` back to `last-good` and restarts; a crash loop on
-        last-good itself halts the Runtime and asks for a human.
+        last-good itself halts the Runtime and asks for a human. Whatever
+        goes wrong in here is alerted, never raised: the Runtime must not
+        take the agent's guard down with it.
         """
-        if self._spawn_runtime is None or self._runtime_halted:
+        if self._spawn_runtime is None:
             return
+        try:
+            self._guard_runtime()
+        except Exception as e:  # noqa: BLE001 - alert and carry on; the agent's ladder still runs
+            msg = f"runtime guard: {type(e).__name__}: {e}"
+            if msg != self._runtime_error:
+                self._runtime_error = msg
+                self.alert(f"{msg}; leaving the Runtime alone until that is fixed by hand")
+        else:
+            self._runtime_error = None
+
+    def _guard_runtime(self):
         req = runtime_guard.read_restart_request(self.body_home)
         if req:
             runtime_guard.clear_restart_request(self.body_home)
@@ -380,28 +413,44 @@ class Supervisor:
                 self.runtime.stop()
             self.runtime_crashes.reset()
             self._runtime_last_good_looping = False
+            self._runtime_halted = False  # a probed version (or a rollback by hand) is a fresh start
             self.alert(f"runtime: restarting on {req.get('version') or '?'}: {req.get('reason', '')}")
             self._start_runtime()
+            return
+        if self._runtime_halted:
             return
         if self.runtime is None:
             self._start_runtime()
             return
-        if not self.runtime.running:
-            now = self._clock()
-            self.runtime_crashes.record_exit(now)
-            if self.runtime_crashes.tripped(now):
-                if self._runtime_last_good_looping:
-                    self.alert("runtime: the last-good binary is crash-looping. stopping it. manual fix needed.")
-                    self._runtime_halted = True
-                    return
-                rolled = runtime_guard.rollback(self.body_home)
-                if rolled:
-                    self.alert(f"runtime crash-looped, rolled back to last-good {rolled}.")
-                else:
-                    self.alert("runtime crash-looped and there is no other last-good binary; restarting it once more.")
-                self.runtime_crashes.reset()
-                self._runtime_last_good_looping = True
-            self._start_runtime()
+        if self.runtime.running:
+            self._promote_stable_runtime()
+            return
+        now = self._clock()
+        self.runtime_crashes.record_exit(now)
+        if self.runtime_crashes.tripped(now):
+            port = runtime_guard.gateway_answering(self._runtime_config_dir)
+            if port:
+                # Not the binary's fault: something else holds the gateway port, so
+                # ours exits as soon as it starts. Rolling back would only downgrade.
+                self.alert(f"runtime: exits at once while another Runtime already serves the gateway on port {port} "
+                           "(a `caelza daemon` started by hand, or by the old Termux:Boot script?). not rolling back; "
+                           "the guarded Runtime stays stopped until `caelza-body runtime update` or `rollback` asks "
+                           "for a restart. manual fix needed.")
+                self._runtime_halted = True
+                return
+            if self._runtime_last_good_looping:
+                self.alert("runtime: the last-good binary is crash-looping. stopping it. manual fix needed.")
+                self._runtime_halted = True
+                return
+            rolled = runtime_guard.rollback(self.body_home)
+            if rolled:
+                self.alert(f"runtime crash-looped, rolled back to last-good {rolled}.")
+            else:
+                self.alert("runtime crash-looped and there is no other last-good binary to fall back to; "
+                           "restarting it, and stopping it if it keeps crashing.")
+            self.runtime_crashes.reset()
+            self._runtime_last_good_looping = True
+        self._start_runtime()
 
     def tick(self):
         self._ensure_sidecar()
@@ -457,17 +506,37 @@ class Supervisor:
         return time.time()
 
     def run(self):
+        """Tick until stopped. Ctrl-C and SIGTERM (Termux killing the session,
+        `kill` by hand) both end with the children stopped; so does an
+        unexpected error, rather than leaving three orphans behind."""
+        previous = None
+        try:
+            previous = signal.signal(signal.SIGTERM, _raise_keyboard_interrupt)
+        except (ValueError, OSError):  # not the main thread
+            pass
         try:
             while True:
                 self.tick()
                 self._sleep(2.0)
         except KeyboardInterrupt:
-            if self.agent:
-                self.agent.stop()
-            if self.sidecar:
-                self.sidecar.stop()
-            if self.runtime:
-                self.runtime.stop()
+            pass
+        finally:
+            self.stop_children()
+            if previous is not None:
+                signal.signal(signal.SIGTERM, previous)
+
+    def stop_children(self):
+        for child in (self.agent, self.sidecar, self.runtime):
+            if child is None:
+                continue
+            try:
+                child.stop()
+            except Exception:  # noqa: BLE001 - stop the others regardless
+                pass
+
+
+def _raise_keyboard_interrupt(signum, frame):  # SIGTERM takes the Ctrl-C path
+    raise KeyboardInterrupt
 
 
 def main():  # pragma: no cover - wiring, exercised in staging

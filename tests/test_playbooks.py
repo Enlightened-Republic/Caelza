@@ -55,8 +55,11 @@ def test_manifest_fields_the_runtime_needs(playbooks):
         assert meta["agent"] == "main", f"{p.name}: the dashboard's Run refuses an unowned procedure"
         assert {t["type"] for t in p.triggers} >= {"manual"}, p.name
         assert meta["execution_mode"] == "auto", f"{p.name}: the gates are per step, not a start prompt"
-        assert meta["max_concurrent"] == 1
-        assert meta["admission_policy"] in ("hold", "coalesce")
+        # The Procedures page fans a group out as one run per phone: `hold` would
+        # defer every phone after the first, `coalesce` would answer with the
+        # first phone's run; both looked like "engine off" or a silent skip.
+        assert meta["admission_policy"] == "parallel", p.name
+        assert meta["max_concurrent"] >= 4, p.name
 
 
 # --- steps -------------------------------------------------------------------
@@ -235,7 +238,7 @@ def test_runtime_validates_the_set(tmp_path):
     (root / "config.toml").write_text(
         'schema_version = 3\n\n[agents.main]\nenabled = true\nmodel_provider = "llamacpp.local"\n\n'
         '[providers.models.llamacpp.local]\nmodel = "DeepSeek-R1-Distill-Qwen-1.5B-Q4_K_M"\n\n'
-        '[sop]\nsops_dir = "shared/sops"\n')
+        '[sop]\nsops_dir = "shared/sops"\nstep_scope_enforce = true\n')
     assert all(status == "installed" for _, status in pb.install_playbooks(REPO_ROOT, root / "shared" / "sops"))
     run = subprocess.run([_caelza_bin(), "--config-dir", str(root), "sop", "validate"],
                          capture_output=True, text=True, timeout=120)

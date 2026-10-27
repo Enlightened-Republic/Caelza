@@ -10,8 +10,10 @@ priority = "normal"
 # Reads run without a prompt; the one step that writes settings parks the run.
 execution_mode = "auto"
 agent = "main"
-max_concurrent = 1
-admission_policy = "hold"
+# One run per phone (see phone-debloat/SOP.toml): a group fans out, each run
+# parks at its own gate.
+max_concurrent = 8
+admission_policy = "parallel"
 
 [[triggers]]
 type = "manual"
