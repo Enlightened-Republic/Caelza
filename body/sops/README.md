@@ -12,6 +12,8 @@ step by step with approval gates, not markdown it hopefully remembers (vision
 | `phone-malware-removal` | what is on screen and who installed it, the sideloaded apps with the permissions malware wants, a containment plan; the culprit is disabled and loses its overlay | step 3 | `device_disable`, `device_appops` |
 | `phone-new-setup` | identity, patch level and the setup checklist; Termux exempt from battery optimisation, Termux:API permissions, stay awake while charging | step 2 | `device_shell` (the listed commands only), `device_settings_put` |
 | `phone-diagnostics` | battery, storage, memory, uptime, heat, CPU, crashes, network, patch level, checklist, in plain words | none | nothing |
+| `forge-propose` | the Forge (M6, [`../../docs/forge.md`](../../docs/forge.md)): frame a Runtime change, read the files on `main`, draft the PR; after the gate write a `forge/<topic>` branch and open a draft PR through `git_forge` | step 3 | nothing on the phone; the repo, through the git channel |
+| `forge-release` | a release was published (the git channel's event, or a tag by hand): read it, tell the owner, and after the gate hand the tag to the guard | step 2 | `runtime_update` (the Runtime binary, through the guard) |
 
 ## How they run
 

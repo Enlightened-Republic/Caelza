@@ -21,8 +21,12 @@ from caelza_body.agent import tools
 
 REPO_ROOT = Path(__file__).resolve().parents[1]
 SOPS = REPO_ROOT / "body" / "sops"
-EXPECTED = ("phone-debloat", "phone-diagnostics", "phone-malware-removal", "phone-new-setup")
+PHONE = ("phone-debloat", "phone-diagnostics", "phone-malware-removal", "phone-new-setup")
+FORGE = ("forge-propose", "forge-release")
+EXPECTED = tuple(sorted(PHONE + FORGE))
 PREFIX = "body__"
+#: Runtime-native tools a procedure may name beside the Body's `body__*`.
+RUNTIME_TOOLS = {"git_forge"}
 
 
 @pytest.fixture(scope="module")
@@ -38,9 +42,14 @@ def playbooks() -> dict[str, pb.Playbook]:
     return {p.name: p for p in pb.shipped_playbooks(REPO_ROOT)}
 
 
+@pytest.fixture(scope="module")
+def phone_playbooks(playbooks) -> dict[str, pb.Playbook]:
+    return {n: p for n, p in playbooks.items() if n in PHONE}
+
+
 # --- the set -----------------------------------------------------------------
 
-def test_the_four_playbooks_ship(playbooks):
+def test_the_playbooks_ship(playbooks):
     assert tuple(sorted(playbooks)) == EXPECTED
     for name, p in playbooks.items():
         assert p.path.name == name, "the directory is the SOP's address"
@@ -55,11 +64,12 @@ def test_manifest_fields_the_runtime_needs(playbooks):
         assert meta["agent"] == "main", f"{p.name}: the dashboard's Run refuses an unowned procedure"
         assert {t["type"] for t in p.triggers} >= {"manual"}, p.name
         assert meta["execution_mode"] == "auto", f"{p.name}: the gates are per step, not a start prompt"
-        # The Procedures page fans a group out as one run per phone: `hold` would
-        # defer every phone after the first, `coalesce` would answer with the
-        # first phone's run; both looked like "engine off" or a silent skip.
-        assert meta["admission_policy"] == "parallel", p.name
-        assert meta["max_concurrent"] >= 4, p.name
+        if p.name in PHONE:
+            # The Procedures page fans a group out as one run per phone: `hold` would
+            # defer every phone after the first, `coalesce` would answer with the
+            # first phone's run; both looked like "engine off" or a silent skip.
+            assert meta["admission_policy"] == "parallel", p.name
+            assert meta["max_concurrent"] >= 4, p.name
 
 
 # --- steps -------------------------------------------------------------------
@@ -77,13 +87,15 @@ def test_every_tool_named_is_one_the_body_serves(playbooks, served):
     for p in playbooks.values():
         assert p.tools, p.name
         for tool in p.tools:
+            if tool in RUNTIME_TOOLS:
+                continue  # the Runtime's own (git_forge), checked in tests/test_forge.py
             assert tool.startswith(PREFIX), (p.name, tool, "tools reach the agent as body__<tool>")
             assert tool.removeprefix(PREFIX) in served, (p.name, tool)
 
 
-def test_destructive_tools_sit_behind_a_gate_and_reads_do_not(playbooks):
+def test_destructive_tools_sit_behind_a_gate_and_reads_do_not(phone_playbooks):
     destructive = {PREFIX + t for t in srv.DESTRUCTIVE}
-    for p in playbooks.values():
+    for p in phone_playbooks.values():
         gated = []
         for s in p.steps:
             names = set(s.tools) | set(s.allow_tools)
@@ -177,23 +189,27 @@ def test_cli_installs_keeps_edits_and_forces(tmp_path, capsys):
     assert srv.main([*args, "--install", str(dest)]) == 0
     tools.reset()
     out = capsys.readouterr().out
-    assert statuses(out) == ["installed"] * 4 and "sops_dir" in out
+    assert statuses(out) == ["installed"] * len(EXPECTED) and "sops_dir" in out
     assert sorted(p.name for p in dest.iterdir()) == list(EXPECTED)
     assert tomllib.loads((dest / "phone-debloat" / "SOP.toml").read_text())["sop"]["name"] == "phone-debloat"
 
     assert srv.main([*args, "--install", str(dest)]) == 0
     tools.reset()
-    assert statuses(capsys.readouterr().out) == ["unchanged"] * 4
+    assert statuses(capsys.readouterr().out) == ["unchanged"] * len(EXPECTED)
 
     (dest / "phone-debloat" / "SOP.md").write_text("# mine\n")
     assert srv.main([*args, "--install", str(dest)]) == 0
     tools.reset()
-    assert statuses(capsys.readouterr().out) == ["kept", "unchanged", "unchanged", "unchanged"]
+    debloat = EXPECTED.index("phone-debloat")
+    expect = ["unchanged"] * len(EXPECTED)
+    expect[debloat] = "kept"
+    assert statuses(capsys.readouterr().out) == expect
     assert (dest / "phone-debloat" / "SOP.md").read_text() == "# mine\n"
 
     assert srv.main([*args, "--install", str(dest), "--force"]) == 0
     tools.reset()
-    assert statuses(capsys.readouterr().out) == ["updated", "unchanged", "unchanged", "unchanged"]
+    expect[debloat] = "updated"
+    assert statuses(capsys.readouterr().out) == expect
     assert (dest / "phone-debloat" / "SOP.md").read_text() == (SOPS / "phone-debloat" / "SOP.md").read_text()
 
 

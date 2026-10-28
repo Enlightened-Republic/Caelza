@@ -118,7 +118,7 @@ python -m pytest -q
 ```
 
 The Body is also an MCP server. `caelza-body serve` (installed with the
-package) exposes the same 41 tools to the Runtime over stdio with the safety
+package) exposes the same 43 tools to the Runtime over stdio with the safety
 semantics intact: `reason` required on dangerous ops, the audit log, package
 snapshots before any removal. [`body/caelza-body.example.toml`](body/caelza-body.example.toml)
 is the Runtime wiring, including a risk profile that auto-approves the reads

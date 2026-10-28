@@ -110,7 +110,7 @@ migrate = "python scripts/setup.py --migrate"   # existing Airframe Lite phones,
 mcp_server = "caelza-body"        # `caelza-body serve`: the Body's tools over MCP for the Runtime (caelza_body/mcp_server.py)
 mcp_transport = "stdio"           # to the Runtime; between Bodies: Streamable HTTP + bearer token (`caelza-body serve --http`, M6)
 mcp_config = "body/caelza-body.example.toml"   # Runtime wiring + risk profile; tool names arrive as body__<tool>
-tools = 41                        # selfmod 6, sensors 9, shell 1, device 20, web 5; memory_* are the Mind's now
+tools = 43                        # selfmod 6, sensors 9, shell 1, device 20, web 5, runtime 2; memory_* are the Mind's now
 probe = "caelza-body probe"       # exit 0 when every group registered
 # M5: the phone playbooks as SOPs with approval gates, and the four read-only
 # device tools they lean on (device_debloat_plan, device_suspects,
@@ -119,6 +119,14 @@ playbooks = "body/sops"           # phone-debloat, phone-malware-removal, phone-
 playbooks_install = "caelza-body playbooks --install"   # -> ~/.caelza/shared/sops; install.sh runs it; [sop] sops_dir = "shared/sops" loads them
 playbooks_logic = "caelza_body/agent/playbooks.py"     # the curated debloat list, the dumpsys/pm parsers, the risk scorer, the SOP.md reader
 playbooks_evals = "tests/test_playbook_evals.py"       # over the REVVL 7 snapshot and recorded output; CAELZA_EVAL_SERIAL=<serial> runs them live
+
+# M6: Forge, the agent proposes Runtime changes as pull requests over the
+# Runtime's git channel; CI builds the release; the guard pulls it (docs/forge.md).
+forge = "docs/forge.md"
+forge_config = "runtime/caelza.forge.example.toml"     # [channels.git.forge] (a GitHub App on the repo), the events table, the gates
+forge_sops = ["body/sops/forge-propose", "body/sops/forge-release"]
+forge_tools = "caelza_body/agent/tools/runtime.py"     # runtime_status, runtime_update (the `runtime` tool group)
+forge_build = "--features channel-git"                 # release.yml and runtime/build.sh build the git channel in
 # M6 (fleet): a hub and its phones. Each phone serves its Body over HTTP; the hub's Body joins them
 # as devices and forwards every call naming one (caelza_body/fleet.py); groups fan a procedure out.
 fleet = "caelza_body/fleet.py"

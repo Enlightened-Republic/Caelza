@@ -1,0 +1,21 @@
+# Caelza Forge: propose a change to the Runtime as a pull request to this repo
+# (vision §3.5, M6). Installed into the Runtime's sops dir by
+# `caelza-body playbooks --install` and checked by `caelza sop validate
+# forge-propose`. docs/forge.md explains the loop; the git channel must be
+# configured (runtime/caelza.forge.example.toml).
+[sop]
+name = "forge-propose"
+description = "Propose a change to the Runtime (the Caelza repo) as a draft pull request: frame it, read the files as they are on main, draft the new content and the PR, and after the owner approves, create the forge/<topic> branch, commit each file through the forge API and open the PR. The agent never holds the compiler: CI builds, a human merges, a tag releases, the guard pulls it."
+version = "1.0.0"
+priority = "normal"
+# The reads run without a start prompt; the one step that writes to the repo
+# carries `requires_confirmation` and parks the run until the owner approves.
+execution_mode = "auto"
+agent = "main"
+# One proposal at a time: a second request while one is drafting or waiting
+# at its gate is deferred, not folded in.
+max_concurrent = 1
+admission_policy = "hold"
+
+[[triggers]]
+type = "manual"

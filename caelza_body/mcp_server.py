@@ -49,6 +49,7 @@ from caelza_body.agent import config as _config
 from caelza_body.agent import playbooks
 from caelza_body.agent import tools
 from caelza_body.agent.tools import device, media, playbook, selfmod, sensors, shell, web
+from caelza_body.agent.tools import runtime as runtime_tools
 
 SERVER_NAME = "caelza-body"
 SERVER_VERSION = "0.1.0"
@@ -63,8 +64,10 @@ INSTRUCTIONS = (
 
 #: Tool groups, in registration order. ``--tools`` selects a subset. The
 #: playbook reads (``device_debloat_plan``, ``device_suspects``,
-#: ``device_foreground``, ``device_health``) belong to ``device``.
-GROUPS = ("selfmod", "sensors", "shell", "device", "web")
+#: ``device_foreground``, ``device_health``) belong to ``device``; ``runtime``
+#: is the guard (``runtime_status``, ``runtime_update``) for the machine that
+#: runs the Runtime.
+GROUPS = ("selfmod", "sensors", "shell", "device", "web", "runtime")
 
 #: Where the Runtime loads SOPs from when ``[sop] sops_dir = "shared/sops"``
 #: (relative to the directory holding its config.toml).
@@ -80,6 +83,7 @@ READ_ONLY = frozenset({
     "sensors_location",
     "self_read_file", "self_list_tree",
     "web_search", "web_read", "web_map", "web_crawl_result",
+    "runtime_status",
 })
 
 #: Changes device or repo state in ways the agent cannot undo on its own, or
@@ -89,6 +93,7 @@ DESTRUCTIVE = frozenset({
     "device_pair", "device_unpair", "device_join", "device_shell",
     "shell_run",
     "self_write_file", "self_commit", "self_request_restart",
+    "runtime_update",
 })
 
 #: Acts on the world but is reversible or self-contained (a capture, a tap,
@@ -108,6 +113,7 @@ PROBE_TOOL = {
     "shell": "shell_run",
     "device": "device_list",
     "web": "web_search",
+    "runtime": "runtime_status",
 }
 
 log = logging.getLogger(SERVER_NAME)
@@ -167,6 +173,9 @@ def register_tools(settings: BodySettings, groups=GROUPS) -> list[str]:
         web.configure(settings.body_home, settings.firecrawl_api_key,
                       settings.tavily_api_key, settings.searchapi_api_key)
         web.register()
+    if "runtime" in groups:
+        runtime_tools.configure(settings.body_home)
+        runtime_tools.register()
     return sorted(tools.REGISTRY)
 
 

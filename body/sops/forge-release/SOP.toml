@@ -1,0 +1,30 @@
+# Caelza Forge: a release was published; offer the owner the Runtime update
+# and let the guard pull it (vision §3.5, M6). Installed into the Runtime's
+# sops dir by `caelza-body playbooks --install` and checked by
+# `caelza sop validate forge-release`. docs/forge.md explains the loop.
+[sop]
+name = "forge-release"
+description = "A new Caelza release is out: read what changed and whether this machine's archive is in it, tell the owner, and after their approval start the guard's update (download, verify, probe, install; the supervisor restarts the Runtime on a binary that holds and keeps the last good one otherwise). Also runnable by hand with a tag."
+version = "1.0.0"
+priority = "normal"
+# The read runs without a start prompt; the Update step parks the run for
+# the owner, because the Runtime restarts at the end of it.
+execution_mode = "auto"
+agent = "main"
+# One release at a time; a second one while the first waits is deferred.
+max_concurrent = 1
+admission_policy = "hold"
+
+# The git channel delivers `release.published` here when the channel's events
+# table routes it (runtime/caelza.forge.example.toml); the payload carries the
+# repo, the tag, the name, the release notes and the URL.
+[[triggers]]
+type = "channel"
+channel = "git"
+alias = "forge"
+condition = "$.event_type == \"release.published\""
+
+# By hand, from the Procedures page or `sop_execute`, with {"tag": "v0.1.1"}
+# (or no payload for the latest release).
+[[triggers]]
+type = "manual"
