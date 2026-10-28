@@ -51,7 +51,7 @@ def update_running() -> int | None:
         return None
     try:
         os.kill(pid, 0)
-    except ProcessLookupError:
+    except (ProcessLookupError, OverflowError):  # gone, or not a pid at all
         f.unlink(missing_ok=True)
         return None
     except PermissionError:

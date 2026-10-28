@@ -201,9 +201,12 @@ def test_runtime_update_needs_a_reason_starts_detached_and_refuses_a_second(body
     assert status["update_running"] == os.getpid() and any("found v0.1.1" in ln for ln in status["update_log"])
     assert call("runtime_update", reason="again").startswith("error: a runtime update is already running")
 
-    # A pid that is gone clears the way, and the stale pid file with it.
-    (home / rt.UPDATE_PID).write_text("999999\n")
+    # A pid that is gone clears the way, and the stale pid file with it (a pid
+    # beyond pid_max can never be alive, unlike a small number on a busy box).
+    (home / rt.UPDATE_PID).write_text(f"{2**31 - 7}\n")
     assert rt.update_running() is None and not (home / rt.UPDATE_PID).exists()
+    (home / rt.UPDATE_PID).write_text("not a pid\n")
+    assert rt.update_running() is None
     out = call("runtime_update", reason="the latest, by hand")
     assert out["tag"] == "latest" and spawned[1][0][-2:] == ["--home", str(home)]
 

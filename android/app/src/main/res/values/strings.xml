@@ -1,0 +1,34 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <string name="app_name">Caelza</string>
+    <string name="presents">ENLIGHTENED REPUBLIC™ PRESENTS</string>
+    <string name="tagline">The embodied agent runtime.</string>
+
+    <string name="runtime_channel_name">Caelza Runtime</string>
+    <string name="runtime_channel_description">The Runtime running on this phone.</string>
+    <string name="runtime_notification_title">Caelza is running</string>
+    <string name="runtime_notification_stopped">Caelza stopped</string>
+
+    <string name="status_runtime_prefix">Runtime</string>
+    <string name="status_shizuku_prefix">Shizuku</string>
+    <string name="status_not_installed">not installed</string>
+    <string name="status_stopped">stopped</string>
+    <string name="status_starting">starting</string>
+    <string name="status_running">running %1$s</string>
+    <string name="status_halted">stopped after repeated crashes: needs a hand</string>
+
+    <string name="action_start">Start</string>
+    <string name="action_stop">Stop</string>
+    <string name="action_install">Install the Runtime</string>
+    <string name="action_update">Update</string>
+    <string name="action_open_dashboard">Open the dashboard</string>
+    <string name="action_shizuku">Ask Shizuku</string>
+    <string name="action_logs">Logs</string>
+
+    <string name="empty_title">Nothing is running yet</string>
+    <string name="empty_body">Install the Runtime (one download from the project\'s releases), then start it. The dashboard appears here once the gateway answers.</string>
+    <string name="waiting_body">Waiting for the gateway on 127.0.0.1:42617…</string>
+    <string name="install_progress">Installing…</string>
+    <string name="install_done">Installed %1$s</string>
+    <string name="install_failed">Install failed: %1$s</string>
+</resources>

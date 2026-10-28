@@ -127,6 +127,17 @@ forge_config = "runtime/caelza.forge.example.toml"     # [channels.git.forge] (a
 forge_sops = ["body/sops/forge-propose", "body/sops/forge-release"]
 forge_tools = "caelza_body/agent/tools/runtime.py"     # runtime_status, runtime_update (the `runtime` tool group)
 forge_build = "--features channel-git"                 # release.yml and runtime/build.sh build the git channel in
+
+# M7: the Caelza Android app (docs/design/android-app.md). M7a is the shell:
+# the Runtime installed from the releases and run as a foreground service,
+# the dashboard in a WebView, Shizuku's status.
+[android]
+project = "android"                                    # Gradle 8.14 + AGP 8.13 + Kotlin 2.2; `./gradlew assembleDebug testDebugUnitTest`
+application_id = "tech.enlightenedrepublic.caelza"
+min_sdk = 28
+target_sdk = 28                                        # on purpose: W^X would forbid running a downloaded Runtime (android-app.md §2)
+ci = ".github/workflows/android.yml"
+design = "docs/design/android-app.md"
 # M6 (fleet): a hub and its phones. Each phone serves its Body over HTTP; the hub's Body joins them
 # as devices and forwards every call naming one (caelza_body/fleet.py); groups fan a procedure out.
 fleet = "caelza_body/fleet.py"

@@ -1,0 +1,24 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <!-- Dark by design, like the dashboard's caelza-dark theme. -->
+    <style name="Theme.Caelza" parent="Theme.Material3.Dark.NoActionBar">
+        <item name="colorPrimary">@color/primary</item>
+        <item name="colorOnPrimary">@color/space</item>
+        <item name="colorPrimaryContainer">@color/bg4</item>
+        <item name="colorOnPrimaryContainer">@color/primary_light</item>
+        <item name="colorSecondary">@color/violet</item>
+        <item name="colorOnSecondary">@color/space</item>
+        <item name="colorTertiary">@color/purple</item>
+        <item name="colorError">@color/pink</item>
+        <item name="colorSurface">@color/bg2</item>
+        <item name="colorOnSurface">@color/text</item>
+        <item name="colorSurfaceVariant">@color/bg3</item>
+        <item name="colorOnSurfaceVariant">@color/text_muted</item>
+        <item name="colorOutline">@color/text_dim</item>
+        <item name="android:colorBackground">@color/space</item>
+        <item name="android:windowBackground">@color/space</item>
+        <item name="android:statusBarColor">@color/space</item>
+        <item name="android:navigationBarColor">@color/space</item>
+        <item name="android:windowLightStatusBar">false</item>
+    </style>
+</resources>

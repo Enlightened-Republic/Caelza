@@ -124,10 +124,13 @@ snapshots before any removal. [`body/caelza-body.example.toml`](body/caelza-body
 is the Runtime wiring, including a risk profile that auto-approves the reads
 and asks before anything irreversible; [`body/README.md`](body/README.md) has
 the details. Retiring the Python loop in favour of the Runtime is a per-phone
-switch once the Runtime runs there (vision doc §3.1). After that comes the
-**Caelza Android app**, which hosts the Body natively and uses
-[Shizuku](https://github.com/RikkaApps/Shizuku) for shell-level device control
-without root or Termux (§3.3).
+switch once the Runtime runs there (vision doc §3.1). The **Caelza Android
+app** ([`android/`](android/), M7) is the product people install instead of a
+Termux session: its first slice installs the Runtime from the releases, runs it
+as a foreground service and shows the dashboard; next it hosts the Body
+natively and uses [Shizuku](https://github.com/RikkaApps/Shizuku) for
+shell-level device control without root or Termux (§3.3,
+[`docs/design/android-app.md`](docs/design/android-app.md)).
 
 ## Models
 
