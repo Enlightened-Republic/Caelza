@@ -16,8 +16,9 @@ is the app's architecture and the slices it ships in. `android/` is the code;
 │    the supervisor's ladder: restart, roll back to last-good, halt     │
 │ ReleaseInstaller: GitHub release ─▶ sha256 ─▶ unpack ─▶ probe ─▶ install
 │ BootReceiver: start again after a reboot                             │
-│ (M7b) Body: device tools over Shizuku, sensors, as an MCP server     │
-│ (M7c) accessibility + notification listener, camera / mic / location  │
+│ BodyServer (M7b): the device tools over Shizuku as the Body's MCP     │
+│   server on http://127.0.0.1:42618/mcp, the Runtime's `body` server   │
+│ (M7c) sensors, accessibility + notification listener, camera / mic    │
 │ (M7d) Cael-led first run, the local model runner                     │
 └───────────────────────────────────────────────────────────────────────┘
 ```
@@ -87,25 +88,55 @@ The decision is revisited after the first builds run on the test device (M7
 open item); the code keeps the binary path in one place (`RuntimeStore`) so
 the switch is local.
 
-## 3. The Body in the app (M7b, next)
+## 3. The Body in the app (M7b, shipped)
 
-The Body's `device_*` tools map onto Shizuku one to one (vision §3.3's table):
-`newProcess` for `device_shell`, `device_logcat`, `device_packages`;
-`IPackageManager` / `IAppOpsService` / `Settings` over the Shizuku binder for
-`device_uninstall`, `device_disable`, `device_appops`, `device_settings`;
-`input` and `screencap` through `newProcess` until the accessibility and
-MediaProjection paths land (M7c). The Body stays an MCP server: the app
-serves it on loopback over Streamable HTTP, exactly as `caelza-body serve
---http` does today, behind the same bearer token file layout, so the Runtime's
-`[[mcp.servers]] name = "body"` entry points at `http://127.0.0.1:42618/mcp`
-and the risk profile, the playbooks and the dashboard do not change. The tool
-names, argument shapes, safety classes (read-only / destructive / neutral),
-the `reason` on every destructive call, the audit log and the package
-snapshot before a removal are the contract (`tests/test_mcp_server.py` and
-`test_bodies_page.py` pin it on the Python side; the Kotlin port gets the
-same tests over the same recorded phone output in `tests/fixtures/playbooks`).
-`body.privilege = "shizuku"` is the Body config that selects the transport;
-a phone can run both the Termux Body and the app's.
+The Body's `device` group runs in the app over Shizuku, and the Body stays an
+MCP server: `RuntimeService` serves it on loopback over Streamable HTTP
+(`body/BodyServer.kt`), exactly as `caelza-body serve --http` does, behind
+the same bearer token file (`files/.caelza-body/run/http-token`, created
+once, 0600), with `/health` open and `/mcp` locked, the Host header checked.
+The Runtime's config gets a `[[mcp.servers]] name = "body"` entry with
+`transport = "http"`, `url = "http://127.0.0.1:42618/mcp"` and the token in
+`headers.Authorization`, plus `[mcp_bundles.body]`, an `[agents.main]` that
+carries it and the `phone` risk profile, appended on first start to whatever
+the config lacks (`RuntimeStore.ensureBodyWiring`); a config the dashboard
+already shaped keeps its own agent. The risk profile, the playbooks and the
+dashboard do not change.
+
+**The contract** is the Python Body's, pinned from both sides. The tool
+names, descriptions, argument schemas and safety classes (read-only /
+destructive / neutral) are compared against `caelza-body list-tools` in
+`android/app/src/test/fixtures/body-tools.json` (written by
+`scripts/android_body_fixtures.py`, checked current by
+`tests/test_android_body.py`, checked matched by `BodyToolsTest`); every
+destructive call needs its `reason`, written to
+`.caelza-body/logs/device-actions.log` in the same tab-separated line; a
+removal snapshots the full package list into `.caelza-body/snapshots/` first
+and refuses when the list came back empty; screenshots land in
+`.caelza-body/tmp/` and come back as image content. The playbook reads
+(`device_debloat_plan`, `device_suspects`, `device_foreground`,
+`device_health`) are `caelza_body/agent/playbooks.py` in Kotlin
+(`body/Playbooks.kt`), with its tables exported to `debloat-tables.json` so
+the two lists cannot drift, and `PlaybooksTest` / `BodyToolsTest` replay the
+same recorded phone (`tests/fixtures/playbooks`, the REVVL snapshot) that
+`tests/test_playbook_evals.py` does.
+
+**The transport.** Everything runs as shell commands in Shizuku's process
+(`Shizuku.newProcess`, reached by reflection since the library keeps it
+private), which holds adb's uid: `pm`, `settings`, `appops`, `input`,
+`screencap`, `uiautomator`, `dumpsys`, `logcat` answer exactly as they do
+over `adb shell` from Termux, so the parsers and the recordings hold. The
+binder path (`IPackageManager`, `IAppOpsService` straight over Shizuku) is a
+later refinement, not a contract change. Shizuku not running, or the
+permission not granted, is a degraded Body: the tool answers `needs Shizuku:
+<what to do>` (exit 127, as a missing `adb` reads on Termux), `device_list`
+shows `self` unreachable, nothing crashes.
+
+**Not in the app's Body:** the fleet tools (`device_pair`, `device_unpair`,
+`device_join`, `device_tag`) need `adb` and the registry and stay with the
+Python Body; a phone can run both (the app's Body yields the port to a Termux
+Body already serving on 42618, and says so in the strip). The sensors come
+with M7c. `body.privilege = "shizuku"` in the vision is this Body.
 
 ## 4. Sensors, screen and notifications (M7c)
 
@@ -142,7 +173,10 @@ the first working turn.
 - **Loopback exposure.** The gateway with pairing off is reachable by any app
   on the phone. Options: keep pairing on and let the shell read the code from
   the daemon log; a Unix domain socket once the gateway can listen on one;
-  a token header the WebView injects.
+  a token header the WebView injects. (The Body on 42618 is behind its token.)
+- **The Body's binder path.** `IPackageManager` / `IAppOpsService` over the
+  Shizuku binder instead of `pm` / `appops` in a shell; faster, no parsing,
+  but hidden-API stubs to carry. Measure first.
 - **Signing and distribution.** A release keystore in CI secrets, an own
   F-Droid-style repo or GitHub releases for the APK; Play needs targetSdk 34.
 - **Foreground service type.** With targetSdk 28 none is required; the move

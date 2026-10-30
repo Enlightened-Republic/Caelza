@@ -79,6 +79,7 @@ class MainActivity : AppCompatActivity() {
         lifecycleScope.launch {
             repeatOnLifecycle(Lifecycle.State.STARTED) {
                 launch { RuntimeService.state.collect { render(it) } }
+                launch { RuntimeService.body.collect { renderShizuku() } }
                 launch { watchGateway() }
             }
         }
@@ -124,9 +125,17 @@ class MainActivity : AppCompatActivity() {
         if (!running && dashboardShown) showDashboard(false)
     }
 
+    /** The Body line: whether it serves (tools, port) and where Shizuku, its privilege, stands. */
     private fun renderShizuku() {
         val state = ShizukuStatus.state()
-        binding.shizukuStatus.text = "${getString(R.string.status_shizuku_prefix)} · ${ShizukuStatus.label(state)}"
+        val body = RuntimeService.body.value
+        val serving = when {
+            body.serving -> getString(R.string.status_body_serving, body.tools, body.port)
+            body.detail.isNotEmpty() -> body.detail
+            else -> getString(R.string.status_body_off)
+        }
+        binding.shizukuStatus.text =
+            "${getString(R.string.status_body_prefix)} · $serving · ${getString(R.string.status_shizuku_prefix)} ${ShizukuStatus.label(state)}"
         binding.shizukuAction.visibility = if (state == ShizukuStatus.State.READY) View.GONE else View.VISIBLE
     }
 

@@ -12,8 +12,10 @@ scores, and a reader for the SOP definitions in `body/sops/` (the same
 """
 from __future__ import annotations
 
+import json
 import re
 import shutil
+import sys
 import tomllib
 from dataclasses import dataclass, field
 from datetime import datetime, timedelta, timezone
@@ -358,6 +360,26 @@ _FLAG_WEIGHT = {
 
 def is_trusted_sideload(pkg: str) -> bool:
     return any(rx.search(pkg) for rx in TRUSTED_SIDELOADS)
+
+
+def export_tables() -> dict:
+    """The lists and shell snippets above, as JSON-ready data. The Android
+    app's Body (`android/.../body/Playbooks.kt`) carries the same tables in
+    Kotlin; `scripts/android_body_fixtures.py` writes this export next to its
+    tests and both suites compare against it, so the two cannot drift."""
+    return {
+        "remove": dict(REMOVE),
+        "disable": dict(DISABLE),
+        "optional": dict(OPTIONAL),
+        "patterns": [{"regex": rx, "class": cls, "why": why} for rx, cls, why in PATTERNS],
+        "store_installers": sorted(STORE_INSTALLERS),
+        "trusted_sideloads": [rx.pattern for rx in TRUSTED_SIDELOADS],
+        "sensitive_permissions": dict(SENSITIVE_PERMISSIONS),
+        "flag_weight": dict(_FLAG_WEIGHT),
+        "sensitive_permission_grep": SENSITIVE_PERMISSION_GREP,
+        "admin_grep": ADMIN_GREP,
+        "health_script": HEALTH_SCRIPT,
+    }
 
 
 def risk_flags(pkg: str, *, installer: str | None, info: dict, appops: dict[str, str],
@@ -839,3 +861,8 @@ def install_playbooks(repo_root: Path | str, dest: Path | str, force: bool = Fal
             (target / name).write_bytes(data)
         results.append((pb.name, "updated"))
     return results
+
+
+if __name__ == "__main__":  # pragma: no cover - `python -m caelza_body.agent.playbooks` prints the tables
+    json.dump(export_tables(), sys.stdout, indent=2, sort_keys=True, ensure_ascii=False)
+    sys.stdout.write("\n")

@@ -1,5 +1,6 @@
 package tech.enlightenedrepublic.caelza.runtime
 
+import tech.enlightenedrepublic.caelza.body.BodyTools
 import java.io.File
 import java.nio.file.Files
 import java.nio.file.StandardCopyOption
@@ -118,6 +119,27 @@ class RuntimeStore(val home: File) {
         return config
     }
 
+    /**
+     * Point the Runtime at the app's Body (M7b): the `body` MCP server over
+     * HTTP on loopback with its bearer token, the bundle, an agent that
+     * carries it and the phone risk profile (the Body's reads run without a
+     * prompt, everything else asks the owner). Only what the config lacks is
+     * appended, so a config the dashboard already shaped keeps its own
+     * `[agents.main]`; true when something was added.
+     */
+    fun ensureBodyWiring(token: String, port: Int = BODY_PORT): Boolean {
+        val config = ensureConfig()
+        val text = config.readText()
+        val add = StringBuilder()
+        if (!BODY_SERVER_LINE.containsMatchIn(text)) add.append(bodyServerBlock(token, port))
+        if (!text.contains("[mcp_bundles.body]")) add.append(BODY_BUNDLE)
+        if (!AGENTS_MAIN.containsMatchIn(text)) add.append(AGENT_MAIN)
+        if (!RISK_PHONE.containsMatchIn(text)) add.append(riskProfileBlock())
+        if (add.isEmpty()) return false
+        config.appendText((if (text.endsWith("\n") || text.isEmpty()) "" else "\n") + add)
+        return true
+    }
+
     private fun read(pointer: File): String? =
         pointer.takeIf { it.isFile }?.readText()?.trim()?.takeIf { it.isNotEmpty() }
 
@@ -132,6 +154,39 @@ class RuntimeStore(val home: File) {
         const val CURRENT = "current"
         const val LAST_GOOD = "last-good"
         const val GATEWAY_PORT = 42617
+        /** Where the app serves the Body (`fleet.DEFAULT_PORT`). */
+        const val BODY_PORT = 42618
+
+        private val BODY_SERVER_LINE = Regex("""^\s*name\s*=\s*"body"\s*$""", RegexOption.MULTILINE)
+        private val AGENTS_MAIN = Regex("""^\s*\[agents\.main]""", RegexOption.MULTILINE)
+        private val RISK_PHONE = Regex("""^\s*\[risk_profiles\.phone]""", RegexOption.MULTILINE)
+
+        fun bodyServerBlock(token: String, port: Int = BODY_PORT): String = """
+            |
+            |# The app's Body: this phone's device tools over Shizuku, served on loopback
+            |# behind the token in .caelza-body/run/http-token (body/README.md lists the tools).
+            |[[mcp.servers]]
+            |name = "body"
+            |transport = "http"
+            |url = "http://127.0.0.1:$port/mcp"
+            |headers = { Authorization = "Bearer $token" }
+            |tool_timeout_secs = 120
+            |""".trimMargin()
+
+        const val BODY_BUNDLE = "\n[mcp_bundles.body]\nservers = [\"body\"]\n"
+
+        const val AGENT_MAIN = "\n# The agent that carries the Body; the dashboard's quickstart adds the model and channels.\n" +
+            "[agents.main]\nmcp_bundles = [\"body\"]\nrisk_profile = \"phone\"\n"
+
+        /** The Body's own classes as the Runtime's gate: READ_ONLY auto-approved, DESTRUCTIVE always asked. */
+        fun riskProfileBlock(): String {
+            fun list(names: List<String>) = names.joinToString("\n") { "  \"body__$it\"," }
+            return "\n# The Body requires a `reason` on its DANGEROUS ops and audit-logs them; this is the\n" +
+                "# Runtime's second gate: reads run without a prompt, the rest asks the owner first.\n" +
+                "[risk_profiles.phone]\nlevel = \"supervised\"\nrequire_approval_for_medium_risk = true\nblock_high_risk_commands = true\n" +
+                "auto_approve = [\n" + list(BodyTools.names(BodyTools.Safety.READ_ONLY)) + "\n]\n" +
+                "always_ask = [\n" + list(BodyTools.names(BodyTools.Safety.DESTRUCTIVE)) + "\n]\n"
+        }
 
         val DEFAULT_CONFIG = """
             |# Written by the Caelza app on first start. The gateway listens on loopback

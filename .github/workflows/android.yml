@@ -1,13 +1,22 @@
 name: android
 
 # The Caelza Android app (android/): builds the debug APK and runs the JVM
-# unit tests. Only when the app or this file changes.
+# unit tests. Only when the app, this file, or the recorded phone the app's
+# Body tests replay (tests/fixtures/playbooks, the REVVL snapshot) changes.
 on:
   push:
     branches: [main]
-    paths: ["android/**", ".github/workflows/android.yml"]
+    paths:
+      - "android/**"
+      - ".github/workflows/android.yml"
+      - "tests/fixtures/playbooks/**"
+      - "docs/examples/revvl-7-debloat/**"
   pull_request:
-    paths: ["android/**", ".github/workflows/android.yml"]
+    paths:
+      - "android/**"
+      - ".github/workflows/android.yml"
+      - "tests/fixtures/playbooks/**"
+      - "docs/examples/revvl-7-debloat/**"
 
 concurrency:
   group: android-${{ github.ref }}

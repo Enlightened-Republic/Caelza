@@ -1,0 +1,230 @@
+{
+  "admin_grep": "admin=|ComponentInfo|^ *[A-Za-z][A-Za-z0-9_.]*/[A-Za-z0-9_.$]*:$",
+  "disable": {
+    "com.att.iqi": "AT&T IQI: carrier telemetry",
+    "com.sprint.ms.smf.services": "Sprint mobile services framework: carrier telemetry",
+    "com.tmobile.dm.cm": "T-Mobile device management client",
+    "com.tmobile.dm.ms.services": "T-Mobile device management services",
+    "com.tmobile.echolocate": "T-Mobile network telemetry (157 MB live)",
+    "com.tmobile.echolocate.system": "T-Mobile network telemetry (76 MB live)",
+    "com.verizon.mips.services": "Verizon interactive services: carrier telemetry"
+  },
+  "flag_weight": {
+    "accessibility": 3,
+    "app_list": 0,
+    "calls": 1,
+    "camera": 0,
+    "contacts": 0,
+    "device_admin": 3,
+    "install_packages": 1,
+    "location": 0,
+    "microphone": 0,
+    "notification_listener": 1,
+    "overlay": 2,
+    "recent": 1,
+    "sideloaded": 1,
+    "sms": 2,
+    "usage_stats": 1,
+    "write_settings": 1
+  },
+  "health_script": "echo '@@caelza:identity'; getprop ro.product.manufacturer; getprop ro.product.model; getprop ro.build.version.release; getprop ro.build.version.security_patch; getprop ro.build.version.sdk; echo '@@caelza:boot'; getprop ro.boot.verifiedbootstate; getprop ro.boot.flash.locked; getprop ro.debuggable; echo '@@caelza:battery'; dumpsys battery 2>/dev/null; echo '@@caelza:storage'; df -k /data 2>/dev/null; echo '@@caelza:memory'; head -5 /proc/meminfo; echo '@@caelza:uptime'; cat /proc/uptime; echo '@@caelza:thermal'; dumpsys thermalservice 2>/dev/null | grep -E 'Thermal Status|mStatus' | head -2; for z in /sys/class/thermal/thermal_zone*/temp; do cat $z 2>/dev/null; done | sort -n | tail -1; echo '@@caelza:top'; top -b -n 1 -m 6 2>/dev/null | tail -n 8; echo '@@caelza:crashes'; logcat -d -b crash -t 60 2>/dev/null | grep -E 'FATAL EXCEPTION|Process: ' | head -20; echo '@@caelza:settings'; for k in adb_wifi_enabled adb_enabled development_settings_enabled stay_on_while_plugged_in window_animation_scale transition_animation_scale animator_duration_scale package_verifier_user_consent; do echo \"$k=$(settings get global $k 2>/dev/null)\"; done; echo '@@caelza:whitelist'; dumpsys deviceidle whitelist 2>/dev/null | grep -E 'com\\.termux|com\\.tailscale'; echo '@@caelza:packages'; pm list packages 2>/dev/null | grep -E 'com\\.termux|com\\.tailscale\\.ipn'; echo '@@caelza:network'; ip -o -4 addr show 2>/dev/null | awk '{print $2, $4}'; echo '@@caelza:end'",
+  "optional": {
+    "com.android.chrome": "Chrome (~750 MB with its sandboxes); Android System WebView is separate and stays",
+    "com.google.android.apps.bard": "Gemini",
+    "com.google.android.apps.chromecast.app": "Google Home (165 MB)",
+    "com.google.android.apps.docs": "Google Drive",
+    "com.google.android.apps.googleassistant": "Google Assistant",
+    "com.google.android.apps.maps": "Google Maps",
+    "com.google.android.apps.messaging": "Google Messages; the default SMS app on many phones",
+    "com.google.android.apps.nbu.files": "Files by Google",
+    "com.google.android.apps.photos": "Google Photos; often the default gallery",
+    "com.google.android.apps.subscriptions.red": "Google One",
+    "com.google.android.apps.tachyon": "Google Meet (Duo)",
+    "com.google.android.apps.turbo": "Device Health Services (adaptive battery); keep unless you know why not",
+    "com.google.android.apps.walletnfcrel": "Google Wallet (tap to pay)",
+    "com.google.android.apps.wellbeing": "Digital Wellbeing",
+    "com.google.android.apps.youtube.music": "YouTube Music (184 MB)",
+    "com.google.android.gm": "Gmail",
+    "com.google.android.googlequicksearchbox": "the Google app, Discover feed and Assistant hotword (~400 MB live); disabling it also stops 'Hey Google'",
+    "com.google.android.projection.gearhead": "Android Auto",
+    "com.google.android.safetycore": "Google on-device content scanning for Messages",
+    "com.google.android.videos": "Google TV / Play Movies",
+    "com.google.android.youtube": "YouTube (237 MB)",
+    "com.google.ar.core": "Google Play Services for AR",
+    "com.tmobile.rsuadapter.qualcomm": "T-Mobile remote SIM unlock adapter; needed only to carrier-unlock the phone",
+    "com.tmobile.rsuapp": "T-Mobile remote SIM unlock; needed only to carrier-unlock the phone",
+    "com.tmobile.rsusrv": "T-Mobile remote SIM unlock service; needed only to carrier-unlock the phone",
+    "com.wingos.wingcamera": "the OEM camera app; the Body reaches the camera through camera2 without it"
+  },
+  "patterns": [
+    {
+      "class": "keep",
+      "regex": "^android$",
+      "why": "the framework"
+    },
+    {
+      "class": "keep",
+      "regex": "^com\\.android\\.",
+      "why": "AOSP"
+    },
+    {
+      "class": "keep",
+      "regex": "^com\\.google\\.android\\.(gms|gsf|vending|permissioncontroller|setupwizard|euicc|webview|packageinstaller|tts|as|ext|networkstack|modulemetadata|configupdater|captiveportallogin|cellbroadcast|providers|documentsui|contacts|deskclock|calculator|calendar|marvin|accessibility|overlay|safetycenter|odad|ondevicepersonalization|federatedcompute|rkpdapp|sdksandbox|adservices|appsearch|healthconnect|health|wifi|uwb|connectivity|hotspot2|partnersetup|onetimeinitializer|verifier|signature|photopicker|printservice|feedback|contactkeys|gmsintegration|inputmethod)(\\.|$)",
+      "why": "Google platform component"
+    },
+    {
+      "class": "keep",
+      "regex": "^com\\.google\\.android\\.apps\\.(restore|safetyhub|customization|wallpaper|adm)(\\.|$)",
+      "why": "Google platform component"
+    },
+    {
+      "class": "keep",
+      "regex": "^com\\.google\\.mainline\\.",
+      "why": "Mainline module"
+    },
+    {
+      "class": "keep",
+      "regex": "^(com\\.qti|com\\.qualcomm|vendor\\.|org\\.codeaurora)",
+      "why": "radio / vendor component"
+    },
+    {
+      "class": "keep",
+      "regex": "^com\\.termux(\\.|$)",
+      "why": "Termux is the Body"
+    },
+    {
+      "class": "keep",
+      "regex": "^com\\.tailscale\\.ipn$",
+      "why": "Tailscale reaches the hub"
+    },
+    {
+      "class": "keep",
+      "regex": "(\\.overlay|\\.rro|_rro)(\\.|$)",
+      "why": "resource overlay"
+    },
+    {
+      "class": "keep",
+      "regex": "^(com\\.oem|com\\.odm|com\\.vendor|com\\.wingtech|com\\.smartsoft|com\\.factory)\\.",
+      "why": "OEM component"
+    },
+    {
+      "class": "remove",
+      "regex": "^com\\.aura\\.oobe",
+      "why": "Aura out-of-box app pusher"
+    },
+    {
+      "class": "remove",
+      "regex": "^(com\\.dti\\.|com\\.digitalturbine\\.)",
+      "why": "Digital Turbine Ignite: carrier-sponsored app installer"
+    },
+    {
+      "class": "remove",
+      "regex": "^com\\.ironsrc\\.",
+      "why": "ironSource app pusher"
+    },
+    {
+      "class": "remove",
+      "regex": "^(com\\.metro\\.|com\\.metropcs\\.)",
+      "why": "Metro by T-Mobile promotion"
+    },
+    {
+      "class": "remove",
+      "regex": "^in\\.playsimple\\.",
+      "why": "preloaded game"
+    },
+    {
+      "class": "remove",
+      "regex": "^com\\.vitastudio\\.",
+      "why": "preloaded game"
+    },
+    {
+      "class": "remove",
+      "regex": "^com\\.king\\.candycrush",
+      "why": "preloaded game"
+    },
+    {
+      "class": "remove",
+      "regex": "^com\\.gameloft\\.",
+      "why": "preloaded game"
+    },
+    {
+      "class": "remove",
+      "regex": "^(com\\.booking|com\\.tripadvisor|flipboard\\.boxer)",
+      "why": "partner promotion preload"
+    },
+    {
+      "class": "optional",
+      "regex": "^com\\.tmobile\\.",
+      "why": "T-Mobile app; keep it if you use it (voicemail, Scam Shield, the T-Life app)"
+    },
+    {
+      "class": "optional",
+      "regex": "^(com\\.vzw\\.|com\\.verizon\\.)",
+      "why": "Verizon app; keep it if you use it"
+    },
+    {
+      "class": "optional",
+      "regex": "^com\\.att\\.",
+      "why": "AT&T app; keep it if you use it"
+    },
+    {
+      "class": "optional",
+      "regex": "^(com\\.amazon\\.|com\\.netflix\\.|com\\.microsoft\\.|com\\.linkedin\\.|com\\.spotify\\.|com\\.facebook\\.)",
+      "why": "preloaded partner app; keep it if you use it"
+    },
+    {
+      "class": "optional",
+      "regex": "^com\\.samsung\\.android\\.(bixby|app\\.spage|game\\.)",
+      "why": "Samsung extra; keep it if you use it"
+    }
+  ],
+  "remove": {
+    "com.amazon.appmanager": "Amazon app manager: installs Amazon apps in the background",
+    "com.amazon.storm.lightning.client.aosp": "Amazon Lightning: Fire TV remote stub, preloaded",
+    "com.facebook.appmanager": "Facebook app manager: installs and updates Facebook apps silently",
+    "com.facebook.services": "Facebook services stub: background install helper",
+    "com.facebook.system": "Facebook system stub: background install helper",
+    "com.ironsrc.aura.tmo": "ironSource Aura: pushes carrier-sponsored apps and ads (140 MB live on the REVVL 7)",
+    "com.metro.minus1": "Metro '-1 screen' launcher feed (363 MB live)",
+    "com.metropcs.metrozone": "MetroZone: carrier offers and app promotion (237 MB live)",
+    "com.netflix.partner.activation": "Netflix partner activation stub (the Netflix app itself is optional)",
+    "com.nuance.nmc.sihome.metropcs": "Nuance SiHome: carrier voice-assistant stub",
+    "com.tmobile.pr.adapt": "T-Mobile 'PR adapt': silent app installs on behalf of the carrier"
+  },
+  "sensitive_permission_grep": "\\.(ACCESS_FINE_LOCATION|BIND_ACCESSIBILITY_SERVICE|BIND_DEVICE_ADMIN|BIND_NOTIFICATION_LISTENER_SERVICE|CALL_PHONE|CAMERA|PACKAGE_USAGE_STATS|QUERY_ALL_PACKAGES|READ_CALL_LOG|READ_CONTACTS|READ_SMS|RECEIVE_SMS|RECORD_AUDIO|REQUEST_INSTALL_PACKAGES|SEND_SMS|SYSTEM_ALERT_WINDOW|WRITE_SETTINGS)$",
+  "sensitive_permissions": {
+    "android.permission.ACCESS_FINE_LOCATION": "location",
+    "android.permission.BIND_ACCESSIBILITY_SERVICE": "accessibility",
+    "android.permission.BIND_DEVICE_ADMIN": "device_admin",
+    "android.permission.BIND_NOTIFICATION_LISTENER_SERVICE": "notification_listener",
+    "android.permission.CALL_PHONE": "calls",
+    "android.permission.CAMERA": "camera",
+    "android.permission.PACKAGE_USAGE_STATS": "usage_stats",
+    "android.permission.QUERY_ALL_PACKAGES": "app_list",
+    "android.permission.READ_CALL_LOG": "calls",
+    "android.permission.READ_CONTACTS": "contacts",
+    "android.permission.READ_SMS": "sms",
+    "android.permission.RECEIVE_SMS": "sms",
+    "android.permission.RECORD_AUDIO": "microphone",
+    "android.permission.REQUEST_INSTALL_PACKAGES": "install_packages",
+    "android.permission.SEND_SMS": "sms",
+    "android.permission.SYSTEM_ALERT_WINDOW": "overlay",
+    "android.permission.WRITE_SETTINGS": "write_settings"
+  },
+  "store_installers": [
+    "com.amazon.venezia",
+    "com.android.vending",
+    "com.aurora.store",
+    "com.heytap.market",
+    "com.huawei.appmarket",
+    "com.oppo.market",
+    "com.sec.android.app.samsungapps",
+    "com.xiaomi.market",
+    "org.fdroid.basic",
+    "org.fdroid.fdroid"
+  ],
+  "trusted_sideloads": [
+    "^com\\.termux(\\.|$)",
+    "^com\\.tailscale\\.ipn$"
+  ]
+}
