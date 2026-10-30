@@ -18,3 +18,12 @@ caelza_body.egg-info/
 /runtime/dist/
 # Rendered brand assets (regenerate with brand/make_assets.py)
 /brand/out/
+
+# The Android app's build outputs (android/, Gradle)
+/android/.gradle/
+/android/build/
+/android/app/build/
+/android/local.properties
+/android/.kotlin/
+/android/captures/
+.idea/

@@ -1,0 +1,20 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!-- brand/tokens.json: the Enlightened Republic palette the dashboard uses. -->
+<resources>
+    <color name="space">#050310</color>
+    <color name="void_bg">#06040F</color>
+    <color name="bg2">#0C0918</color>
+    <color name="bg3">#120E22</color>
+    <color name="bg4">#1A1530</color>
+    <color name="text">#E8E4F0</color>
+    <color name="text_muted">#A8A8C0</color>
+    <color name="text_dim">#6E6E85</color>
+    <color name="primary">#22E6FF</color>
+    <color name="primary_light">#7AF0FF</color>
+    <color name="violet">#7B6BFF</color>
+    <color name="purple">#B44FFF</color>
+    <color name="pink">#FF2D78</color>
+    <color name="yellow">#FFE600</color>
+    <color name="green">#39FF14</color>
+    <color name="border">#14FFFFFF</color>
+</resources>
