@@ -12,6 +12,7 @@ from __future__ import annotations
 
 import json
 import re
+import sys
 import tomllib
 from pathlib import Path
 
@@ -25,12 +26,20 @@ from caelza_body.agent import tools
 REPO_ROOT = Path(__file__).resolve().parents[1]
 APP = REPO_ROOT / "android" / "app"
 FIXTURES = APP / "src" / "test" / "fixtures"
-BODY_SRC = APP / "src" / "main" / "java" / "tech" / "enlightenedrepublic" / "caelza" / "body"
+KT = APP / "src" / "main" / "java" / "tech" / "enlightenedrepublic" / "caelza"
+BODY_SRC = KT / "body"
 TOOLS_KT = (BODY_SRC / "BodyTools.kt").read_text()
 HOME_KT = (BODY_SRC / "BodyHome.kt").read_text()
 SERVER_KT = (BODY_SRC / "BodyServer.kt").read_text()
-STORE_KT = (APP / "src" / "main" / "java" / "tech" / "enlightenedrepublic" / "caelza" / "runtime" / "RuntimeStore.kt").read_text()
+STORE_KT = (KT / "runtime" / "RuntimeStore.kt").read_text()
+CLI_KT = (KT / "runtime" / "CaelzaCli.kt").read_text()
+LLAMA_KT = (KT / "model" / "LlamaRuntime.kt").read_text()
+LADDER_KT = (KT / "model" / "ModelLadder.kt").read_text()
 REGENERATE = "stale fixture: run `python scripts/android_body_fixtures.py` and commit the result"
+
+sys.path.insert(0, str(REPO_ROOT / "scripts"))
+import android_body_fixtures as fixtures  # noqa: E402
+import model_ladder  # noqa: E402
 
 FLEET_TOOLS = {"device_pair", "device_unpair", "device_join", "device_tag"}
 #: The groups the app's Body serves (M7b the device tools, M7c the sensors).
@@ -70,6 +79,34 @@ def test_tables_fixture_matches_the_playbook_module():
     export = pb.export_tables()
     assert set(export["remove"]) == set(pb.REMOVE) and set(export["optional"]) == set(pb.OPTIONAL)
     assert export["health_script"] == pb.HEALTH_SCRIPT and export["admin_grep"] == pb.ADMIN_GREP
+
+
+def test_ladder_fixture_matches_the_model_ladder():
+    """M7d: the app's ModelLadder.kt is the Python ladder's phone branch; the fixture carries the pins and sample picks."""
+    assert json.loads((FIXTURES / "model-ladder.json").read_text()) == fixtures.ladder(), REGENERATE
+    # The Kotlin pins are the Python pins, literally.
+    for tier, g in model_ladder.GGUF.items():
+        assert f'"{g["sha256"]}"' in LADDER_KT and g["file"] in LADDER_KT and str(g["bytes"]).replace("_", "") in LADDER_KT.replace("_", ""), tier
+    assert 'GUIDE_TIER = "1.5b"' in LADDER_KT and 'SERVER_PORT = 8080' in LADDER_KT and "CONTEXT = 4096" in LADDER_KT
+
+
+def test_the_app_carries_caels_persona_as_the_installer_writes_it():
+    """The bundled SOUL.md is guide/cael.system.md; the IDENTITY.md card is model-setup.sh's heredoc."""
+    assert (APP / "src" / "main" / "assets" / "cael.system.md").read_text() == (REPO_ROOT / "guide" / "cael.system.md").read_text(), \
+        "copy guide/cael.system.md to android/app/src/main/assets/cael.system.md"
+    setup = (REPO_ROOT / "scripts" / "model-setup.sh").read_text()
+    _, _, rest = setup.partition("\"$ws/IDENTITY.md\" <<'EOF'\n")
+    card, _, _ = rest.partition("EOF\n")
+    kotlin = re.search(r'const val IDENTITY = ((?:"[^"\n]*"\s*\+?\s*)+)', CLI_KT)
+    assert kotlin, "CaelzaCli.IDENTITY not found"
+    assembled = "".join(json.loads(part) for part in re.findall(r'"(?:[^"\\]|\\.)*"', kotlin.group(1)))
+    assert assembled == card
+    # The local model door writes the same `caelza config set` paths model-setup.sh writes.
+    first_run = (KT / "firstrun" / "FirstRun.kt").read_text()
+    for path in ("providers.models.llamacpp.local.model", "providers.models.llamacpp.guide.model", "agents.main.model_provider",
+                 "agents.cael.model_provider", "agents.cael.risk_profile", "risk_profiles.guide.level", "risk_profiles.guide.deny_all_tools"):
+        assert path in first_run and (path.replace("llamacpp.", "$RUNNER.") in setup or path in setup), path
+    assert "--no-interactive" in CLI_KT
 
 
 # --- the Kotlin Body serves the device group, less the fleet tools, in the same classes
@@ -120,6 +157,12 @@ def test_manifest_and_ci_point_at_the_app_body():
     assert manifest["body_port"] == fleet.DEFAULT_PORT
     assert manifest["body_tools"] == len(_kotlin_specs())
     assert manifest["body_fixtures"] == "scripts/android_body_fixtures.py"
+    # M7d: the first run and the local model runner.
+    assert manifest["first_run"] == "android/app/src/main/java/tech/enlightenedrepublic/caelza/firstrun"
+    pin = re.search(r'LlamaPin\("(b\d+)", "([0-9a-f]{64})", ([\d_]+)L\)', LLAMA_KT)
+    assert pin, "LlamaPin.CURRENT not found"
+    assert manifest["llama_pin"] == pin.group(1) and manifest["llama_sha256"] == pin.group(2)
+    assert manifest["model_server_port"] == 8080 and manifest["models_dir"] == ".caelza/models"
     # The Gradle tests replay the repo's recordings, so the android job runs when those change too.
     workflow = (REPO_ROOT / ".github" / "workflows" / "android.yml").read_text()
     for trigger in ("push", "pull_request"):

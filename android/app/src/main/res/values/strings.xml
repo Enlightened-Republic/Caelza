@@ -38,4 +38,64 @@
     <string name="install_progress">Installing…</string>
     <string name="install_done">Installed %1$s</string>
     <string name="install_failed">Install failed: %1$s</string>
+
+    <string name="status_model">model %1$s: %2$s</string>
+    <string name="action_setup">Set up with Cael</string>
+
+    <!-- The first run, in Cael\'s voice (guide/CAEL.md): short sentences, plain words, no hype. -->
+    <string name="fr_step">STEP %1$d OF %2$d</string>
+    <string name="fr_cael_says">CAEL SAYS</string>
+    <string name="fr_next">Next</string>
+    <string name="fr_skip">Skip for now</string>
+    <string name="fr_back">Back</string>
+    <string name="fr_save">Save</string>
+    <string name="fr_start">Start Caelza</string>
+    <string name="fr_progress">%1$d%% · %2$d of %3$d MiB</string>
+    <string name="fr_failed">That did not work: %1$s. Nothing was changed; you can try again or skip this for now.</string>
+    <string name="fr_getting">getting %1$s (%2$d MiB)</string>
+    <string name="fr_verified">verified %1$s</string>
+
+    <string name="fr_hello_title">Hi, I\'m Cael</string>
+    <string name="fr_hello_body">I\'m the guide inside Caelza. In a few steps I\'ll get this phone to its first working turn, and I\'ll say what each step does and why. Nothing here is a trick question. Every step can be skipped and done later from the dashboard.</string>
+
+    <string name="fr_runtime_title">First, the Runtime</string>
+    <string name="fr_runtime_body">The Runtime is the program that runs your agent. It comes from this project\'s releases: one download, checked against its checksum and tried out before it is kept. I keep the last version that worked, so a later one that misbehaves can\'t strand you.</string>
+    <string name="fr_runtime_installed">The Runtime is installed (version %1$s). Good! On to the brain.</string>
+    <string name="fr_needs_runtime">The Runtime has to be installed first; it is the program that stores these settings. Back to that step.</string>
+
+    <string name="fr_brain_title">Now, a brain</string>
+    <string name="fr_brain_body">Two doors. Free and local: a small DeepSeek model runs on this phone, offline, and nobody else sees your words. Or bring your own key: a provider such as Anthropic or OpenAI runs a bigger model for the agent. Either way I run too, as the guide. You can change this any time on the dashboard.</string>
+    <string name="fr_door_local">Free and local</string>
+    <string name="fr_door_key">Bring your own key</string>
+    <string name="fr_local_title">Free and local</string>
+    <string name="fr_local_more">The download is the model plus llama.cpp, the small program that runs it. Wi-Fi is a good idea. The files are checked against their published checksums before anything uses them.</string>
+    <string name="fr_download">Download (%1$d MiB)</string>
+    <string name="fr_that_worked_local">That worked! %1$s is on this phone and the Runtime knows where to find it.</string>
+    <string name="fr_key_title">Bring your own key</string>
+    <string name="fr_key_body">An API key is a password for a model provider. Caelza keeps it encrypted on this device and only ever sends it to that provider. Pick the provider, keep or change the model name, and paste the key. You can swap it later with one command.</string>
+    <string name="fr_model_hint">model name</string>
+    <string name="fr_key_hint">%1$s… from %2$s</string>
+    <string name="fr_key_short">That key looks too short. Paste the whole thing from the provider\'s page; it is one long word.</string>
+    <string name="fr_that_worked_key">That worked! The agent runs on %1$s, and so do I.</string>
+
+    <string name="fr_shizuku_title">Shizuku</string>
+    <string name="fr_shizuku_body">Shizuku gives Caelza shell-level control of this phone without root: that is how the agent uninstalls bloatware or reads the screen. It has to be started again after every reboot unless the phone is rooted. If you don\'t have it, you can add it later; the sensors work without it, so nothing is lost.</string>
+    <string name="fr_open_shizuku">Open Shizuku</string>
+    <string name="fr_shizuku_missing">Shizuku is not installed. It is a free app at shizuku.rikka.app; this step waits for you.</string>
+
+    <string name="fr_permissions_title">A few permissions</string>
+    <string name="fr_permissions_body">Each one is for one thing. Camera: a photo when you ask for one. Microphone: a recording when you ask. Location: where the phone is. Notification access: what is waiting in the status bar. A permission you don\'t grant just means that tool says so instead of working; nothing breaks.</string>
+
+    <string name="fr_battery_title">Staying awake</string>
+    <string name="fr_battery_body">Android puts apps to sleep to save battery. Caelza runs a small service that has to stay awake to answer you, so I\'d like it exempted. It costs a little battery. You can take it back any time in Settings.</string>
+    <string name="fr_keep_awake">Keep Caelza awake</string>
+    <string name="fr_battery_exempt">Exempt from battery optimisation: Caelza stays awake.</string>
+    <string name="fr_battery_not_exempt">Not exempt yet: Android may put Caelza to sleep.</string>
+    <string name="fr_battery_no_screen">This phone has no screen for that setting; look for Battery › App battery usage in Settings.</string>
+
+    <string name="fr_hub_title">A hub, if you want one</string>
+    <string name="fr_hub_body">Optional. If you have a laptop or a server, Tailscale (a private network between your own devices) lets a Runtime there reach this phone\'s Body, and a bigger model there can do the thinking. Nothing to do now; the Fleet page of the docs has the one-liner when you want it.</string>
+
+    <string name="fr_start_title">That\'s everything</string>
+    <string name="fr_start_body">Let\'s start the Runtime. The dashboard appears as soon as it answers, and you\'ll find me in the agent picker if anything on it needs explaining.</string>
 </resources>

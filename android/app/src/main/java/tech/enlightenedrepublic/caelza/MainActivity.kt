@@ -1,6 +1,7 @@
 package tech.enlightenedrepublic.caelza
 
 import android.annotation.SuppressLint
+import android.content.Intent
 import android.os.Bundle
 import android.view.View
 import android.webkit.WebView
@@ -18,6 +19,8 @@ import kotlinx.coroutines.withContext
 import rikka.shizuku.Shizuku
 import tech.enlightenedrepublic.caelza.body.SensorPermissions
 import tech.enlightenedrepublic.caelza.databinding.ActivityMainBinding
+import tech.enlightenedrepublic.caelza.firstrun.FirstRun
+import tech.enlightenedrepublic.caelza.firstrun.FirstRunActivity
 import tech.enlightenedrepublic.caelza.runtime.Gateway
 import tech.enlightenedrepublic.caelza.runtime.ProcessProber
 import tech.enlightenedrepublic.caelza.runtime.ReleaseInstaller
@@ -72,6 +75,11 @@ class MainActivity : AppCompatActivity() {
         binding.sensorsAction.setOnClickListener {
             if (!SensorPermissions.request(this)) renderSensors()
         }
+        binding.setupAction.setOnClickListener { startActivity(Intent(this, FirstRunActivity::class.java)) }
+        // The first run, until Cael has walked the owner through it once.
+        if (savedInstanceState == null && !getSharedPreferences(FirstRun.PREFS, MODE_PRIVATE).getBoolean(FirstRun.DONE, false)) {
+            startActivity(Intent(this, FirstRunActivity::class.java))
+        }
 
         try {
             Shizuku.addRequestPermissionResultListener(shizukuListener)
@@ -84,6 +92,7 @@ class MainActivity : AppCompatActivity() {
             repeatOnLifecycle(Lifecycle.State.STARTED) {
                 launch { RuntimeService.state.collect { render(it) } }
                 launch { RuntimeService.body.collect { renderShizuku() } }
+                launch { RuntimeService.model.collect { render(RuntimeService.state.value) } }
                 launch { watchGateway() }
             }
         }
@@ -119,7 +128,9 @@ class MainActivity : AppCompatActivity() {
             RuntimeService.Phase.RUNNING -> getString(R.string.status_running, state.version ?: "")
             RuntimeService.Phase.HALTED -> getString(R.string.status_halted)
         }
-        binding.runtimeStatus.text = "${getString(R.string.status_runtime_prefix)} · $label"
+        val model = RuntimeService.model.value
+        val modelLine = if (model.configured) " · " + getString(R.string.status_model, model.model?.substringBefore("-Q4") ?: "", model.detail) else ""
+        binding.runtimeStatus.text = "${getString(R.string.status_runtime_prefix)} · $label$modelLine"
         val running = state.phase == RuntimeService.Phase.RUNNING || state.phase == RuntimeService.Phase.STARTING
         binding.toggleButton.text = getString(if (running) R.string.action_stop else R.string.action_start)
         binding.toggleButton.isEnabled = !installing

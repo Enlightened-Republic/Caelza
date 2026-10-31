@@ -26,6 +26,9 @@ import tech.enlightenedrepublic.caelza.body.BodyServer
 import tech.enlightenedrepublic.caelza.body.BodyShell
 import tech.enlightenedrepublic.caelza.body.BodyTools
 import tech.enlightenedrepublic.caelza.body.ShizukuShell
+import tech.enlightenedrepublic.caelza.model.LlamaRuntime
+import tech.enlightenedrepublic.caelza.model.ModelServe
+import tech.enlightenedrepublic.caelza.model.ModelStore
 import tech.enlightenedrepublic.caelza.runtime.CrashLoop
 import tech.enlightenedrepublic.caelza.runtime.Gateway
 import tech.enlightenedrepublic.caelza.runtime.RuntimeStore
@@ -61,14 +64,26 @@ class RuntimeService : Service() {
         val detail: String = "",
     )
 
+    /** The local model server (M7d): what `serve.json` names, whether llama-server answers on its port. */
+    data class ModelState(
+        val configured: Boolean = false,
+        val serving: Boolean = false,
+        val model: String? = null,
+        val detail: String = "",
+    )
+
     private val scope = CoroutineScope(SupervisorJob() + Dispatchers.IO)
     private lateinit var store: RuntimeStore
     private var job: Job? = null
     private var process: Process? = null
     private var bodyServer: BodyServer? = null
+    private var modelJob: Job? = null
+    private var modelProcess: Process? = null
+    private val modelCrashes = CrashLoop(n = 3, windowMs = 10 * 60_000)
     private val crashes = CrashLoop()
     private var lastGoodLooping = false
     @Volatile private var stopping = false
+    @Volatile private var modelStopping = false
 
     override fun onCreate() {
         super.onCreate()
@@ -82,6 +97,7 @@ class RuntimeService : Service() {
         when (intent?.action) {
             ACTION_STOP -> {
                 stopRuntime()
+                stopModel()
                 stopBody()
                 _state.value = RuntimeState(Phase.STOPPED)
                 stopForeground(STOP_FOREGROUND_REMOVE)
@@ -92,10 +108,12 @@ class RuntimeService : Service() {
                 crashes.reset()
                 lastGoodLooping = false
                 startBody()
+                startModel()
                 startRuntime()
             }
             else -> {
                 startBody()
+                startModel()
                 if (job?.isActive != true) startRuntime()
             }
         }
@@ -104,9 +122,92 @@ class RuntimeService : Service() {
 
     override fun onDestroy() {
         stopRuntime()
+        stopModel()
         stopBody()
         scope.cancel()
         super.onDestroy()
+    }
+
+    /**
+     * The local model server (the first run's free door): when `serve.json`
+     * names a model, run llama-server on it the way `serve.sh` does on Termux,
+     * before the daemon, restarting it when it exits and giving up after three
+     * exits in ten minutes. Nothing configured, or nothing installed, is a
+     * status line; the daemon runs either way.
+     */
+    private fun startModel() {
+        if (modelJob?.isActive == true) return
+        val models = ModelStore(File(store.configDir, ModelStore.DIR))
+        val serve = models.serve()
+        if (serve == null) {
+            _model.value = ModelState()
+            return
+        }
+        val server = LlamaRuntime(filesDir).currentServer
+        val model = File(models.dir, serve.model)
+        if (server == null || !model.isFile) {
+            _model.value = ModelState(
+                configured = true, model = serve.model,
+                detail = if (server == null) "llama-server is not installed" else "${serve.model} is missing",
+            )
+            return
+        }
+        modelStopping = false
+        modelCrashes.reset()
+        modelJob = scope.launch { superviseModel(server, model, serve) }
+    }
+
+    private suspend fun superviseModel(server: File, model: File, serve: ModelServe) {
+        while (!modelStopping) {
+            _model.value = ModelState(configured = true, model = model.name, detail = "loading")
+            val proc = try {
+                launchModel(server, model, serve)
+            } catch (e: Exception) {
+                _model.value = ModelState(configured = true, model = model.name, detail = "could not start llama-server: ${e.message}")
+                return
+            }
+            modelProcess = proc
+            while (proc.isAlive && !Gateway.healthy(serve.port, 1_000)) delay(1_000)
+            if (proc.isAlive) _model.value = ModelState(configured = true, serving = true, model = model.name, detail = "serving on :${serve.port}")
+            val code = proc.waitFor()
+            modelProcess = null
+            if (modelStopping) return
+            val now = System.currentTimeMillis()
+            modelCrashes.recordExit(now)
+            if (modelCrashes.tripped(now)) {
+                _model.value = ModelState(configured = true, model = model.name, detail = "llama-server exited $code three times; see logs/llama-server.log")
+                return
+            }
+            _model.value = ModelState(configured = true, model = model.name, detail = "exited $code; restarting")
+            delay(RESTART_DELAY_MS)
+        }
+    }
+
+    private fun launchModel(server: File, model: File, serve: ModelServe): Process {
+        store.logsDir.mkdirs()
+        val log = File(store.logsDir, "llama-server.log")
+        if (log.length() > LOG_ROTATE_BYTES) log.renameTo(File(store.logsDir, "llama-server.log.prev"))
+        val pb = ProcessBuilder(LlamaRuntime.command(server, model, serve.port, serve.ctx))
+            .directory(server.parentFile)
+            .redirectErrorStream(true)
+            .redirectOutput(ProcessBuilder.Redirect.appendTo(log))
+        val env = pb.environment()
+        env["HOME"] = filesDir.path
+        env["TMPDIR"] = cacheDir.path
+        env["LD_LIBRARY_PATH"] = server.parentFile?.path ?: ""
+        return pb.start()
+    }
+
+    private fun stopModel() {
+        modelStopping = true
+        modelJob?.cancel()
+        modelJob = null
+        modelProcess?.let { proc ->
+            proc.destroy()
+            if (!proc.waitFor(5, TimeUnit.SECONDS)) proc.destroyForcibly()
+        }
+        modelProcess = null
+        _model.value = ModelState()
     }
 
     /**
@@ -271,6 +372,8 @@ class RuntimeService : Service() {
         val state: StateFlow<RuntimeState> = _state
         private val _body = MutableStateFlow(BodyState())
         val body: StateFlow<BodyState> = _body
+        private val _model = MutableStateFlow(ModelState())
+        val model: StateFlow<ModelState> = _model
 
         fun start(context: Context) = send(context, ACTION_START)
         fun stop(context: Context) = send(context, ACTION_STOP)

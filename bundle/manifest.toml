@@ -148,7 +148,16 @@ design = "docs/design/android-app.md"
 body = "android/app/src/main/java/tech/enlightenedrepublic/caelza/body"
 body_port = 42618
 body_tools = 25                                        # sensors 9 (4 reads, 5 neutral) + device 16 (10 reads, 5 destructive, 1 neutral)
-body_fixtures = "scripts/android_body_fixtures.py"    # writes android/app/src/test/fixtures/{body-tools,debloat-tables}.json; both suites pin them
+body_fixtures = "scripts/android_body_fixtures.py"    # writes android/app/src/test/fixtures/{body-tools,debloat-tables,model-ladder}.json; both suites pin them
+# M7d: the Cael-led first run (the two doors, Shizuku, permissions with reasons, the battery exemption, a hub)
+# and the local model runner: llama.cpp's own prebuilt Android arm64 release, pinned by tag and sha256, run as
+# `llama-server -m <gguf> --host 127.0.0.1 --port 8080 -c 4096` beside the Runtime, the GGUFs from the ladder's pins
+# under .caelza/models (where ~/.caelza/models is on Termux), the config written with `caelza config set`.
+first_run = "android/app/src/main/java/tech/enlightenedrepublic/caelza/firstrun"
+llama_pin = "b11960"                                   # https://github.com/ggml-org/llama.cpp/releases/download/b11960/llama-b11960-bin-android-arm64.tar.gz
+llama_sha256 = "77d9f19fad41d6d8efbc29bcc1c1ab60a605018564cfc32203892eb1973ba4b9"   # 78,624,092 bytes, read 2026-10-31
+models_dir = ".caelza/models"
+model_server_port = 8080
 # M6 (fleet): a hub and its phones. Each phone serves its Body over HTTP; the hub's Body joins them
 # as devices and forwards every call naming one (caelza_body/fleet.py); groups fan a procedure out.
 fleet = "caelza_body/fleet.py"
