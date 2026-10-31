@@ -139,6 +139,15 @@ is seen at once and kept by the Body's next save; a name cannot flip between
 a paired phone and a joined Body without `device_unpair` first; token files
 are created 0600 inside 0700 directories.
 
+**In the app.** The Caelza Android app serves this same Body over HTTP on the
+phone it runs on (M7b): its `device` group in Kotlin over Shizuku, on
+`127.0.0.1:42618/mcp` behind the same token file layout, audit log and
+snapshots, with the same tool names, schemas and classes
+(`android/app/src/main/java/tech/enlightenedrepublic/caelza/body/`,
+pinned against `caelza-body list-tools` by `scripts/android_body_fixtures.py`
+and `tests/test_android_body.py`). The fleet tools stay here: the app's Body
+is one phone, and `device_join` from a hub reaches it like any other.
+
 `device_list` shows the fleet with kinds (`self`, `adb`, `http`), reachability
 (a remote's `/health`) and **groups**. `device_pair … groups="family"`,
 `device_tag`, or `caelza-body fleet tag grandma --groups family` set them; the

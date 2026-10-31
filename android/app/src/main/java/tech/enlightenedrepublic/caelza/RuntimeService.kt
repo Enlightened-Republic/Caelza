@@ -6,6 +6,7 @@ import android.app.Service
 import android.content.Context
 import android.content.Intent
 import android.os.IBinder
+import android.util.Log
 import androidx.core.app.NotificationCompat
 import androidx.core.app.NotificationManagerCompat
 import androidx.core.content.ContextCompat
@@ -19,6 +20,11 @@ import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.update
 import kotlinx.coroutines.launch
+import tech.enlightenedrepublic.caelza.body.BodyHome
+import tech.enlightenedrepublic.caelza.body.BodyServer
+import tech.enlightenedrepublic.caelza.body.BodyShell
+import tech.enlightenedrepublic.caelza.body.BodyTools
+import tech.enlightenedrepublic.caelza.body.ShizukuShell
 import tech.enlightenedrepublic.caelza.runtime.CrashLoop
 import tech.enlightenedrepublic.caelza.runtime.Gateway
 import tech.enlightenedrepublic.caelza.runtime.RuntimeStore
@@ -32,6 +38,11 @@ import java.util.concurrent.TimeUnit
  * restart, halt when last-good itself loops or when another Runtime already
  * holds the gateway port. The installer asks for a restart after a new
  * version probed ok.
+ *
+ * It also hosts the Body (M7b): the phone's device tools over Shizuku as an
+ * MCP server on loopback (`BodyServer`), started before the daemon so the
+ * Runtime's `body` MCP server is there when it connects, and wired into the
+ * config (`RuntimeStore.ensureBodyWiring`) with the token the Body created.
  */
 class RuntimeService : Service() {
     enum class Phase { STOPPED, STARTING, RUNNING, HALTED }
@@ -42,10 +53,18 @@ class RuntimeService : Service() {
         val detail: String = "",
     )
 
+    data class BodyState(
+        val serving: Boolean = false,
+        val port: Int = RuntimeStore.BODY_PORT,
+        val tools: Int = 0,
+        val detail: String = "",
+    )
+
     private val scope = CoroutineScope(SupervisorJob() + Dispatchers.IO)
     private lateinit var store: RuntimeStore
     private var job: Job? = null
     private var process: Process? = null
+    private var bodyServer: BodyServer? = null
     private val crashes = CrashLoop()
     private var lastGoodLooping = false
     @Volatile private var stopping = false
@@ -62,6 +81,7 @@ class RuntimeService : Service() {
         when (intent?.action) {
             ACTION_STOP -> {
                 stopRuntime()
+                stopBody()
                 _state.value = RuntimeState(Phase.STOPPED)
                 stopForeground(STOP_FOREGROUND_REMOVE)
                 stopSelf()
@@ -70,17 +90,51 @@ class RuntimeService : Service() {
                 stopRuntime()
                 crashes.reset()
                 lastGoodLooping = false
+                startBody()
                 startRuntime()
             }
-            else -> if (job?.isActive != true) startRuntime()
+            else -> {
+                startBody()
+                if (job?.isActive != true) startRuntime()
+            }
         }
         return START_STICKY
     }
 
     override fun onDestroy() {
         stopRuntime()
+        stopBody()
         scope.cancel()
         super.onDestroy()
+    }
+
+    /**
+     * Serve the Body on loopback and make sure the Runtime's config names it.
+     * A port something else holds (a Termux Body on the same phone) is a
+     * status line, not a crash: the Runtime then talks to that Body.
+     */
+    private fun startBody() {
+        if (bodyServer?.isRunning == true) return
+        try {
+            val home = BodyHome(File(filesDir, BodyHome.DIR_NAME))
+            home.prune()
+            val token = home.token()
+            store.ensureBodyWiring(token)
+            val tools = BodyTools(BodyShell(ShizukuShell()), home)
+            val server = BodyServer(tools, token, log = { Log.w(TAG, it) })
+            server.start()
+            bodyServer = server
+            _body.value = BodyState(serving = true, port = server.port, tools = tools.tools.size)
+        } catch (e: Exception) {
+            Log.w(TAG, "Body not serving", e)
+            _body.value = BodyState(detail = "not serving: ${e.message ?: e.javaClass.simpleName}")
+        }
+    }
+
+    private fun stopBody() {
+        bodyServer?.stop()
+        bodyServer = null
+        _body.value = BodyState()
     }
 
     private fun startRuntime() {
@@ -203,6 +257,7 @@ class RuntimeService : Service() {
     }
 
     companion object {
+        private const val TAG = "caelza"
         const val CHANNEL_ID = "runtime"
         const val NOTIFICATION_ID = 1
         const val ACTION_START = "tech.enlightenedrepublic.caelza.START"
@@ -213,6 +268,8 @@ class RuntimeService : Service() {
 
         private val _state = MutableStateFlow(RuntimeState())
         val state: StateFlow<RuntimeState> = _state
+        private val _body = MutableStateFlow(BodyState())
+        val body: StateFlow<BodyState> = _body
 
         fun start(context: Context) = send(context, ACTION_START)
         fun stop(context: Context) = send(context, ACTION_STOP)

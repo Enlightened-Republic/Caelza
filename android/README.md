@@ -2,10 +2,11 @@
 
 The native companion (vision §3.3, milestone M7): the app people install
 instead of a Termux session. It hosts the Runtime binary as a foreground
-service, shows the Runtime's own dashboard in a WebView shell, and will own
-the Body (the phone's sensors and device tools, over Shizuku). This is the
-first slice, the shell; [`../docs/design/android-app.md`](../docs/design/android-app.md)
-has the architecture and the slices that follow.
+service, shows the Runtime's own dashboard in a WebView shell, and serves the
+Body (the phone's device tools, over Shizuku) to the Runtime as an MCP server
+on loopback. Two slices so far, the shell (M7a) and the Body (M7b);
+[`../docs/design/android-app.md`](../docs/design/android-app.md) has the
+architecture and the slices that follow.
 
 ```
 android/
@@ -20,7 +21,12 @@ android/
         ├── runtime/RuntimeStore.kt  runtime/<version>/caelza, current, last-good, the config and the web dist
         ├── runtime/ReleaseInstaller.kt  the guard's pipeline: release → download → sha256 → unpack → probe → install
         ├── runtime/CrashLoop.kt, runtime/Gateway.kt
-        └── shizuku/ShizukuStatus.kt  where Shizuku stands (not running / permission needed / ready)
+        ├── shizuku/ShizukuStatus.kt  where Shizuku stands (not running / permission needed / ready)
+        ├── body/BodyServer.kt      the Body as an MCP server on 127.0.0.1:42618 (/mcp behind the token, /health open)
+        ├── body/BodyTools.kt       the device tools: names, schemas, classes and behaviour of the Python Body's
+        ├── body/Playbooks.kt       the playbook parsers and the debloat tables (caelza_body/agent/playbooks.py in Kotlin)
+        ├── body/Shell.kt, body/ShizukuShell.kt  the shell user through Shizuku, shaped as adb.run shapes it
+        └── body/BodyHome.kt        files/.caelza-body: run/http-token, logs/device-actions.log, snapshots/, tmp/
 ```
 
 ## Build
@@ -36,7 +42,12 @@ and keeps the APK as an artifact. The unit tests run on the JVM: the release
 installer against a fake release (a tarball with a shell-script `caelza` that
 answers `--version` and serves `/health` through python3, or crashes, or lies
 about its version), the store's pointers and pruning, the crash loop, the
-gateway port.
+gateway port; and the Body over a recorded phone (`tests/fixtures/playbooks`,
+the REVVL package snapshot, the same recordings `tests/test_playbook_evals.py`
+replays): the four playbook reads end to end, the audit lines and snapshots
+of the destructive tools, the MCP server over real HTTP, and the contract
+against the Python server's `list-tools` (`app/src/test/fixtures/`, written by
+`../scripts/android_body_fixtures.py`).
 
 ## What the shell does
 
@@ -56,9 +67,20 @@ gateway port.
    boot receiver starts it again after a reboot.
 3. **Show the dashboard**: the WebView loads `http://127.0.0.1:42617/` as soon
    as `/health` answers and drops back to the shell when it stops.
-4. **Shizuku**: the status strip says where it stands and asks for the
-   permission through Shizuku's own prompt. The device tools come with the
-   Body port (next slice).
+4. **Serve the Body**: with the Runtime, `RuntimeService` starts the Body's
+   MCP server on `127.0.0.1:42618` (`/mcp` behind the bearer token in
+   `files/.caelza-body/run/http-token`, `/health` open) and makes sure the
+   Runtime's config names it (`[[mcp.servers]] name = "body"`, `transport =
+   "http"`, the token in `headers.Authorization`, the `body` bundle, an
+   `[agents.main]` that carries it, the `phone` risk profile). The sixteen
+   `device_*` tools are the Python Body's: the same names, schemas and safety
+   classes, a `reason` on every destructive call written to
+   `.caelza-body/logs/device-actions.log`, a package snapshot before a
+   removal. They run as shell commands in Shizuku's process, which is what
+   `adb shell` gives the Termux Body.
+5. **Shizuku**: the strip says where it stands and asks for the permission
+   through Shizuku's own prompt. Without it the Body still serves; its tools
+   answer `needs Shizuku: <what to do>` instead of running.
 
 ## targetSdk 28, on purpose
 

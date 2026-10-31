@@ -138,6 +138,14 @@ min_sdk = 28
 target_sdk = 28                                        # on purpose: W^X would forbid running a downloaded Runtime (android-app.md §2)
 ci = ".github/workflows/android.yml"
 design = "docs/design/android-app.md"
+# M7b: the app's Body. The `device` group in Kotlin over Shizuku (minus the four fleet tools, which need
+# adb and the registry), served as the Body MCP server on loopback the way `caelza-body serve --http` is,
+# behind the same token file (.caelza-body/run/http-token), audit log and package snapshots. The Runtime's
+# config gets the `body` http server, its bundle, [agents.main] and the phone risk profile on first start.
+body = "android/app/src/main/java/tech/enlightenedrepublic/caelza/body"
+body_port = 42618
+body_tools = 16                                        # device: 10 reads, 5 destructive, 1 neutral (device_input)
+body_fixtures = "scripts/android_body_fixtures.py"    # writes android/app/src/test/fixtures/{body-tools,debloat-tables}.json; both suites pin them
 # M6 (fleet): a hub and its phones. Each phone serves its Body over HTTP; the hub's Body joins them
 # as devices and forwards every call naming one (caelza_body/fleet.py); groups fan a procedure out.
 fleet = "caelza_body/fleet.py"

@@ -1,0 +1,544 @@
+[
+  {
+    "annotations": {
+      "destructiveHint": true,
+      "idempotentHint": false,
+      "openWorldHint": false,
+      "readOnlyHint": false
+    },
+    "description": "DANGEROUS: set an app-ops mode (`appops set <pkg> <op> <mode>`). Requires a reason (audit-logged).",
+    "inputSchema": {
+      "properties": {
+        "device": {
+          "default": "self",
+          "type": "string"
+        },
+        "mode": {
+          "type": "string"
+        },
+        "op": {
+          "type": "string"
+        },
+        "pkg": {
+          "type": "string"
+        },
+        "reason": {
+          "type": "string"
+        }
+      },
+      "required": [
+        "pkg",
+        "op",
+        "mode",
+        "reason"
+      ],
+      "type": "object"
+    },
+    "name": "device_appops"
+  },
+  {
+    "annotations": {
+      "destructiveHint": false,
+      "idempotentHint": true,
+      "openWorldHint": false,
+      "readOnlyHint": true
+    },
+    "description": "Plan a debloat: sort every installed package into remove (carrier app pushers, adware, preloaded games), disable (carrier telemetry and device management), optional (heavy first-party apps the owner may want), keep (the platform) and review (third-party apps the list does not know). Read-only; nothing is removed. `keep` is a comma-separated list of packages to leave alone whatever the list says.",
+    "inputSchema": {
+      "properties": {
+        "device": {
+          "default": "self",
+          "type": "string"
+        },
+        "keep": {
+          "default": "",
+          "type": "string"
+        }
+      },
+      "type": "object"
+    },
+    "name": "device_debloat_plan"
+  },
+  {
+    "annotations": {
+      "destructiveHint": true,
+      "idempotentHint": false,
+      "openWorldHint": false,
+      "readOnlyHint": false
+    },
+    "description": "DANGEROUS: disable a package for user 0. Snapshots the package list first and audit-logs the reason.",
+    "inputSchema": {
+      "properties": {
+        "device": {
+          "default": "self",
+          "type": "string"
+        },
+        "pkg": {
+          "type": "string"
+        },
+        "reason": {
+          "type": "string"
+        }
+      },
+      "required": [
+        "pkg",
+        "reason"
+      ],
+      "type": "object"
+    },
+    "name": "device_disable"
+  },
+  {
+    "annotations": {
+      "destructiveHint": false,
+      "idempotentHint": true,
+      "openWorldHint": false,
+      "readOnlyHint": true
+    },
+    "description": "What is on the screen right now: the foreground package and activity, who installed it, whether it is a system app or sideloaded, and its risk flags. Read-only. The first thing to call when the owner reports a popup they did not ask for.",
+    "inputSchema": {
+      "properties": {
+        "device": {
+          "default": "self",
+          "type": "string"
+        }
+      },
+      "type": "object"
+    },
+    "name": "device_foreground"
+  },
+  {
+    "annotations": {
+      "destructiveHint": false,
+      "idempotentHint": true,
+      "openWorldHint": false,
+      "readOnlyHint": true
+    },
+    "description": "One read of the phone's health: model and patch level, battery (level, charging, temperature, health), storage, memory, uptime, heat, the top CPU users, recent crashes, network addresses, and the new-phone setup checklist (wireless debugging, Termux and Termux:API installed and exempt from battery optimisation, Tailscale, developer options, animations). `attention` lists what to look at first. Read-only.",
+    "inputSchema": {
+      "properties": {
+        "device": {
+          "default": "self",
+          "type": "string"
+        }
+      },
+      "type": "object"
+    },
+    "name": "device_health"
+  },
+  {
+    "annotations": {
+      "destructiveHint": false,
+      "idempotentHint": false,
+      "openWorldHint": false,
+      "readOnlyHint": false
+    },
+    "description": "Inject an input event: tap / swipe / text / keyevent.",
+    "inputSchema": {
+      "properties": {
+        "action": {
+          "enum": [
+            "tap",
+            "swipe",
+            "text",
+            "keyevent"
+          ],
+          "type": "string"
+        },
+        "device": {
+          "default": "self",
+          "type": "string"
+        },
+        "key": {
+          "type": "string"
+        },
+        "text": {
+          "type": "string"
+        },
+        "x": {
+          "type": "integer"
+        },
+        "x2": {
+          "type": "integer"
+        },
+        "y": {
+          "type": "integer"
+        },
+        "y2": {
+          "type": "integer"
+        }
+      },
+      "required": [
+        "action"
+      ],
+      "type": "object"
+    },
+    "name": "device_input"
+  },
+  {
+    "annotations": {
+      "destructiveHint": true,
+      "idempotentHint": false,
+      "openWorldHint": false,
+      "readOnlyHint": false
+    },
+    "description": "Join another phone's Body to this fleet: that phone runs `caelza-body serve --http` (reached over Tailscale) and this registers it under a name after checking it answers. From then on any tool call naming that device runs on that phone. The token goes into this Body's state dir, never into the registry file.",
+    "inputSchema": {
+      "properties": {
+        "groups": {
+          "default": "",
+          "type": "string"
+        },
+        "name": {
+          "type": "string"
+        },
+        "notes": {
+          "default": "",
+          "type": "string"
+        },
+        "token": {
+          "description": "the remote's bearer token (its run/http-token)",
+          "type": "string"
+        },
+        "url": {
+          "description": "http://<tailscale-ip>:42618/mcp",
+          "type": "string"
+        }
+      },
+      "required": [
+        "name",
+        "url",
+        "token"
+      ],
+      "type": "object"
+    },
+    "name": "device_join"
+  },
+  {
+    "annotations": {
+      "destructiveHint": false,
+      "idempotentHint": true,
+      "openWorldHint": false,
+      "readOnlyHint": true
+    },
+    "description": "List the fleet: this phone ('self'), the phones paired over ADB (kind 'adb') and the joined Bodies reached over HTTP (kind 'http'), each with reachability and groups.",
+    "inputSchema": {
+      "properties": {},
+      "type": "object"
+    },
+    "name": "device_list"
+  },
+  {
+    "annotations": {
+      "destructiveHint": false,
+      "idempotentHint": true,
+      "openWorldHint": false,
+      "readOnlyHint": true
+    },
+    "description": "Fetch recent logcat lines from a device.",
+    "inputSchema": {
+      "properties": {
+        "device": {
+          "default": "self",
+          "type": "string"
+        },
+        "filter": {
+          "type": "string"
+        },
+        "lines": {
+          "default": 200,
+          "type": "integer"
+        }
+      },
+      "type": "object"
+    },
+    "name": "device_logcat"
+  },
+  {
+    "annotations": {
+      "destructiveHint": false,
+      "idempotentHint": true,
+      "openWorldHint": false,
+      "readOnlyHint": true
+    },
+    "description": "List installed packages ('-3' third-party only by default).",
+    "inputSchema": {
+      "properties": {
+        "device": {
+          "default": "self",
+          "type": "string"
+        },
+        "flags": {
+          "default": "-3",
+          "type": "string"
+        }
+      },
+      "type": "object"
+    },
+    "name": "device_packages"
+  },
+  {
+    "annotations": {
+      "destructiveHint": true,
+      "idempotentHint": false,
+      "openWorldHint": false,
+      "readOnlyHint": false
+    },
+    "description": "Pair with a device over adb wireless debugging and register it. `groups` is a comma-separated list (e.g. 'family') a procedure can target as a whole.",
+    "inputSchema": {
+      "properties": {
+        "code": {
+          "type": "string"
+        },
+        "groups": {
+          "default": "",
+          "type": "string"
+        },
+        "host": {
+          "type": "string"
+        },
+        "name": {
+          "type": "string"
+        },
+        "notes": {
+          "default": "",
+          "type": "string"
+        }
+      },
+      "required": [
+        "name",
+        "host",
+        "code"
+      ],
+      "type": "object"
+    },
+    "name": "device_pair"
+  },
+  {
+    "annotations": {
+      "destructiveHint": false,
+      "idempotentHint": true,
+      "openWorldHint": false,
+      "readOnlyHint": true
+    },
+    "description": "Capture a PNG screenshot of a device and attach it to the reply.",
+    "inputSchema": {
+      "properties": {
+        "device": {
+          "default": "self",
+          "type": "string"
+        }
+      },
+      "type": "object"
+    },
+    "name": "device_screencap"
+  },
+  {
+    "annotations": {
+      "destructiveHint": false,
+      "idempotentHint": true,
+      "openWorldHint": false,
+      "readOnlyHint": true
+    },
+    "description": "Read a device setting: `settings get <ns> <key>`.",
+    "inputSchema": {
+      "properties": {
+        "device": {
+          "default": "self",
+          "type": "string"
+        },
+        "key": {
+          "type": "string"
+        },
+        "ns": {
+          "type": "string"
+        }
+      },
+      "required": [
+        "ns",
+        "key"
+      ],
+      "type": "object"
+    },
+    "name": "device_settings"
+  },
+  {
+    "annotations": {
+      "destructiveHint": true,
+      "idempotentHint": false,
+      "openWorldHint": false,
+      "readOnlyHint": false
+    },
+    "description": "DANGEROUS: write a device setting (`settings put <ns> <key> <value>`). Requires a reason (audit-logged).",
+    "inputSchema": {
+      "properties": {
+        "device": {
+          "default": "self",
+          "type": "string"
+        },
+        "key": {
+          "type": "string"
+        },
+        "ns": {
+          "type": "string"
+        },
+        "reason": {
+          "type": "string"
+        },
+        "value": {
+          "type": "string"
+        }
+      },
+      "required": [
+        "ns",
+        "key",
+        "value",
+        "reason"
+      ],
+      "type": "object"
+    },
+    "name": "device_settings_put"
+  },
+  {
+    "annotations": {
+      "destructiveHint": true,
+      "idempotentHint": false,
+      "openWorldHint": false,
+      "readOnlyHint": false
+    },
+    "description": "Run a shell command on a device via adb ('self' = this phone).",
+    "inputSchema": {
+      "properties": {
+        "cmd": {
+          "type": "string"
+        },
+        "device": {
+          "default": "self",
+          "type": "string"
+        }
+      },
+      "required": [
+        "cmd"
+      ],
+      "type": "object"
+    },
+    "name": "device_shell"
+  },
+  {
+    "annotations": {
+      "destructiveHint": false,
+      "idempotentHint": true,
+      "openWorldHint": false,
+      "readOnlyHint": true
+    },
+    "description": "Malware triage, read-only: the third-party packages that did not come from an app store, each with who installed it, when, and the risk flags that matter (draws over other apps, accessibility service, device admin, notification listener, can install packages, SMS or call permissions, installed in the last `days`). Sorted highest risk first. Termux and Tailscale are known and skipped.",
+    "inputSchema": {
+      "properties": {
+        "days": {
+          "default": 30,
+          "type": "integer"
+        },
+        "device": {
+          "default": "self",
+          "type": "string"
+        }
+      },
+      "type": "object"
+    },
+    "name": "device_suspects"
+  },
+  {
+    "annotations": {
+      "destructiveHint": false,
+      "idempotentHint": false,
+      "openWorldHint": false,
+      "readOnlyHint": false
+    },
+    "description": "Set a device's groups (comma-separated; empty clears them) so a procedure can be run on the whole group.",
+    "inputSchema": {
+      "properties": {
+        "groups": {
+          "type": "string"
+        },
+        "name": {
+          "type": "string"
+        }
+      },
+      "required": [
+        "name",
+        "groups"
+      ],
+      "type": "object"
+    },
+    "name": "device_tag"
+  },
+  {
+    "annotations": {
+      "destructiveHint": false,
+      "idempotentHint": true,
+      "openWorldHint": false,
+      "readOnlyHint": true
+    },
+    "description": "Dump the current on-screen UI hierarchy as XML.",
+    "inputSchema": {
+      "properties": {
+        "device": {
+          "default": "self",
+          "type": "string"
+        }
+      },
+      "type": "object"
+    },
+    "name": "device_ui_dump"
+  },
+  {
+    "annotations": {
+      "destructiveHint": true,
+      "idempotentHint": false,
+      "openWorldHint": false,
+      "readOnlyHint": false
+    },
+    "description": "DANGEROUS: uninstall a package for user 0. Snapshots the package list first and audit-logs the reason.",
+    "inputSchema": {
+      "properties": {
+        "device": {
+          "default": "self",
+          "type": "string"
+        },
+        "pkg": {
+          "type": "string"
+        },
+        "reason": {
+          "type": "string"
+        }
+      },
+      "required": [
+        "pkg",
+        "reason"
+      ],
+      "type": "object"
+    },
+    "name": "device_uninstall"
+  },
+  {
+    "annotations": {
+      "destructiveHint": true,
+      "idempotentHint": false,
+      "openWorldHint": false,
+      "readOnlyHint": false
+    },
+    "description": "Forget a device: a paired phone or a joined Body leaves the registry (a joined Body's token file is deleted too).",
+    "inputSchema": {
+      "properties": {
+        "name": {
+          "type": "string"
+        }
+      },
+      "required": [
+        "name"
+      ],
+      "type": "object"
+    },
+    "name": "device_unpair"
+  }
+]
