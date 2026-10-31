@@ -1,5 +1,11 @@
 <?xml version="1.0" encoding="utf-8"?>
+<!-- The brand mark as an adaptive icon (brand/BRAND.md; the layers are rendered
+     by brand/make_assets.py, its android target, from brand/tokens.json and
+     committed): the mark alone on the foreground, inside the 66 dp safe circle
+     the launcher's shape shows; the cosmic backdrop's nebula behind it; the
+     mark's silhouette for Android 13's themed icons (ignored before API 33). -->
 <adaptive-icon xmlns:android="http://schemas.android.com/apk/res/android">
-    <background android:drawable="@color/void_bg" />
-    <foreground android:drawable="@drawable/ic_launcher_foreground" />
+    <background android:drawable="@mipmap/ic_launcher_background" />
+    <foreground android:drawable="@mipmap/ic_launcher_foreground" />
+    <monochrome android:drawable="@drawable/ic_launcher_monochrome" />
 </adaptive-icon>

@@ -3,6 +3,8 @@
 
     python3 brand/make_assets.py                 # → brand/out/ (+ brand/hero.png for the README)
     python3 brand/make_assets.py --runtime DIR   # write into a staged runtime tree
+    python3 brand/make_assets.py --android android/app           # the app's launcher icon (committed)
+    python3 brand/make_assets.py --android android/app --check   # … is in step with this script (CI)
     python3 brand/make_assets.py --art-icons     # opt in to the illustration for app icons ≥ 128 px
 
 The mark is the constellation Caelum drawn as a lightning bolt: its four main
@@ -20,9 +22,10 @@ import argparse
 import json
 import math
 import random
+import sys
 from pathlib import Path
 
-from PIL import Image, ImageDraw, ImageFilter, ImageFont
+from PIL import Image, ImageChops, ImageDraw, ImageFilter, ImageFont, ImageStat
 
 HERE = Path(__file__).resolve().parent
 TOKENS = json.loads((HERE / "tokens.json").read_text(encoding="utf-8"))
@@ -208,8 +211,11 @@ def draw_mark(size: int, *, glow: bool = True, with_c: bool | None = None) -> Im
 # the cosmic backdrop
 # ---------------------------------------------------------------------------
 
-def backdrop(w: int, h: int, *, seed: int = 7, matrix_center: tuple[float, float] = (0.5, 0.5)) -> Image.Image:
-    """Space black, nebula glows, a starfield and the dot matrix. All at 2x."""
+def backdrop(w: int, h: int, *, seed: int = 7, matrix_center: tuple[float, float] = (0.5, 0.5),
+             detail: bool | None = None) -> Image.Image:
+    """Space black, nebula glows, a starfield and the dot matrix. All at 2x.
+    `detail` adds the dots and stars; by default they come at banner sizes and
+    stay off at icon sizes, where they would be noise."""
     rnd = random.Random(seed)
     im = Image.new("RGBA", (w, h), _hex(C["space"]))
 
@@ -224,8 +230,10 @@ def backdrop(w: int, h: int, *, seed: int = 7, matrix_center: tuple[float, float
         r = fr * h
         nd.ellipse([fx * w - r, fy * h - r, fx * w + r, fy * h + r], fill=_hex(col, a))
     im = Image.alpha_composite(im, neb.filter(ImageFilter.GaussianBlur(h * 0.22)))
-    if min(w, h) < 48 * SS:
-        return im  # icon sizes: nebula only; dots and stars would be noise
+    if detail is None:
+        detail = min(w, h) >= 48 * SS
+    if not detail:
+        return im  # nebula only
 
     # Dot matrix with a radial falloff around matrix_center.
     dots = Image.new("RGBA", (w, h), (0, 0, 0, 0))
@@ -433,9 +441,143 @@ def render_runtime(root: Path, *, use_art: bool = False) -> None:
         (icons / "icon.svg").write_text(svg, encoding="utf-8")
 
 
+# ---------------------------------------------------------------------------
+# the Android launcher icon
+# ---------------------------------------------------------------------------
+#
+# An adaptive icon: two 108 dp layers the launcher masks to its own shape
+# (circle, squircle, teardrop…), showing the centre 72 dp and, for most shapes,
+# about 66 dp of it. The mark stays inside that circle so no shape clips the
+# bolt; the nebula backdrop fills the rest and moves with the parallax. The
+# third layer is the mark's silhouette, which Android 13 tints for themed
+# icons and the Runtime notification uses as its status-bar icon. The files
+# are committed under android/app/src/main/res; `--check` keeps them in step.
+
+ADAPTIVE_DP = 108
+ANDROID_DENSITIES = {"mdpi": 1.0, "hdpi": 1.5, "xhdpi": 2.0, "xxhdpi": 3.0, "xxxhdpi": 4.0}
+LAUNCHER_MARK = 0.56   # the mark's canvas as a fraction of the layer: its bolt then spans ~57 dp of the 66 dp safe circle
+MONO_STROKE = 2.2      # the silhouette's stroke relative to the mark's: it has to read at 24 dp in the status bar
+MONO_STAR = 1.7        # and its stars likewise
+
+
+def launcher_foreground(size: int) -> Image.Image:
+    """Foreground layer: the mark alone, centred in the safe zone, transparent elsewhere."""
+    im = Image.new("RGBA", (size, size), (0, 0, 0, 0))
+    mark = draw_mark(int(size * LAUNCHER_MARK))
+    im.alpha_composite(mark, ((size - mark.width) // 2, (size - mark.height) // 2))
+    return im
+
+
+def launcher_background(size: int) -> Image.Image:
+    """Background layer: the cosmic backdrop's nebula on space black, opaque; no
+    stars or dots, which would be noise under a mask and swim with the parallax."""
+    return backdrop(size, size, seed=3, detail=False).convert("RGB")
+
+
+def launcher_monochrome_vector() -> str:
+    """A VectorDrawable of the mark's silhouette in the adaptive icon's 108 dp
+    viewport, white on transparent: the bolt as a stroked outline (never filled,
+    BRAND.md) and the four stars of Caelum as discs. The system tints it, so it
+    carries no colour and no gradient."""
+    v = ADAPTIVE_DP
+    side = v * LAUNCHER_MARK
+    off = (v - side) / 2
+
+    def pt(x: float, y: float) -> str:
+        return f"{off + x * side:.2f},{off + y * side:.2f}"
+
+    bolt = "M" + " L".join(pt(x, y) for x, y in M["bolt"]) + " Z"
+    stars = []
+    for st in M["stars"].values():
+        (x, y), r = st["pos"], st["r"] * side * MONO_STAR
+        cx, cy = off + x * side, off + y * side
+        stars.append(f"M{cx - r:.2f},{cy:.2f} a{r:.2f},{r:.2f} 0 1 0 {2 * r:.2f},0 a{r:.2f},{r:.2f} 0 1 0 {-2 * r:.2f},0 Z")
+    stroke = M["stroke"] * side * MONO_STROKE
+    return f'''<?xml version="1.0" encoding="utf-8"?>
+<!-- Generated by brand/make_assets.py (its android target) from brand/tokens.json; do not edit by hand.
+     The mark's silhouette (the bolt's outline and the four stars of Caelum), white on transparent,
+     in the adaptive icon's 108 dp viewport: the monochrome layer Android 13 tints for themed icons,
+     and the Runtime notification's status-bar icon. -->
+<vector xmlns:android="http://schemas.android.com/apk/res/android"
+    android:width="{v}dp"
+    android:height="{v}dp"
+    android:viewportWidth="{v}"
+    android:viewportHeight="{v}">
+    <path
+        android:pathData="{bolt}"
+        android:strokeColor="#FFFFFFFF"
+        android:strokeWidth="{stroke:.2f}"
+        android:strokeLineJoin="round"
+        android:strokeLineCap="round"
+        android:fillColor="#00000000" />
+    <path
+        android:pathData="{' '.join(stars)}"
+        android:fillColor="#FFFFFFFF" />
+</vector>
+'''
+
+
+def android_targets(app: Path) -> dict[Path, tuple]:
+    """Every file the launcher icon is made of → (renderer, size | None)."""
+    res = app / "src" / "main" / "res"
+    targets: dict[Path, tuple] = {}
+    for dpi, scale in ANDROID_DENSITIES.items():
+        px = int(ADAPTIVE_DP * scale)
+        targets[res / f"mipmap-{dpi}" / "ic_launcher_foreground.png"] = (launcher_foreground, px)
+        targets[res / f"mipmap-{dpi}" / "ic_launcher_background.png"] = (launcher_background, px)
+    targets[res / "drawable" / "ic_launcher_monochrome.xml"] = (launcher_monochrome_vector, None)
+    return targets
+
+
+def render_android(app: Path) -> list[Path]:
+    """Write the launcher icon into the app module (android/app)."""
+    written = []
+    for path, (render, size) in android_targets(app).items():
+        if size is None:
+            path.parent.mkdir(parents=True, exist_ok=True)
+            path.write_text(render(), encoding="utf-8")
+        else:
+            save_png(render(size), path)
+        written.append(path)
+    return written
+
+
+def check_android(app: Path, *, max_diff: int = 16, mean_diff: float = 0.75) -> list[str]:
+    """What differs between the committed launcher icon and a fresh render: a
+    missing file, a changed vector, a layer whose pixels drift past the tolerance
+    (another Pillow's resampling moves a pixel by a few levels; a changed mark or
+    palette moves them by far more). Empty when everything is in step."""
+    drift = []
+    for path, (render, size) in android_targets(app).items():
+        if not path.is_file():
+            drift.append(f"{path}: missing (run make_assets.py --android)")
+            continue
+        if size is None:
+            if path.read_text(encoding="utf-8") != render():
+                drift.append(f"{path}: the vector differs from the generator's")
+            continue
+        fresh = render(size).convert("RGBA")
+        with Image.open(path) as f:
+            have = f.convert("RGBA")
+        if have.size != fresh.size:
+            drift.append(f"{path}: {have.size[0]}x{have.size[1]} px, expected {size}x{size}")
+            continue
+        diff = ImageChops.difference(have, fresh)
+        worst = max(hi for _, hi in diff.getextrema())
+        mean = sum(ImageStat.Stat(diff).mean) / 4
+        if worst > max_diff or mean > mean_diff:
+            drift.append(f"{path}: pixels differ (max {worst}, mean {mean:.2f}; tolerance {max_diff} / {mean_diff})")
+    return drift
+
+
 def main() -> None:
     ap = argparse.ArgumentParser(description=__doc__, formatter_class=argparse.RawDescriptionHelpFormatter)
     ap.add_argument("--runtime", type=Path, help="staged runtime tree to write assets into")
+    ap.add_argument("--android", type=Path, metavar="APP",
+                    help="Android app module (android/app) to write the launcher icon into: the adaptive icon's "
+                         "layers at every density and the monochrome vector")
+    ap.add_argument("--check", action="store_true",
+                    help="with --android: compare the committed files with a fresh render instead of writing; exit 1 on drift")
     ap.add_argument("--out", type=Path, default=HERE / "out", help="loose asset output dir (default brand/out)")
     ap.add_argument("--art-icons", action="store_true",
                     help="use the illustration in brand/art for app icons >= 128 px instead of the geometric mark")
@@ -447,7 +589,17 @@ def main() -> None:
     args = ap.parse_args()
     if args.with_c is not None:
         M["c"]["enabled"] = args.with_c
-    if args.runtime:
+    if args.android:
+        app = args.android.resolve()
+        if args.check:
+            drift = check_android(app)
+            for line in drift:
+                print(f"drift: {line}")
+            print(f"launcher icon {'differs from' if drift else 'in step with'} the generator ({app})")
+            sys.exit(1 if drift else 0)
+        render_android(app)
+        print(f"launcher icon written into {app}")
+    elif args.runtime:
         render_runtime(args.runtime.resolve(), use_art=args.art_icons)
         print(f"brand assets written into {args.runtime}")
     else:
