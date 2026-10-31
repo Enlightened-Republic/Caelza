@@ -190,8 +190,8 @@ class ReleaseInstaller(
             return actual
         }
 
-        /** Extract a release archive into `into`, refusing a member that escapes it; the directory holding `caelza`. */
-        fun unpack(archive: File, into: File): File {
+        /** Extract a release archive into `into`, refusing a member that escapes it; the directory holding `binaryName`. */
+        fun unpack(archive: File, into: File, binaryName: String = "caelza"): File {
             into.mkdirs()
             val root = into.canonicalFile
             GzipCompressorInputStream(archive.inputStream().buffered()).use { gz ->
@@ -222,8 +222,8 @@ class ReleaseInstaller(
                     }
                 }
             }
-            val binary = root.walkTopDown().firstOrNull { it.isFile && it.name == "caelza" }
-                ?: throw IllegalArgumentException("archive has no caelza binary")
+            val binary = root.walkTopDown().firstOrNull { it.isFile && it.name == binaryName }
+                ?: throw IllegalArgumentException("archive has no $binaryName binary")
             return binary.parentFile!!
         }
 

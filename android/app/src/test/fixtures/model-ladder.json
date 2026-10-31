@@ -1,0 +1,181 @@
+{
+  "gguf": {
+    "1.5b": {
+      "bytes": 1117320736,
+      "file": "DeepSeek-R1-Distill-Qwen-1.5B-Q4_K_M.gguf",
+      "name": "DeepSeek-R1-Distill-Qwen-1.5B-Q4_K_M",
+      "repo": "bartowski/DeepSeek-R1-Distill-Qwen-1.5B-GGUF",
+      "sha256": "1741e5b2d062b07acf048bf0d2c514dadf2a48f94e2b4aa0cfe069af3838ee2f"
+    },
+    "7b": {
+      "bytes": 4683073184,
+      "file": "DeepSeek-R1-Distill-Qwen-7B-Q4_K_M.gguf",
+      "name": "DeepSeek-R1-Distill-Qwen-7B-Q4_K_M",
+      "repo": "bartowski/DeepSeek-R1-Distill-Qwen-7B-GGUF",
+      "sha256": "731ece8d06dc7eda6f6572997feb9ee1258db0784827e642909d9b565641937b"
+    }
+  },
+  "guide_tier": "1.5b",
+  "hf": "https://huggingface.co",
+  "ollama": {
+    "1.5b": "deepseek-r1:1.5b",
+    "14b": "deepseek-r1:14b",
+    "7b": "deepseek-r1:7b",
+    "8b": "deepseek-r1:8b"
+  },
+  "picks": [
+    {
+      "agent": {
+        "bytes": 1117320736,
+        "file": "DeepSeek-R1-Distill-Qwen-1.5B-Q4_K_M.gguf",
+        "name": "DeepSeek-R1-Distill-Qwen-1.5B-Q4_K_M",
+        "pull": "",
+        "runner": "llamacpp",
+        "sha256": "1741e5b2d062b07acf048bf0d2c514dadf2a48f94e2b4aa0cfe069af3838ee2f",
+        "tier": "1.5b",
+        "url": "https://huggingface.co/bartowski/DeepSeek-R1-Distill-Qwen-1.5B-GGUF/resolve/main/DeepSeek-R1-Distill-Qwen-1.5B-Q4_K_M.gguf"
+      },
+      "guide": {
+        "bytes": 1117320736,
+        "file": "DeepSeek-R1-Distill-Qwen-1.5B-Q4_K_M.gguf",
+        "name": "DeepSeek-R1-Distill-Qwen-1.5B-Q4_K_M",
+        "pull": "",
+        "runner": "llamacpp",
+        "sha256": "1741e5b2d062b07acf048bf0d2c514dadf2a48f94e2b4aa0cfe069af3838ee2f",
+        "tier": "1.5b",
+        "url": "https://huggingface.co/bartowski/DeepSeek-R1-Distill-Qwen-1.5B-GGUF/resolve/main/DeepSeek-R1-Distill-Qwen-1.5B-Q4_K_M.gguf"
+      },
+      "notes": [
+        "<= 5 GB RAM: the 1.5B is for chat and explanation; not reliable for multi-step tool calls. Bring a provider key for the agent loop"
+      ],
+      "platform": "termux",
+      "provider_alias_agent": "llamacpp.local",
+      "provider_alias_guide": "llamacpp.guide",
+      "ram_mb": 3500,
+      "runner": "llamacpp"
+    },
+    {
+      "agent": {
+        "bytes": 1117320736,
+        "file": "DeepSeek-R1-Distill-Qwen-1.5B-Q4_K_M.gguf",
+        "name": "DeepSeek-R1-Distill-Qwen-1.5B-Q4_K_M",
+        "pull": "",
+        "runner": "llamacpp",
+        "sha256": "1741e5b2d062b07acf048bf0d2c514dadf2a48f94e2b4aa0cfe069af3838ee2f",
+        "tier": "1.5b",
+        "url": "https://huggingface.co/bartowski/DeepSeek-R1-Distill-Qwen-1.5B-GGUF/resolve/main/DeepSeek-R1-Distill-Qwen-1.5B-Q4_K_M.gguf"
+      },
+      "guide": {
+        "bytes": 1117320736,
+        "file": "DeepSeek-R1-Distill-Qwen-1.5B-Q4_K_M.gguf",
+        "name": "DeepSeek-R1-Distill-Qwen-1.5B-Q4_K_M",
+        "pull": "",
+        "runner": "llamacpp",
+        "sha256": "1741e5b2d062b07acf048bf0d2c514dadf2a48f94e2b4aa0cfe069af3838ee2f",
+        "tier": "1.5b",
+        "url": "https://huggingface.co/bartowski/DeepSeek-R1-Distill-Qwen-1.5B-GGUF/resolve/main/DeepSeek-R1-Distill-Qwen-1.5B-Q4_K_M.gguf"
+      },
+      "notes": [
+        "<= 5 GB RAM: the 1.5B is for chat and explanation; not reliable for multi-step tool calls. Bring a provider key for the agent loop"
+      ],
+      "platform": "termux",
+      "provider_alias_agent": "llamacpp.local",
+      "provider_alias_guide": "llamacpp.guide",
+      "ram_mb": 5000,
+      "runner": "llamacpp"
+    },
+    {
+      "agent": {
+        "bytes": 4683073184,
+        "file": "DeepSeek-R1-Distill-Qwen-7B-Q4_K_M.gguf",
+        "name": "DeepSeek-R1-Distill-Qwen-7B-Q4_K_M",
+        "pull": "",
+        "runner": "llamacpp",
+        "sha256": "731ece8d06dc7eda6f6572997feb9ee1258db0784827e642909d9b565641937b",
+        "tier": "7b",
+        "url": "https://huggingface.co/bartowski/DeepSeek-R1-Distill-Qwen-7B-GGUF/resolve/main/DeepSeek-R1-Distill-Qwen-7B-Q4_K_M.gguf"
+      },
+      "guide": {
+        "bytes": 1117320736,
+        "file": "DeepSeek-R1-Distill-Qwen-1.5B-Q4_K_M.gguf",
+        "name": "DeepSeek-R1-Distill-Qwen-1.5B-Q4_K_M",
+        "pull": "",
+        "runner": "llamacpp",
+        "sha256": "1741e5b2d062b07acf048bf0d2c514dadf2a48f94e2b4aa0cfe069af3838ee2f",
+        "tier": "1.5b",
+        "url": "https://huggingface.co/bartowski/DeepSeek-R1-Distill-Qwen-1.5B-GGUF/resolve/main/DeepSeek-R1-Distill-Qwen-1.5B-Q4_K_M.gguf"
+      },
+      "notes": [
+        "7B Q4 on a phone is tight: keep context short (the server runs with -c 4096)",
+        "one llama-server at a time: the agent model is served on :8080; Cael shares it unless you run a second server for the guide"
+      ],
+      "platform": "termux",
+      "provider_alias_agent": "llamacpp.local",
+      "provider_alias_guide": "llamacpp.guide",
+      "ram_mb": 6144,
+      "runner": "llamacpp"
+    },
+    {
+      "agent": {
+        "bytes": 4683073184,
+        "file": "DeepSeek-R1-Distill-Qwen-7B-Q4_K_M.gguf",
+        "name": "DeepSeek-R1-Distill-Qwen-7B-Q4_K_M",
+        "pull": "",
+        "runner": "llamacpp",
+        "sha256": "731ece8d06dc7eda6f6572997feb9ee1258db0784827e642909d9b565641937b",
+        "tier": "7b",
+        "url": "https://huggingface.co/bartowski/DeepSeek-R1-Distill-Qwen-7B-GGUF/resolve/main/DeepSeek-R1-Distill-Qwen-7B-Q4_K_M.gguf"
+      },
+      "guide": {
+        "bytes": 1117320736,
+        "file": "DeepSeek-R1-Distill-Qwen-1.5B-Q4_K_M.gguf",
+        "name": "DeepSeek-R1-Distill-Qwen-1.5B-Q4_K_M",
+        "pull": "",
+        "runner": "llamacpp",
+        "sha256": "1741e5b2d062b07acf048bf0d2c514dadf2a48f94e2b4aa0cfe069af3838ee2f",
+        "tier": "1.5b",
+        "url": "https://huggingface.co/bartowski/DeepSeek-R1-Distill-Qwen-1.5B-GGUF/resolve/main/DeepSeek-R1-Distill-Qwen-1.5B-Q4_K_M.gguf"
+      },
+      "notes": [
+        "7B Q4 on a phone is tight: keep context short (the server runs with -c 4096)",
+        "one llama-server at a time: the agent model is served on :8080; Cael shares it unless you run a second server for the guide"
+      ],
+      "platform": "termux",
+      "provider_alias_agent": "llamacpp.local",
+      "provider_alias_guide": "llamacpp.guide",
+      "ram_mb": 7600,
+      "runner": "llamacpp"
+    },
+    {
+      "agent": {
+        "bytes": 4683073184,
+        "file": "DeepSeek-R1-Distill-Qwen-7B-Q4_K_M.gguf",
+        "name": "DeepSeek-R1-Distill-Qwen-7B-Q4_K_M",
+        "pull": "",
+        "runner": "llamacpp",
+        "sha256": "731ece8d06dc7eda6f6572997feb9ee1258db0784827e642909d9b565641937b",
+        "tier": "7b",
+        "url": "https://huggingface.co/bartowski/DeepSeek-R1-Distill-Qwen-7B-GGUF/resolve/main/DeepSeek-R1-Distill-Qwen-7B-Q4_K_M.gguf"
+      },
+      "guide": {
+        "bytes": 1117320736,
+        "file": "DeepSeek-R1-Distill-Qwen-1.5B-Q4_K_M.gguf",
+        "name": "DeepSeek-R1-Distill-Qwen-1.5B-Q4_K_M",
+        "pull": "",
+        "runner": "llamacpp",
+        "sha256": "1741e5b2d062b07acf048bf0d2c514dadf2a48f94e2b4aa0cfe069af3838ee2f",
+        "tier": "1.5b",
+        "url": "https://huggingface.co/bartowski/DeepSeek-R1-Distill-Qwen-1.5B-GGUF/resolve/main/DeepSeek-R1-Distill-Qwen-1.5B-Q4_K_M.gguf"
+      },
+      "notes": [
+        "7B Q4 on a phone is tight: keep context short (the server runs with -c 4096)",
+        "one llama-server at a time: the agent model is served on :8080; Cael shares it unless you run a second server for the guide"
+      ],
+      "platform": "termux",
+      "provider_alias_agent": "llamacpp.local",
+      "provider_alias_guide": "llamacpp.guide",
+      "ram_mb": 12288,
+      "runner": "llamacpp"
+    }
+  ]
+}

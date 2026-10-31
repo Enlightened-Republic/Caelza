@@ -173,6 +173,14 @@
                 android:layout_marginTop="12dp"
                 android:text="@string/action_shizuku" />
 
+            <com.google.android.material.button.MaterialButton
+                android:id="@+id/setupAction"
+                style="@style/Widget.Material3.Button.TextButton"
+                android:layout_width="match_parent"
+                android:layout_height="48dp"
+                android:layout_marginTop="4dp"
+                android:text="@string/action_setup" />
+
             <TextView
                 android:id="@+id/progress"
                 android:layout_width="match_parent"

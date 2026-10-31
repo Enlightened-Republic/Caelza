@@ -126,12 +126,12 @@ and asks before anything irreversible; [`body/README.md`](body/README.md) has
 the details. Retiring the Python loop in favour of the Runtime is a per-phone
 switch once the Runtime runs there (vision doc §3.1). The **Caelza Android
 app** ([`android/`](android/), M7) is the product people install instead of a
-Termux session: it installs the Runtime from the releases, runs it as a
-foreground service, shows the dashboard, and serves the Body's device tools
-to the Runtime over [Shizuku](https://github.com/RikkaApps/Shizuku), the
-shell-level device control without root or Termux (§3.3,
-[`docs/design/android-app.md`](docs/design/android-app.md)); the sensors and
-the Cael-led first run follow.
+Termux session: Cael leads the first run, it installs the Runtime from the
+releases, runs it as a foreground service, shows the dashboard, serves the
+Body's device tools and sensors to the Runtime (device control over
+[Shizuku](https://github.com/RikkaApps/Shizuku), without root or Termux),
+and runs the free local model beside it (§3.3,
+[`docs/design/android-app.md`](docs/design/android-app.md)).
 
 ## Models
 

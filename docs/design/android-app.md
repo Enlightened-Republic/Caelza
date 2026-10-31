@@ -20,8 +20,10 @@ is the app's architecture and the slices it ships in. `android/` is the code;
 │   server on http://127.0.0.1:42618/mcp, the Runtime's `body` server   │
 │ AndroidSensors (M7c): battery, the notification listener, clipboard,  │
 │   location + wifi, camera2, the microphone, TTS, the torch            │
-│ (M7d) Cael-led first run, the local model runner; accessibility +     │
-│   MediaProjection for this phone's screen                             │
+│ FirstRunActivity (M7d): Cael leads the first run; two doors to a brain │
+│ LlamaRuntime + ModelStore (M7d): llama.cpp's Android build, the GGUFs, │
+│   llama-server on :8080 beside the Runtime                            │
+│ (later) accessibility + MediaProjection for this phone's screen       │
 └───────────────────────────────────────────────────────────────────────┘
 ```
 
@@ -175,17 +177,60 @@ REVVL. The `AccessibilityService` for `device_ui_dump` / `device_input`
 without Shizuku and MediaProjection for `device_screencap` of this phone move
 to M7d: Shizuku's `uiautomator`, `input` and `screencap` cover them today.
 
-## 5. First run, and the local model (M7d)
+## 5. First run, and the local model (M7d, shipped)
 
-Cael (the Guide, `guide/CAEL.md`) leads the first run inside the app: the two
-doors of §3.4 (free and local, or bring your own key), what Shizuku is and
-how to start it, which permissions do what, the battery-optimisation
-exemption (`ACTION_REQUEST_IGNORE_BATTERY_OPTIMIZATIONS`), Tailscale for a
-hub. The local model runner is llama.cpp bundled as a native library (or the
-Termux package when present), the ladder of `scripts/model_ladder.py` picking
-the tier by RAM; the GGUF comes from the pinned sha256s. The dashboard's
-quickstart stays the configuration surface; the app only gets the owner to
-the first working turn.
+Cael (the Guide, `guide/CAEL.md`) leads the first run
+(`firstrun/FirstRunActivity.kt`, the copy in `strings.xml` in his voice),
+eight steps, each skippable and reachable again from the shell's `Set up with
+Cael`: hello; the Runtime installed (the M7a installer); a brain through one
+of the two doors of §3.4; Shizuku explained, opened, asked; the permissions
+with their reasons; the battery exemption
+(`ACTION_REQUEST_IGNORE_BATTERY_OPTIMIZATIONS`); a word about a hub and
+Tailscale; start. `FirstRun.kt` is the shape without Android in it (the
+steps, what each door writes, Cael's line about the phone), so the tests walk
+it.
+
+**The two doors** write what `scripts/model-setup.sh` and `caelza quickstart`
+write on Termux, through the installed Runtime's own `caelza config set
+--no-interactive <path> <value>` (`runtime/CaelzaCli.kt`, `HOME` set to the
+files dir), so the Runtime validates every value and encrypts a key itself:
+
+- **Free and local.** `model/ModelLadder.kt` is `scripts/model_ladder.py`'s
+  phone branch (6 GB and up gets the 7B for the agent, less gets the 1.5B;
+  Cael always the 1.5B; the same notes, word for word; the GGUF pins exported
+  to `model-ladder.json` and compared in both suites). The runner is
+  **llama.cpp's own prebuilt Android arm64 release**, `llama-<tag>-bin-android-arm64.tar.gz`
+  (`llama-server` with its shared libraries beside it, RPATH `$ORIGIN`, the
+  CPU variant picked at run time), pinned by tag and sha256
+  (`model/LlamaRuntime.kt`, `b11960` at the time of writing) and laid out as
+  `files/runtime/llama/<tag>/llama-server` with a `current` pointer, the way
+  the Runtime's versions are; no cross-build of our own. The GGUFs go to
+  `files/.caelza/models` (where `~/.caelza/models` is on Termux), downloaded
+  resumably through a `.part` file, hashed as they stream and refused on a
+  mismatch (`model/ModelStore.kt`, `VerifiedDownload`), verified once (a
+  marker beside the file). `serve.json` names the model; `RuntimeService`
+  runs `llama-server -m <gguf> --host 127.0.0.1 --port 8080 -c 4096 --threads N`
+  before the daemon, restarts it when it exits and gives up after three exits
+  in ten minutes; the strip's Runtime line shows the model loading or serving.
+  The config gets `providers.models.llamacpp.{local,guide}.model`,
+  `agents.main.model_provider = "llamacpp.local"`, and Cael as `agents.cael`
+  on `llamacpp.guide` with the `guide` profile (readonly, `deny_all_tools`);
+  Cael's workspace gets `SOUL.md` from the bundled `guide/cael.system.md`
+  (a copy in `assets/`, pinned equal by `tests/test_android_body.py`) and the
+  `IDENTITY.md` card `model-setup.sh` writes.
+- **Bring your own key.** Anthropic, OpenAI or OpenRouter, the model name
+  prefilled and editable, the key pasted once: `providers.models.<provider>.default.api_key`
+  and `.model`, `agents.main.model_provider = "<provider>.default"` (the
+  dotted alias the Runtime resolves), and Cael on the same provider with the
+  guide profile. The key goes to the Runtime's encrypted store, never into a
+  chat.
+
+The dashboard's quickstart stays the configuration surface; the app only gets
+the owner to the first working turn. W^X (§2) applies to `llama-server` as it
+does to the Runtime: both are downloaded binaries run from the files dir
+under targetSdk 28. Not yet run on a device: the download and verification
+are tested over a fake server and archive; the first real `llama-server`
+start on the REVVL is the next thing to try.
 
 ## 6. Open items
 
@@ -201,6 +246,14 @@ the first working turn.
 - **The Body's binder path.** `IPackageManager` / `IAppOpsService` over the
   Shizuku binder instead of `pm` / `appops` in a shell; faster, no parsing,
   but hidden-API stubs to carry. Measure first.
+- **The local model on the REVVL.** The 1.5B Q4 needs about 1.5 GB resident
+  beside the Runtime and the app on a 3.5 GB phone; measure, and if it is too
+  tight, the first run should say so and lead with the key door.
+- **Moving the llama.cpp pin.** A new tag means a new sha256 in
+  `LlamaRuntime.kt` and the manifest; the old build stays installed until
+  `prune()`. A `runtime_update`-style tool for it is not written.
+- **This phone's screen without Shizuku.** The accessibility service for
+  `device_ui_dump` / `device_input` and MediaProjection for `device_screencap`.
 - **Signing and distribution.** A release keystore in CI secrets, an own
   F-Droid-style repo or GitHub releases for the APK; Play needs targetSdk 34.
 - **Foreground service type.** With targetSdk 28 none is required; the move

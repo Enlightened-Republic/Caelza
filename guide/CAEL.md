@@ -91,7 +91,13 @@ installer writes in step.
 - Dashboard: Cael appears in the agent picker now. "Ask Cael" on every page and
   "Explain this screen" (page context as the first turn) are UI phase 1 in the
   vision doc.
-- App: the same, plus the first-run wizard is Cael-led.
+- App (**shipped**, M7d): the first run is Cael-led
+  (`android/app/src/main/java/tech/enlightenedrepublic/caelza/firstrun/`,
+  his lines in `strings.xml`): the two doors, Shizuku, the permissions with
+  their reasons, the battery exemption, a hub, start. The free door creates
+  the same `agents.cael` the installer does, with `SOUL.md` from a bundled
+  copy of `cael.system.md` (`assets/`, kept equal by
+  `tests/test_android_body.py`) and the same `IDENTITY.md` card.
 - Persona and prompt source of truth: this file for the design,
   `cael.system.md` for the text the runtime loads, the `IDENTITY.md` heredoc in
   `scripts/model-setup.sh` for the card the agent loop injects. The `.tech`

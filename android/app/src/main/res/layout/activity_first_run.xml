@@ -1,0 +1,134 @@
+<?xml version="1.0" encoding="utf-8"?>
+<ScrollView xmlns:android="http://schemas.android.com/apk/res/android"
+    xmlns:tools="http://schemas.android.com/tools"
+    android:layout_width="match_parent"
+    android:layout_height="match_parent"
+    android:background="@color/space"
+    android:fillViewport="true">
+
+    <LinearLayout
+        android:layout_width="match_parent"
+        android:layout_height="wrap_content"
+        android:orientation="vertical"
+        android:padding="24dp">
+
+        <TextView
+            android:id="@+id/stepLabel"
+            android:layout_width="wrap_content"
+            android:layout_height="wrap_content"
+            android:layout_marginTop="16dp"
+            android:letterSpacing="0.18"
+            android:textColor="@color/text_dim"
+            android:textSize="11sp"
+            tools:text="STEP 1 OF 8" />
+
+        <TextView
+            android:id="@+id/title"
+            android:layout_width="match_parent"
+            android:layout_height="wrap_content"
+            android:layout_marginTop="8dp"
+            android:fontFamily="sans-serif-black"
+            android:textColor="@color/primary"
+            android:textSize="28sp"
+            tools:text="Hi, I\'m Cael" />
+
+        <TextView
+            android:layout_width="wrap_content"
+            android:layout_height="wrap_content"
+            android:layout_marginTop="20dp"
+            android:letterSpacing="0.14"
+            android:text="@string/fr_cael_says"
+            android:textColor="@color/violet"
+            android:textSize="11sp" />
+
+        <!-- Cael's bubble. -->
+        <TextView
+            android:id="@+id/cael"
+            android:layout_width="match_parent"
+            android:layout_height="wrap_content"
+            android:layout_marginTop="6dp"
+            android:background="@color/bg3"
+            android:lineSpacingExtra="5dp"
+            android:padding="16dp"
+            android:textColor="@color/text"
+            android:textSize="16sp"
+            tools:text="I\'m the guide inside Caelza." />
+
+        <TextView
+            android:id="@+id/detail"
+            android:layout_width="match_parent"
+            android:layout_height="wrap_content"
+            android:layout_marginTop="14dp"
+            android:fontFamily="monospace"
+            android:textColor="@color/text_muted"
+            android:textSize="12sp"
+            tools:text="found v0.1.0" />
+
+        <TextView
+            android:id="@+id/progress"
+            android:layout_width="match_parent"
+            android:layout_height="wrap_content"
+            android:layout_marginTop="4dp"
+            android:fontFamily="monospace"
+            android:textColor="@color/primary_light"
+            android:textSize="12sp"
+            tools:text="42% · 470 of 1065 MiB" />
+
+        <RadioGroup
+            android:id="@+id/choices"
+            android:layout_width="match_parent"
+            android:layout_height="wrap_content"
+            android:layout_marginTop="12dp"
+            android:orientation="vertical"
+            android:visibility="gone" />
+
+        <EditText
+            android:id="@+id/modelInput"
+            android:layout_width="match_parent"
+            android:layout_height="wrap_content"
+            android:layout_marginTop="8dp"
+            android:hint="@string/fr_model_hint"
+            android:importantForAutofill="no"
+            android:inputType="text"
+            android:textColor="@color/text"
+            android:textColorHint="@color/text_dim"
+            android:visibility="gone" />
+
+        <EditText
+            android:id="@+id/keyInput"
+            android:layout_width="match_parent"
+            android:layout_height="wrap_content"
+            android:layout_marginTop="8dp"
+            android:importantForAutofill="no"
+            android:inputType="textPassword"
+            android:textColor="@color/text"
+            android:textColorHint="@color/text_dim"
+            android:visibility="gone"
+            tools:hint="sk-ant-… from console.anthropic.com" />
+
+        <com.google.android.material.button.MaterialButton
+            android:id="@+id/primary"
+            android:layout_width="match_parent"
+            android:layout_height="52dp"
+            android:layout_marginTop="24dp"
+            tools:text="Next" />
+
+        <com.google.android.material.button.MaterialButton
+            android:id="@+id/secondary"
+            style="@style/Widget.Material3.Button.OutlinedButton"
+            android:layout_width="match_parent"
+            android:layout_height="52dp"
+            android:layout_marginTop="12dp"
+            android:visibility="gone"
+            tools:text="Bring your own key" />
+
+        <com.google.android.material.button.MaterialButton
+            android:id="@+id/tertiary"
+            style="@style/Widget.Material3.Button.TextButton"
+            android:layout_width="match_parent"
+            android:layout_height="48dp"
+            android:layout_marginTop="4dp"
+            android:visibility="gone"
+            tools:text="Skip for now" />
+    </LinearLayout>
+</ScrollView>

@@ -2,12 +2,13 @@
 
 The native companion (vision §3.3, milestone M7): the app people install
 instead of a Termux session. It hosts the Runtime binary as a foreground
-service, shows the Runtime's own dashboard in a WebView shell, and serves the
+service, shows the Runtime's own dashboard in a WebView shell, serves the
 Body (the phone's device tools over Shizuku, its sensors through the Android
-APIs) to the Runtime as an MCP server on loopback. Three slices so far, the
-shell (M7a), the device tools (M7b) and the sensors (M7c);
-[`../docs/design/android-app.md`](../docs/design/android-app.md) has the
-architecture and the slices that follow.
+APIs) to the Runtime as an MCP server on loopback, runs the free local model
+beside the Runtime, and lets Cael lead the first run. Four slices: the shell
+(M7a), the device tools (M7b), the sensors (M7c), the first run and the local
+model (M7d); [`../docs/design/android-app.md`](../docs/design/android-app.md)
+has the architecture and what is still open.
 
 ```
 android/
@@ -29,7 +30,12 @@ android/
         ├── body/Shell.kt, body/ShizukuShell.kt  the shell user through Shizuku, shaped as adb.run shapes it
         ├── body/Sensors.kt, body/AndroidSensors.kt  the sensors_* tools' phone: battery, notifications, clipboard, location, camera, mic, TTS, torch
         ├── body/CaelzaNotificationListener.kt, body/SensorPermissions.kt  the status-bar listener; what is granted and how to ask
-        └── body/BodyHome.kt        files/.caelza-body: run/http-token, logs/device-actions.log, snapshots/, tmp/
+        ├── body/BodyHome.kt        files/.caelza-body: run/http-token, logs/device-actions.log, snapshots/, tmp/
+        ├── firstrun/FirstRunActivity.kt, firstrun/FirstRun.kt  Cael's first run: the steps, the two doors, what each writes
+        ├── model/ModelLadder.kt    scripts/model_ladder.py's phone branch: the DeepSeek R1 GGUF pins by RAM
+        ├── model/ModelStore.kt     files/.caelza/models: resumable, verified downloads; serve.json
+        ├── model/LlamaRuntime.kt   llama.cpp's Android build, pinned by tag + sha256, under files/runtime/llama/<tag>/
+        └── runtime/CaelzaCli.kt    `caelza config set --no-interactive` through the installed Runtime; Cael's workspace
 ```
 
 ## Build
@@ -49,7 +55,11 @@ gateway port; and the Body over a recorded phone (`tests/fixtures/playbooks`,
 the REVVL package snapshot, the same recordings `tests/test_playbook_evals.py`
 replays): the four playbook reads end to end, the audit lines and snapshots
 of the destructive tools, the sensors over a fake phone, the MCP server over
-real HTTP, and the contract against the Python server's `list-tools`
+real HTTP, the model ladder against the Python ladder's export, the model
+store over a fake server (resume, a server that ignores `Range`, tampered
+bytes, a dead connection), llama.cpp's archive laid out from a fake tarball,
+`caelza config set` through a fake `caelza`, the first run's steps and
+doors, and the contract against the Python server's `list-tools`
 (`app/src/test/fixtures/`, written by `../scripts/android_body_fixtures.py`).
 
 ## What the shell does
@@ -91,6 +101,19 @@ real HTTP, and the contract against the Python server's `list-tools`
 6. **Shizuku**: the strip says where it stands and asks for the permission
    through Shizuku's own prompt. Without it the Body still serves; its device
    tools answer `needs Shizuku: <what to do>` instead of running.
+7. **The first run, with Cael**: on the first launch (and from `Set up with
+   Cael` any time) Cael walks the owner through eight steps: the Runtime
+   installed, a brain chosen, Shizuku, the permissions with their reasons,
+   the battery exemption, a word about hubs, start. The brain has two doors.
+   *Free and local* downloads llama.cpp's prebuilt Android build (pinned by
+   tag and sha256) and the DeepSeek R1 GGUF the phone's RAM allows (the 1.5B
+   under 6 GB, the 7B above, Cael always on the 1.5B), verified against the
+   ladder's pins, then runs `llama-server` on `127.0.0.1:8080` beside the
+   Runtime, which is where the Runtime's `llamacpp` provider looks. *Bring
+   your own key* takes an Anthropic, OpenAI or OpenRouter key and model. Both
+   doors write the config through the installed Runtime's own `caelza config
+   set`, create Cael as `agents.cael` on the guide profile and give him his
+   `SOUL.md`.
 
 ## targetSdk 28, on purpose
 
