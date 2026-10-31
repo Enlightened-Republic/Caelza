@@ -33,7 +33,7 @@ class BodyServerTest {
     @Before
     fun start() {
         shell = FakeShell()
-        val tools = BodyTools(BodyShell(shell), BodyHome(File(tmp.root, ".caelza-body")))
+        val tools = BodyTools(BodyShell(shell), BodyHome(File(tmp.root, ".caelza-body")), FakeSensors())
         server = BodyServer(tools, token, requestedPort = 0)
         server.start()
     }
@@ -141,9 +141,10 @@ class BodyServerTest {
         assertTrue(badText, badText.contains("'reason' is a required property"))
         assertTrue(shell.calls.none { it.firstOrNull() == "pm" && "uninstall" in it })
 
-        val unknown = post(rpc("tools/call", JSONObject().put("name", "sensors_battery"), id = 5)).second.getJSONObject("result")
+        // The web tools are the Python Body's, not the app's: unknown here.
+        val unknown = post(rpc("tools/call", JSONObject().put("name", "web_search"), id = 5)).second.getJSONObject("result")
         assertTrue(unknown.getBoolean("isError"))
-        assertEquals("error: unknown tool sensors_battery", unknown.getJSONArray("content").getJSONObject(0).getString("text"))
+        assertEquals("error: unknown tool web_search", unknown.getJSONArray("content").getJSONObject(0).getString("text"))
 
         val shot = post(rpc("tools/call", JSONObject().put("name", "device_screencap"), id = 6)).second.getJSONObject("result")
         assertFalse(shot.getBoolean("isError"))

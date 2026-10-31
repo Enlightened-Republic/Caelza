@@ -6,11 +6,11 @@ is `caelza_body`'s `device` group in Kotlin. Two fixtures keep the two in step,
 checked from both sides (`tests/test_android_body.py` here, `BodyToolsTest`
 and `PlaybooksTest` in Gradle):
 
-    android/app/src/test/fixtures/body-tools.json      every `device` tool as `caelza-body list-tools` prints it
+    android/app/src/test/fixtures/body-tools.json      every `sensors` and `device` tool as `caelza-body list-tools` prints it
     android/app/src/test/fixtures/debloat-tables.json  the playbook tables (`python -m caelza_body.agent.playbooks`)
 
-Run it after changing a device tool's schema or description, or a playbook
-table; the Python tests say so when the fixtures are stale.
+Run it after changing a sensor's or a device tool's schema or description, or
+a playbook table; the Python tests say so when the fixtures are stale.
 """
 from __future__ import annotations
 
@@ -31,10 +31,14 @@ from caelza_body.agent import playbooks  # noqa: E402
 from caelza_body.agent import tools  # noqa: E402
 
 
+#: The groups the app's Body serves (less the four fleet tools, which need adb and the registry).
+GROUPS = ("sensors", "device")
+
+
 def device_tools() -> list[dict]:
-    """The `device` group's tools, sorted by name, as the MCP server lists them."""
+    """The served groups' tools, sorted by name, as the MCP server lists them."""
     with tempfile.TemporaryDirectory() as home:
-        srv.register_tools(srv.load_settings(Path(home), REPO_ROOT), ("device",))
+        srv.register_tools(srv.load_settings(Path(home), REPO_ROOT), GROUPS)
         try:
             listed = [t.model_dump(mode="json", exclude_none=True) for t in srv.mcp_tools()]
         finally:

@@ -140,9 +140,10 @@ a paired phone and a joined Body without `device_unpair` first; token files
 are created 0600 inside 0700 directories.
 
 **In the app.** The Caelza Android app serves this same Body over HTTP on the
-phone it runs on (M7b): its `device` group in Kotlin over Shizuku, on
-`127.0.0.1:42618/mcp` behind the same token file layout, audit log and
-snapshots, with the same tool names, schemas and classes
+phone it runs on: its `device` group in Kotlin over Shizuku (M7b) and its
+`sensors` group through the Android APIs (M7c, answering in `termux-api`'s
+shapes), on `127.0.0.1:42618/mcp` behind the same token file layout, audit
+log and snapshots, with the same tool names, schemas and classes
 (`android/app/src/main/java/tech/enlightenedrepublic/caelza/body/`,
 pinned against `caelza-body list-tools` by `scripts/android_body_fixtures.py`
 and `tests/test_android_body.py`). The fleet tools stay here: the app's Body

@@ -30,7 +30,7 @@ class BodyToolsTest {
     private fun body(fake: FakeShell = FakeShell()): BodyTools {
         shell = fake
         home = BodyHome(File(tmp.root, ".caelza-body"))
-        tools = BodyTools(BodyShell(shell), home) { now }
+        tools = BodyTools(BodyShell(shell), home, FakeSensors()) { now }
         return tools
     }
 
