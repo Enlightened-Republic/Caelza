@@ -70,6 +70,16 @@ Two illustrations live in `art/` as **reference material**, not as the mark:
 App icons use the geometric mark on the cosmic backdrop inside a neon gradient
 frame at every size by default.
 
+The Android app's launcher icon is **adaptive** (the launcher picks the shape),
+so it has no frame: `make_assets.py --android android/app` renders the mark
+alone onto the foreground layer, inside the 66 dp circle every shape shows,
+the backdrop's nebula as the background layer (no stars or dots: they would
+swim with the parallax), and the mark's silhouette as a monochrome vector that
+Android 13 tints for themed icons and the Runtime notification uses as its
+status-bar icon. The layers are committed under the app's `res/`;
+`make_assets.py --android android/app --check` (run by CI) compares them with
+a fresh render.
+
 ## The lockup
 
 ```

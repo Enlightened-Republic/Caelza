@@ -20,6 +20,12 @@ compares against; regenerate them with the same tool when a page changes.
 | `runs.png` | SOP Runs with its page padding and a header title |
 | `drawer.png` | the mobile menu: Home, Bodies, Memory, Procedures first |
 
+## The app's launcher icon
+
+| file | what it shows |
+|---|---|
+| `launcher-icon.png` | the adaptive icon (`brand/make_assets.py --android android/app`, android-app.md §5) as a round launcher and a squircle one show it, and the whole 108 dp layer |
+
 The Mind and Body content in these shots comes from the tool's mock proxy
 (canned `brain_stats`, `brain_status`, `device_list`, sensor readings), the
 rest from a real gateway. The Procedures shots (M5) have the playbooks

@@ -138,6 +138,7 @@ min_sdk = 28
 target_sdk = 28                                        # on purpose: W^X would forbid running a downloaded Runtime (android-app.md §2)
 ci = ".github/workflows/android.yml"
 design = "docs/design/android-app.md"
+launcher_icon = "brand/make_assets.py --android android/app"   # adaptive icon from brand/tokens.json: the mark in the safe zone over the nebula, a monochrome vector for themed icons and the notification; `--check` in CI
 # M7b: the app's Body. The `device` group in Kotlin over Shizuku (minus the four fleet tools, which need
 # adb and the registry), served as the Body MCP server on loopback the way `caelza-body serve --http` is,
 # behind the same token file (.caelza-body/run/http-token), audit log and package snapshots. The Runtime's

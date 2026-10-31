@@ -232,11 +232,20 @@ under targetSdk 28. Not yet run on a device: the download and verification
 are tested over a fake server and archive; the first real `llama-server`
 start on the REVVL is the next thing to try.
 
+**The launcher icon** (shipped after M7d). The brand mark as an adaptive icon:
+`brand/make_assets.py --android android/app` renders the mark alone onto the
+foreground layer, inside the 66 dp circle every launcher shape shows, the
+cosmic backdrop's nebula as the background layer, and the mark's silhouette as
+a VectorDrawable (`drawable/ic_launcher_monochrome.xml`), which Android 13
+tints for themed icons and the Runtime notification uses as its status-bar
+icon. The layers are committed under `res/mipmap-*` and the brand CI job runs
+`--check`, so they stay in step with `brand/tokens.json`;
+`tests/test_android_icon.py` pins the wiring and the safe zone.
+[`screens/launcher-icon.png`](screens/launcher-icon.png) shows what a round
+and a squircle launcher make of it, and the whole layer.
+
 ## 6. Open items
 
-- **The brand mark.** The launcher icon is a placeholder ring in the brand
-  gradient; `brand/make_assets.py` should render the real mark into the
-  mipmap folders (adaptive icon foreground + monochrome).
 - **W^X** (§2): measure `linker64` and the native-library payload on the
   REVVL before settling the targetSdk.
 - **Loopback exposure.** The gateway with pairing off is reachable by any app
