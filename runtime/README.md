@@ -31,6 +31,7 @@ runtime/
 │                      the edge, controls under 32 px; a mock proxy for the Mind and Body routes
 ├── lib/rename.pl      the replacement engine
 ├── lib/dashboard_theme.py  registers caelza-dark / caelza-light as the dashboard defaults
+├── lib/stamp_version.py    puts a release's version (from CAELZA_BUILD_ID) into Cargo.toml + Cargo.lock
 └── build.sh           fetch → rebrand → cargo build
 ```
 
@@ -49,13 +50,45 @@ default), the same flag the release workflow passes; `CAELZA_FEATURES=` drops
 it, `--features <list>` replaces it.
 
 Requirements: Rust `>= 1.96` (upstream `rust-version`), `git`, `perl`, `tar`,
-and `python3` with Pillow for the brand assets (or `--skip-assets`). The web
-dashboard is **not** rebuilt by this script; upstream builds it in CI with
-Node 24+. `runtime/.build/src/web` is the rebranded source for `npm run build`
-when you want a fresh `web/dist`.
+`python3` (the theme, the version stamp), and Pillow for the brand assets (or
+`--skip-assets`). The web dashboard is **not** rebuilt by this script; upstream
+builds it in CI with Node 24+. `runtime/.build/src/web` is the rebranded source
+for `npm run build` when you want a fresh `web/dist`.
 
 Outputs are git-ignored: `.cache/` (upstream checkout), `.build/` (staged tree
 + cargo target dir, kept warm between runs), `dist/` (the binary).
+
+### Versions and releases
+
+`caelza --version` answers `<crate version> (<build id>)`. A dev build keeps
+upstream's crate version and names the pin: `0.8.6 (v0.8.6+zeroclaw.c473221313)`.
+A release is named by its tag, so a release build carries the tag's version:
+`0.1.0 (v0.1.0+zeroclaw.c473221313)`. Both installers (the guard's
+`caelza-body runtime update`, the app's installer) probe `caelza --version`
+against the release's version before trusting a binary, which is why the two
+numbers have to agree.
+
+The rule lives in `CAELZA_BUILD_ID`. When it names a version (`v0.1.0`,
+`v0.1.0+…`, `v0.1.0-rc1`), [`lib/stamp_version.py`](lib/stamp_version.py)
+rewrites the staged workspace before cargo runs: `[workspace.package]
+version`, the path dependencies' requirements, and every member's entry in
+`Cargo.lock`, so `--locked` still passes; registry crates that share the number
+(`rand 0.8.6`) stay as they are. The dev default, and an id that names no
+version (`main`), leave the tree as upstream has it. `UPSTREAM.md` in the tree
+and in every archive records the upstream version, the crate version and the
+build id.
+
+To release, set `version` in [`../bundle/manifest.toml`](../bundle/manifest.toml)
+and tag it:
+
+```bash
+git tag v0.1.0 && git push origin v0.1.0
+```
+
+[`release.yml`](../.github/workflows/release.yml) composes the build id
+(`v0.1.0+zeroclaw.<commit>`), stages with it, builds each target and attaches
+`caelza-0.1.0-<target>.tar.gz` with its `.sha256` to the GitHub release. A
+`workflow_dispatch` run keeps upstream's crate version and is named `dev-<sha>`.
 
 ### Android / Termux (the phone)
 

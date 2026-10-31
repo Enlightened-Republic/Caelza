@@ -7,6 +7,13 @@ name: release
 #
 #   git tag v0.1.0 && git push origin v0.1.0      # → release
 #   workflow_dispatch                             # → artifacts only
+#
+# The tag names the release: v0.1.0 is caelza-0.1.0-<target>.tar.gz, and the
+# crates are stamped with 0.1.0 (runtime/lib/stamp_version.py, run by build.sh
+# from CAELZA_BUILD_ID) so `caelza --version` answers what the installers'
+# probe expects: `0.1.0 (v0.1.0+zeroclaw.<commit>)`. Tag the version in
+# bundle/manifest.toml. A workflow_dispatch run keeps upstream's crate version
+# and is named dev-<sha>.
 
 on:
   push:
@@ -100,6 +107,17 @@ jobs:
       - name: Android NDK on PATH (upstream .cargo/config.toml names the clang linker)
         if: matrix.ndk
         run: echo "$ANDROID_NDK/toolchains/llvm/prebuilt/linux-x86_64/bin" >> "$GITHUB_PATH"
+      # Before staging: build.sh stamps the version the build id names into the
+      # crates, and cargo reads the same id into `caelza --version`.
+      - name: Version and build id
+        id: version
+        run: |
+          set -euo pipefail
+          up=$(sed -n -E 's/^commit[[:space:]]*=[[:space:]]*"([0-9a-f]+)".*/\1/p' runtime/upstream.toml)
+          if [ "$GITHUB_REF_TYPE" = tag ]; then ver="${GITHUB_REF_NAME#v}"; id="$GITHUB_REF_NAME"; else ver="dev-${GITHUB_SHA::8}"; id="$ver"; fi
+          echo "CAELZA_BUILD_ID=${id}+zeroclaw.${up::10}" >> "$GITHUB_ENV"
+          echo "ver=$ver" >> "$GITHUB_OUTPUT"
+          echo "version $ver, build id ${id}+zeroclaw.${up::10}"
       - name: Stage the rebranded tree
         run: ./runtime/build.sh --no-build
       - uses: Swatinem/rust-cache@v2
@@ -139,8 +157,7 @@ jobs:
         working-directory: runtime/.build/src
         env:
           CARGO_TARGET_DIR: ${{ github.workspace }}/runtime/.build/target
-          CAELZA_BUILD_ID: ${{ github.ref_name }}
-        # channel-git: the Forge (docs/forge.md) needs the git channel, which upstream keeps out of its lean default.
+        # CAELZA_BUILD_ID comes from the version step. channel-git: the Forge (docs/forge.md) needs the git channel, which upstream keeps out of its lean default.
         run: cargo build --release --locked -p caelza --features channel-git --target ${{ matrix.target }} ${{ matrix.jobs && format('--jobs {0}', matrix.jobs) || '' }}
       - name: Release the build memory
         if: always() && matrix.swap && steps.dist_memory.outputs.swap_file
@@ -155,7 +172,7 @@ jobs:
         id: pack
         run: |
           set -euo pipefail
-          ver="${GITHUB_REF_NAME#v}"; [ "$GITHUB_REF_TYPE" = tag ] || ver="dev-${GITHUB_SHA::8}"
+          ver="${{ steps.version.outputs.ver }}"
           name="caelza-${ver}-${{ matrix.target }}"
           stage="$RUNNER_TEMP/$name"; mkdir -p "$stage/web"
           cp "runtime/.build/target/${{ matrix.target }}/release/caelza" "$stage/"
