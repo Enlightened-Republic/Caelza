@@ -14,6 +14,10 @@
     <string name="status_body_serving">%1$d tools on :%2$d</string>
     <string name="status_body_off">not serving</string>
     <string name="status_shizuku_prefix">Shizuku</string>
+    <string name="status_sensors_prefix">Sensors</string>
+    <string name="status_sensors_ready">camera, microphone, location and notifications ready</string>
+    <string name="status_sensors_missing">missing: %1$s</string>
+    <string name="action_grant">Grant</string>
     <string name="status_not_installed">not installed</string>
     <string name="status_stopped">stopped</string>
     <string name="status_starting">starting</string>

@@ -20,6 +20,7 @@ import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.update
 import kotlinx.coroutines.launch
+import tech.enlightenedrepublic.caelza.body.AndroidSensors
 import tech.enlightenedrepublic.caelza.body.BodyHome
 import tech.enlightenedrepublic.caelza.body.BodyServer
 import tech.enlightenedrepublic.caelza.body.BodyShell
@@ -120,7 +121,7 @@ class RuntimeService : Service() {
             home.prune()
             val token = home.token()
             store.ensureBodyWiring(token)
-            val tools = BodyTools(BodyShell(ShizukuShell()), home)
+            val tools = BodyTools(BodyShell(ShizukuShell()), home, AndroidSensors(applicationContext))
             val server = BodyServer(tools, token, log = { Log.w(TAG, it) })
             server.start()
             bodyServer = server

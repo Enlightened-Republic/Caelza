@@ -30,6 +30,9 @@ class BodyWiringTest {
         for (name in BodyTools.names(BodyTools.Safety.DESTRUCTIVE)) assertTrue(name, "\"body__$name\"," in ask)
         assertTrue("\"body__device_uninstall\"," !in auto && "\"body__device_list\"," !in ask)
         assertFalse("\"body__device_input\"," in auto || "\"body__device_input\"," in ask)
+        // The sensors as the Python example gates them: the reads auto-approved, captures and speech on the profile's own policy.
+        assertTrue("\"body__sensors_battery\"," in auto && "\"body__sensors_notifications\"," in auto)
+        assertFalse("\"body__sensors_camera_photo\"," in auto || "\"body__sensors_camera_photo\"," in ask)
         assertFalse("nothing to add the second time", store.ensureBodyWiring("tok3n"))
         assertEquals(text, File(store.configDir, "config.toml").readText())
         assertEquals(1, Regex("\\[agents\\.main]").findAll(text).count())

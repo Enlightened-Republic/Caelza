@@ -540,5 +540,229 @@
       "type": "object"
     },
     "name": "device_unpair"
+  },
+  {
+    "annotations": {
+      "destructiveHint": false,
+      "idempotentHint": true,
+      "openWorldHint": false,
+      "readOnlyHint": true
+    },
+    "description": "Get the phone's battery status as JSON.",
+    "inputSchema": {
+      "properties": {
+        "device": {
+          "default": "self",
+          "description": "`self` (this phone) or the name of a joined Body; an ADB-paired phone cannot answer this",
+          "type": "string"
+        }
+      },
+      "type": "object"
+    },
+    "name": "sensors_battery"
+  },
+  {
+    "annotations": {
+      "destructiveHint": false,
+      "idempotentHint": false,
+      "openWorldHint": false,
+      "readOnlyHint": false
+    },
+    "description": "Take a photo with the phone camera (facing: 'back' or 'front').",
+    "inputSchema": {
+      "properties": {
+        "device": {
+          "default": "self",
+          "description": "`self` (this phone) or the name of a joined Body; an ADB-paired phone cannot answer this",
+          "type": "string"
+        },
+        "facing": {
+          "default": "back",
+          "enum": [
+            "back",
+            "front"
+          ],
+          "type": "string"
+        }
+      },
+      "type": "object"
+    },
+    "name": "sensors_camera_photo"
+  },
+  {
+    "annotations": {
+      "destructiveHint": false,
+      "idempotentHint": true,
+      "openWorldHint": false,
+      "readOnlyHint": true
+    },
+    "description": "Read the phone's clipboard.",
+    "inputSchema": {
+      "properties": {
+        "device": {
+          "default": "self",
+          "description": "`self` (this phone) or the name of a joined Body; an ADB-paired phone cannot answer this",
+          "type": "string"
+        }
+      },
+      "type": "object"
+    },
+    "name": "sensors_clipboard_get"
+  },
+  {
+    "annotations": {
+      "destructiveHint": false,
+      "idempotentHint": false,
+      "openWorldHint": false,
+      "readOnlyHint": false
+    },
+    "description": "Write text to the phone's clipboard.",
+    "inputSchema": {
+      "properties": {
+        "device": {
+          "default": "self",
+          "description": "`self` (this phone) or the name of a joined Body; an ADB-paired phone cannot answer this",
+          "type": "string"
+        },
+        "text": {
+          "type": "string"
+        }
+      },
+      "required": [
+        "text"
+      ],
+      "type": "object"
+    },
+    "name": "sensors_clipboard_set"
+  },
+  {
+    "annotations": {
+      "destructiveHint": false,
+      "idempotentHint": true,
+      "openWorldHint": true,
+      "readOnlyHint": true
+    },
+    "description": "Where the phone is. mode='quick' (default): wifi network + approximate city from the public IP, fast and reliable. mode='gps'/'network': real coordinates from termux-location (slow, can hang indoors).",
+    "inputSchema": {
+      "properties": {
+        "accuracy": {
+          "enum": [
+            "coarse",
+            "fine"
+          ],
+          "type": "string"
+        },
+        "device": {
+          "default": "self",
+          "description": "`self` (this phone) or the name of a joined Body; an ADB-paired phone cannot answer this",
+          "type": "string"
+        },
+        "mode": {
+          "default": "quick",
+          "enum": [
+            "quick",
+            "gps",
+            "network"
+          ],
+          "type": "string"
+        }
+      },
+      "type": "object"
+    },
+    "name": "sensors_location"
+  },
+  {
+    "annotations": {
+      "destructiveHint": false,
+      "idempotentHint": false,
+      "openWorldHint": false,
+      "readOnlyHint": false
+    },
+    "description": "Record from the microphone for N seconds (max 60); returns the .m4a file path. Blocks the turn for the duration, so keep it short.",
+    "inputSchema": {
+      "properties": {
+        "device": {
+          "default": "self",
+          "description": "`self` (this phone) or the name of a joined Body; an ADB-paired phone cannot answer this",
+          "type": "string"
+        },
+        "seconds": {
+          "default": 8,
+          "type": "integer"
+        }
+      },
+      "type": "object"
+    },
+    "name": "sensors_mic_record"
+  },
+  {
+    "annotations": {
+      "destructiveHint": false,
+      "idempotentHint": true,
+      "openWorldHint": false,
+      "readOnlyHint": true
+    },
+    "description": "List the phone's current status-bar notifications as JSON.",
+    "inputSchema": {
+      "properties": {
+        "device": {
+          "default": "self",
+          "description": "`self` (this phone) or the name of a joined Body; an ADB-paired phone cannot answer this",
+          "type": "string"
+        }
+      },
+      "type": "object"
+    },
+    "name": "sensors_notifications"
+  },
+  {
+    "annotations": {
+      "destructiveHint": false,
+      "idempotentHint": false,
+      "openWorldHint": false,
+      "readOnlyHint": false
+    },
+    "description": "Turn the phone's flashlight on or off.",
+    "inputSchema": {
+      "properties": {
+        "device": {
+          "default": "self",
+          "description": "`self` (this phone) or the name of a joined Body; an ADB-paired phone cannot answer this",
+          "type": "string"
+        },
+        "on": {
+          "default": true,
+          "type": "boolean"
+        }
+      },
+      "type": "object"
+    },
+    "name": "sensors_torch"
+  },
+  {
+    "annotations": {
+      "destructiveHint": false,
+      "idempotentHint": false,
+      "openWorldHint": false,
+      "readOnlyHint": false
+    },
+    "description": "Speak text aloud through the phone's text-to-speech engine.",
+    "inputSchema": {
+      "properties": {
+        "device": {
+          "default": "self",
+          "description": "`self` (this phone) or the name of a joined Body; an ADB-paired phone cannot answer this",
+          "type": "string"
+        },
+        "text": {
+          "type": "string"
+        }
+      },
+      "required": [
+        "text"
+      ],
+      "type": "object"
+    },
+    "name": "sensors_tts_speak"
   }
 ]

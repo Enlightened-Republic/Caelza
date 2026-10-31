@@ -6,19 +6,22 @@ import java.io.File
 import java.time.Instant
 
 /**
- * The Body's `device` tools for the phone the app runs on, with the contract
- * of `caelza_body/agent/tools/device.py` and `tools/playbook.py`: the same
- * names, descriptions and argument schemas (pinned against the Python
- * server's `list-tools` output in the tests), the same safety classes
- * (`mcp_server.READ_ONLY` / `DESTRUCTIVE` / `NEUTRAL`), a `reason` on every
- * destructive call written to the audit log, and the package snapshot before
- * a removal. Only `self` answers: the fleet tools (`device_pair`,
- * `device_unpair`, `device_join`, `device_tag`) stay with the Python Body,
- * which has `adb` and the registry.
+ * The Body's `sensors` and `device` tools for the phone the app runs on, with
+ * the contract of `caelza_body/agent/tools/sensors.py`, `tools/device.py`
+ * and `tools/playbook.py`: the same names, descriptions and argument schemas
+ * (pinned against the Python server's `list-tools` output in the tests), the
+ * same safety classes (`mcp_server.READ_ONLY` / `DESTRUCTIVE` / `NEUTRAL`), a
+ * `reason` on every destructive call written to the audit log, and the
+ * package snapshot before a removal. The device tools run through the
+ * [BodyShell] (Shizuku), the sensors through [Sensors] (the Android APIs).
+ * Only `self` answers: the fleet tools (`device_pair`, `device_unpair`,
+ * `device_join`, `device_tag`) stay with the Python Body, which has `adb` and
+ * the registry.
  */
 class BodyTools(
     private val shell: BodyShell,
     private val home: BodyHome,
+    private val sensors: Sensors,
     private val now: () -> Instant = Instant::now,
 ) {
     enum class Safety { READ_ONLY, DESTRUCTIVE, NEUTRAL }
@@ -31,11 +34,12 @@ class BodyTools(
     class Tool(val spec: Spec, internal val run: (JSONObject) -> ToolResult) {
         val name: String get() = spec.name
 
+        /** `mcp_server.annotations_for`: the class as hints, and the open world for what reaches beyond the phone. */
         fun annotations(): JSONObject = JSONObject()
             .put("readOnlyHint", spec.safety == Safety.READ_ONLY)
             .put("destructiveHint", spec.safety == Safety.DESTRUCTIVE)
             .put("idempotentHint", spec.safety == Safety.READ_ONLY)
-            .put("openWorldHint", false)
+            .put("openWorldHint", spec.name.startsWith("web_") || spec.name == "sensors_location")
 
         fun mcp(): JSONObject = JSONObject()
             .put("name", spec.name)
@@ -106,10 +110,73 @@ class BodyTools(
         "device_suspects" -> { a -> onSelf(a) { suspects(device(a), a.optInt("days", 30)) } }
         "device_foreground" -> { a -> onSelf(a) { foreground(device(a)) } }
         "device_health" -> { a -> onSelf(a) { health(device(a)) } }
+        "sensors_camera_photo" -> { a -> sensor(a, name) { cameraPhoto(a.optString("facing", "back")) } }
+        "sensors_mic_record" -> { a -> sensor(a, name) { micRecord(a.optInt("seconds", 8)) } }
+        "sensors_location" -> { a -> sensor(a, name) { location(a.optString("mode", "quick"), a.optString("accuracy", "")) } }
+        "sensors_notifications" -> { a -> sensor(a, name) { sensors.notifications().toString() } }
+        "sensors_tts_speak" -> { a -> sensor(a, name) { sensors.ttsSpeak(a.getString("text")); "spoken" } }
+        "sensors_clipboard_get" -> { a -> sensor(a, name) { sensors.clipboardGet() } }
+        "sensors_clipboard_set" -> { a -> sensor(a, name) { sensors.clipboardSet(a.getString("text")); "set" } }
+        "sensors_battery" -> { a -> sensor(a, name) { sensors.battery().toString() } }
+        "sensors_torch" -> { a ->
+            sensor(a, name) {
+                val on = a.optBoolean("on", true)
+                sensors.torch(on)
+                "torch ${if (on) "on" else "off"}"
+            }
+        }
         else -> { _ -> ToolResult("error: unknown tool $name") }
     }
 
     private fun device(a: JSONObject): String = a.optString("device", "self")
+
+    /** The Python `accept_device` guard: a sensor is this phone's own, and what it cannot do yet is an answer, not a crash. */
+    private inline fun sensor(a: JSONObject, name: String, body: () -> Any): ToolResult {
+        val device = device(a)
+        if (device != "self") {
+            return ToolResult("error: $name is a sensor of this phone; '$device' answers only as a joined Body (device_join), not as an ADB-paired phone")
+        }
+        return try {
+            when (val out = body()) {
+                is ToolResult -> out
+                is String -> ToolResult(out)
+                else -> ToolResult(out.toString())
+            }
+        } catch (e: SensorUnavailable) {
+            ToolResult("error: ${e.message}")
+        }
+    }
+
+    /** `sensors_location`: quick is the wifi network plus a city from the public IP; gps / network are coordinates. */
+    private fun location(requested: String, accuracy: String): String {
+        var mode = requested
+        if (accuracy.isNotEmpty() && mode == "quick") mode = if (accuracy == "coarse") "network" else "gps"
+        if (mode == "gps" || mode == "network") return sensors.location(mode).toString()
+        val wifi = try {
+            sensors.wifi()
+        } catch (e: SensorUnavailable) {
+            JSONObject().put("error", e.message)
+        }
+        return JSONObject()
+            .put("wifi", wifi)
+            .put("approx", sensors.approx())
+            .put("note", "approx is city-level from the IP; call with mode='gps' for coordinates")
+            .toString()
+    }
+
+    private fun cameraPhoto(facing: String): ToolResult {
+        val file = home.mediaFile("cam", "jpg")
+        sensors.cameraPhoto(facing, file)
+        if (!file.isFile) return ToolResult("error: the camera produced no file")
+        return ToolResult("photo captured", listOf(file to "image/jpeg"))
+    }
+
+    private fun micRecord(requested: Int): String {
+        val seconds = requested.coerceIn(1, 60)
+        val file = home.mediaFile("mic", "m4a")
+        sensors.micRecord(seconds, file)
+        return file.path
+    }
 
     /** The Python `_unknown(device)` guard: this Body is one phone. */
     private fun unknown(device: String): String? = if (device == "self") null else "error: unknown device '$device'"
@@ -324,8 +391,50 @@ class BodyTools(
 
         private const val DEVICE_ONLY = """{"type":"object","properties":{"device":{"type":"string","default":"self"}}}"""
 
-        /** Registration order as in the Python Body: device.py first, then the playbook reads. */
+        /** What `tools.accept_device("sensors_", ...)` adds to every sensor's schema in the Python Body. */
+        private const val SENSOR_DEVICE =
+            """"device":{"type":"string","default":"self","description":"`self` (this phone) or the name of a joined Body; an ADB-paired phone cannot answer this"}"""
+
+        /** Registration order as in the Python Body: sensors.py, then device.py, then the playbook reads. */
         val SPECS: List<Spec> = listOf(
+            Spec(
+                "sensors_camera_photo", Safety.NEUTRAL,
+                "Take a photo with the phone camera (facing: 'back' or 'front').",
+                """{"type":"object","properties":{"facing":{"type":"string","enum":["back","front"],"default":"back"},$SENSOR_DEVICE}}""",
+            ),
+            Spec(
+                "sensors_mic_record", Safety.NEUTRAL,
+                "Record from the microphone for N seconds (max 60); returns the .m4a file path. Blocks the turn for the duration, so keep it short.",
+                """{"type":"object","properties":{"seconds":{"type":"integer","default":8},$SENSOR_DEVICE}}""",
+            ),
+            Spec(
+                "sensors_location", Safety.READ_ONLY,
+                "Where the phone is. mode='quick' (default): wifi network + approximate city from the public IP, fast and reliable. " +
+                    "mode='gps'/'network': real coordinates from termux-location (slow, can hang indoors).",
+                """{"type":"object","properties":{"mode":{"type":"string","enum":["quick","gps","network"],"default":"quick"},"accuracy":{"type":"string","enum":["coarse","fine"]},$SENSOR_DEVICE}}""",
+            ),
+            Spec(
+                "sensors_notifications", Safety.READ_ONLY,
+                "List the phone's current status-bar notifications as JSON.",
+                """{"type":"object","properties":{$SENSOR_DEVICE}}""",
+            ),
+            Spec(
+                "sensors_tts_speak", Safety.NEUTRAL,
+                "Speak text aloud through the phone's text-to-speech engine.",
+                """{"type":"object","properties":{"text":{"type":"string"},$SENSOR_DEVICE},"required":["text"]}""",
+            ),
+            Spec("sensors_clipboard_get", Safety.READ_ONLY, "Read the phone's clipboard.", """{"type":"object","properties":{$SENSOR_DEVICE}}"""),
+            Spec(
+                "sensors_clipboard_set", Safety.NEUTRAL,
+                "Write text to the phone's clipboard.",
+                """{"type":"object","properties":{"text":{"type":"string"},$SENSOR_DEVICE},"required":["text"]}""",
+            ),
+            Spec("sensors_battery", Safety.READ_ONLY, "Get the phone's battery status as JSON.", """{"type":"object","properties":{$SENSOR_DEVICE}}"""),
+            Spec(
+                "sensors_torch", Safety.NEUTRAL,
+                "Turn the phone's flashlight on or off.",
+                """{"type":"object","properties":{"on":{"type":"boolean","default":true},$SENSOR_DEVICE}}""",
+            ),
             Spec(
                 "device_list", Safety.READ_ONLY,
                 "List the fleet: this phone ('self'), the phones paired over ADB (kind 'adb') and the joined Bodies " +

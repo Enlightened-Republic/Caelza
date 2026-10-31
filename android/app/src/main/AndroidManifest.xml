@@ -12,6 +12,16 @@
     <uses-permission android:name="android.permission.RECEIVE_BOOT_COMPLETED" />
     <!-- Shizuku's own permission, asked through its prompt (vision §3.3). -->
     <uses-permission android:name="moe.shizuku.manager.permission.API_V23" />
+    <!-- The sensors (design §4): each asked at runtime, a degraded tool until granted. -->
+    <uses-permission android:name="android.permission.CAMERA" />
+    <uses-permission android:name="android.permission.RECORD_AUDIO" />
+    <uses-permission android:name="android.permission.ACCESS_FINE_LOCATION" />
+    <uses-permission android:name="android.permission.ACCESS_COARSE_LOCATION" />
+    <uses-permission android:name="android.permission.ACCESS_WIFI_STATE" />
+    <uses-feature android:name="android.hardware.camera" android:required="false" />
+    <uses-feature android:name="android.hardware.camera.flash" android:required="false" />
+    <uses-feature android:name="android.hardware.location.gps" android:required="false" />
+    <uses-feature android:name="android.hardware.microphone" android:required="false" />
 
     <application
         android:name=".CaelzaApp"
@@ -38,6 +48,16 @@
         <service
             android:name=".RuntimeService"
             android:exported="false" />
+
+        <!-- The status bar for sensors_notifications, once the owner turns on notification access. -->
+        <service
+            android:name=".body.CaelzaNotificationListener"
+            android:exported="true"
+            android:permission="android.permission.BIND_NOTIFICATION_LISTENER_SERVICE">
+            <intent-filter>
+                <action android:name="android.service.notification.NotificationListenerService" />
+            </intent-filter>
+        </service>
 
         <receiver
             android:name=".BootReceiver"

@@ -33,18 +33,20 @@ STORE_KT = (APP / "src" / "main" / "java" / "tech" / "enlightenedrepublic" / "ca
 REGENERATE = "stale fixture: run `python scripts/android_body_fixtures.py` and commit the result"
 
 FLEET_TOOLS = {"device_pair", "device_unpair", "device_join", "device_tag"}
+#: The groups the app's Body serves (M7b the device tools, M7c the sensors).
+GROUPS = ("sensors", "device")
 
 
 @pytest.fixture
 def device_group(tmp_path):
-    names = srv.register_tools(srv.load_settings(tmp_path / "home", REPO_ROOT), ("device",))
+    names = srv.register_tools(srv.load_settings(tmp_path / "home", REPO_ROOT), GROUPS)
     yield names
     tools.reset()
 
 
 def _kotlin_specs() -> dict[str, str]:
     """`Spec("device_x", Safety.CLASS, ...)` in BodyTools.kt → {name: class}."""
-    found = re.findall(r'Spec\(\s*"(device_[a-z_]+)",\s*Safety\.(READ_ONLY|DESTRUCTIVE|NEUTRAL)', TOOLS_KT)
+    found = re.findall(r'Spec\(\s*"((?:device|sensors)_[a-z_]+)",\s*Safety\.(READ_ONLY|DESTRUCTIVE|NEUTRAL)', TOOLS_KT)
     assert found, "no Spec(...) entries found in BodyTools.kt"
     return dict(found)
 
@@ -75,6 +77,12 @@ def test_tables_fixture_matches_the_playbook_module():
 def test_kotlin_serves_the_device_group_minus_the_fleet_tools(device_group):
     specs = _kotlin_specs()
     assert set(specs) == set(device_group) - FLEET_TOOLS
+    assert {n for n in specs if n.startswith("sensors_")} == {n for n in device_group if n.startswith("sensors_")}
+    # Every sensor carries the `device` argument accept_device adds, with its wording.
+    for name in (n for n in specs if n.startswith("sensors_")):
+        schema = tools._SCHEMAS[name]["function"]["parameters"]
+        assert schema["properties"]["device"]["description"].startswith("`self` (this phone)")
+        assert f'"{name}", Safety.' in TOOLS_KT and "an ADB-paired phone cannot answer this" in TOOLS_KT
     not_served = re.search(r"val NOT_SERVED = listOf\((.*?)\)", TOOLS_KT, re.S)
     assert not_served and set(re.findall(r'"([a-z_]+)"', not_served.group(1))) == FLEET_TOOLS
     for name, cls in specs.items():

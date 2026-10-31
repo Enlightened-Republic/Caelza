@@ -16,6 +16,7 @@ import kotlinx.coroutines.isActive
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
 import rikka.shizuku.Shizuku
+import tech.enlightenedrepublic.caelza.body.SensorPermissions
 import tech.enlightenedrepublic.caelza.databinding.ActivityMainBinding
 import tech.enlightenedrepublic.caelza.runtime.Gateway
 import tech.enlightenedrepublic.caelza.runtime.ProcessProber
@@ -68,6 +69,9 @@ class MainActivity : AppCompatActivity() {
         binding.shizukuAction.setOnClickListener {
             if (!ShizukuStatus.request()) renderShizuku()
         }
+        binding.sensorsAction.setOnClickListener {
+            if (!SensorPermissions.request(this)) renderSensors()
+        }
 
         try {
             Shizuku.addRequestPermissionResultListener(shizukuListener)
@@ -88,7 +92,14 @@ class MainActivity : AppCompatActivity() {
     override fun onResume() {
         super.onResume()
         renderShizuku()
+        renderSensors()
         render(RuntimeService.state.value)
+    }
+
+    @Deprecated("Deprecated in Java")
+    override fun onRequestPermissionsResult(requestCode: Int, permissions: Array<out String>, grantResults: IntArray) {
+        super.onRequestPermissionsResult(requestCode, permissions, grantResults)
+        renderSensors()
     }
 
     override fun onDestroy() {
@@ -137,6 +148,14 @@ class MainActivity : AppCompatActivity() {
         binding.shizukuStatus.text =
             "${getString(R.string.status_body_prefix)} · $serving · ${getString(R.string.status_shizuku_prefix)} ${ShizukuStatus.label(state)}"
         binding.shizukuAction.visibility = if (state == ShizukuStatus.State.READY) View.GONE else View.VISIBLE
+    }
+
+    /** The sensors line: which of camera, microphone, location and notification access the owner has granted. */
+    private fun renderSensors() {
+        val missing = SensorPermissions.missing(this)
+        val state = if (missing.isEmpty()) getString(R.string.status_sensors_ready) else getString(R.string.status_sensors_missing, missing.joinToString(", "))
+        binding.sensorsStatus.text = "${getString(R.string.status_sensors_prefix)} · $state"
+        binding.sensorsAction.visibility = if (missing.isEmpty()) View.GONE else View.VISIBLE
     }
 
     /** Show the dashboard as soon as the gateway answers; drop back to the shell when it stops. */

@@ -18,8 +18,10 @@ is the app's architecture and the slices it ships in. `android/` is the code;
 │ BootReceiver: start again after a reboot                             │
 │ BodyServer (M7b): the device tools over Shizuku as the Body's MCP     │
 │   server on http://127.0.0.1:42618/mcp, the Runtime's `body` server   │
-│ (M7c) sensors, accessibility + notification listener, camera / mic    │
-│ (M7d) Cael-led first run, the local model runner                     │
+│ AndroidSensors (M7c): battery, the notification listener, clipboard,  │
+│   location + wifi, camera2, the microphone, TTS, the torch            │
+│ (M7d) Cael-led first run, the local model runner; accessibility +     │
+│   MediaProjection for this phone's screen                             │
 └───────────────────────────────────────────────────────────────────────┘
 ```
 
@@ -135,21 +137,43 @@ shows `self` unreachable, nothing crashes.
 **Not in the app's Body:** the fleet tools (`device_pair`, `device_unpair`,
 `device_join`, `device_tag`) need `adb` and the registry and stay with the
 Python Body; a phone can run both (the app's Body yields the port to a Termux
-Body already serving on 42618, and says so in the strip). The sensors come
-with M7c. `body.privilege = "shizuku"` in the vision is this Body.
+Body already serving on 42618, and says so in the strip). The sensors are §4.
+`body.privilege = "shizuku"` in the vision is this Body.
 
-## 4. Sensors, screen and notifications (M7c)
+## 4. The sensors (M7c, shipped)
 
-The Termux:API sensors (`sensors_battery`, `sensors_location`,
-`sensors_notifications`, `sensors_camera_photo`, `sensors_mic_record`,
-`sensors_tts_speak`, the clipboard, the torch) become the normal Android APIs
-inside the app: a `NotificationListenerService` for the notification feed, an
-`AccessibilityService` for `device_ui_dump` and `device_input` without
-Shizuku, MediaProjection for `device_screencap` of this phone, CameraX and
-`MediaRecorder` for the captures, `TextToSpeech`. Each is a runtime
-permission the first-run wizard asks for in plain words, and a missing one is
-a degraded Body (the tool answers "needs the notification access permission;
-here is where"), never a crash.
+The Termux:API sensors are the normal Android APIs inside the app
+(`body/AndroidSensors.kt`), answering in the shapes `termux-api` prints so
+the nine `sensors_*` tools keep the Python Body's names, schemas and classes
+(pinned in `body-tools.json` like the device tools, the `device` argument
+`accept_device` adds included) and the dashboard's Bodies page reads them
+unchanged:
+
+| tool | Android |
+|---|---|
+| `sensors_battery` | the sticky `ACTION_BATTERY_CHANGED` intent + `BatteryManager` (percentage, status, plugged, temperature, health, current) |
+| `sensors_notifications` | a bound `NotificationListenerService` (`CaelzaNotificationListener`), read when asked; nothing stored |
+| `sensors_clipboard_get` / `_set` | `ClipboardManager` (from Android 10 only the app in front may read; the tool says so) |
+| `sensors_location` | quick: `WifiManager` + the keyless IP lookup (`IpGeo`, the Python `_ipgeo`'s two services); gps / network: `LocationManager.getCurrentLocation`, the last known fix as the fallback |
+| `sensors_camera_photo` | camera2: a preview nobody sees for 900 ms so exposure and focus settle, then a still at about 1080p, JPEG, oriented |
+| `sensors_mic_record` | `MediaRecorder` to .m4a (AAC in MPEG-4), 1 to 60 s |
+| `sensors_tts_speak` | `TextToSpeech`, returning once the utterance is done |
+| `sensors_torch` | `CameraManager.setTorchMode` on the back camera with a flash |
+
+Each capability is a runtime permission or a Settings switch
+(`SensorPermissions`: camera, microphone, location; notification access has
+no prompt, so the strip opens its Settings page). A missing one is a degraded
+tool, `error: needs the camera permission: Settings › Apps › Caelza ›
+Permissions › Camera`, never a crash; `sensors_battery` and quick location
+need nothing. The strip's third line says what is missing and offers to ask;
+the Cael-led first run (M7d) will ask for each with its reason. Captures go
+to `.caelza-body/tmp/` under the names the Python Body uses
+(`cam-<stamp>.jpg`, `mic-<stamp>.m4a`) and photos come back as image
+content. The tools are tested over a fake phone (`SensorToolsTest`); the
+framework calls themselves (`AndroidSensors`) are the next thing to try on the
+REVVL. The `AccessibilityService` for `device_ui_dump` / `device_input`
+without Shizuku and MediaProjection for `device_screencap` of this phone move
+to M7d: Shizuku's `uiautomator`, `input` and `screencap` cover them today.
 
 ## 5. First run, and the local model (M7d)
 

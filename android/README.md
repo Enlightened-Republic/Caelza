@@ -3,8 +3,9 @@
 The native companion (vision §3.3, milestone M7): the app people install
 instead of a Termux session. It hosts the Runtime binary as a foreground
 service, shows the Runtime's own dashboard in a WebView shell, and serves the
-Body (the phone's device tools, over Shizuku) to the Runtime as an MCP server
-on loopback. Two slices so far, the shell (M7a) and the Body (M7b);
+Body (the phone's device tools over Shizuku, its sensors through the Android
+APIs) to the Runtime as an MCP server on loopback. Three slices so far, the
+shell (M7a), the device tools (M7b) and the sensors (M7c);
 [`../docs/design/android-app.md`](../docs/design/android-app.md) has the
 architecture and the slices that follow.
 
@@ -26,6 +27,8 @@ android/
         ├── body/BodyTools.kt       the device tools: names, schemas, classes and behaviour of the Python Body's
         ├── body/Playbooks.kt       the playbook parsers and the debloat tables (caelza_body/agent/playbooks.py in Kotlin)
         ├── body/Shell.kt, body/ShizukuShell.kt  the shell user through Shizuku, shaped as adb.run shapes it
+        ├── body/Sensors.kt, body/AndroidSensors.kt  the sensors_* tools' phone: battery, notifications, clipboard, location, camera, mic, TTS, torch
+        ├── body/CaelzaNotificationListener.kt, body/SensorPermissions.kt  the status-bar listener; what is granted and how to ask
         └── body/BodyHome.kt        files/.caelza-body: run/http-token, logs/device-actions.log, snapshots/, tmp/
 ```
 
@@ -45,9 +48,9 @@ about its version), the store's pointers and pruning, the crash loop, the
 gateway port; and the Body over a recorded phone (`tests/fixtures/playbooks`,
 the REVVL package snapshot, the same recordings `tests/test_playbook_evals.py`
 replays): the four playbook reads end to end, the audit lines and snapshots
-of the destructive tools, the MCP server over real HTTP, and the contract
-against the Python server's `list-tools` (`app/src/test/fixtures/`, written by
-`../scripts/android_body_fixtures.py`).
+of the destructive tools, the sensors over a fake phone, the MCP server over
+real HTTP, and the contract against the Python server's `list-tools`
+(`app/src/test/fixtures/`, written by `../scripts/android_body_fixtures.py`).
 
 ## What the shell does
 
@@ -78,9 +81,16 @@ against the Python server's `list-tools` (`app/src/test/fixtures/`, written by
    `.caelza-body/logs/device-actions.log`, a package snapshot before a
    removal. They run as shell commands in Shizuku's process, which is what
    `adb shell` gives the Termux Body.
-5. **Shizuku**: the strip says where it stands and asks for the permission
-   through Shizuku's own prompt. Without it the Body still serves; its tools
-   answer `needs Shizuku: <what to do>` instead of running.
+5. **Sense**: the nine `sensors_*` tools are the Android APIs behind
+   `termux-api`'s answers: battery, the status bar (a notification listener
+   the owner turns on in Settings), the clipboard, location (quick: wifi + a
+   city from the public IP; gps / network: coordinates), a photo (camera2),
+   a recording (`MediaRecorder`), text to speech, the torch. A permission not
+   granted makes the tool answer `needs the camera permission: Settings › …`;
+   the strip's third line lists what is missing and `Grant` asks.
+6. **Shizuku**: the strip says where it stands and asks for the permission
+   through Shizuku's own prompt. Without it the Body still serves; its device
+   tools answer `needs Shizuku: <what to do>` instead of running.
 
 ## targetSdk 28, on purpose
 

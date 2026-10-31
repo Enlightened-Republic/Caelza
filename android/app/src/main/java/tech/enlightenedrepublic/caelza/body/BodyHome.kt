@@ -5,6 +5,7 @@ import java.nio.file.Files
 import java.nio.file.attribute.PosixFilePermissions
 import java.security.SecureRandom
 import java.time.Instant
+import java.time.ZoneId
 import java.time.ZoneOffset
 import java.time.format.DateTimeFormatter
 import java.util.Base64
@@ -50,6 +51,14 @@ class BodyHome(val dir: File) {
     fun captureFile(device: String, ext: String = "png"): File {
         tmp.mkdirs()
         return File(tmp, "screen-$device-${nanos()}.$ext")
+    }
+
+    /** `cam-20261030-141500-123.jpg`: the names the `termux-*` captures get in the Python Body (`sensors._ts`). */
+    fun mediaFile(prefix: String, ext: String): File {
+        tmp.mkdirs()
+        val now = System.currentTimeMillis()
+        val stamp = DateTimeFormatter.ofPattern("yyyyMMdd-HHmmss").format(Instant.ofEpochMilli(now).atZone(ZoneId.systemDefault()))
+        return File(tmp, "$prefix-$stamp-${"%03d".format(now % 1000)}.$ext")
     }
 
     /** Drop captures older than a day and all but the newest [KEEP_SNAPSHOTS] snapshots; never fails. */
