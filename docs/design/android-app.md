@@ -23,6 +23,7 @@ is the app's architecture and the slices it ships in. `android/` is the code;
 │ FirstRunActivity (M7d): Cael leads the first run; two doors to a brain │
 │ LlamaRuntime + ModelStore (M7d): llama.cpp's Android build, the GGUFs, │
 │   llama-server on :8080 beside the Runtime                            │
+│ LogsActivity: the app's logs, secrets blanked; a bug report to share   │
 │ (later) accessibility + MediaProjection for this phone's screen       │
 └───────────────────────────────────────────────────────────────────────┘
 ```
@@ -72,6 +73,23 @@ halts without a rollback (not the binary's fault). `MainActivity` watches
 `/health` and shows the dashboard the moment it answers. Start, Stop and
 Update are the strip's buttons; the installer asks the service to restart
 after a new version probed ok.
+
+**Logs.** `Logs` on the strip opens `logs/LogsActivity.kt`: one chip per log
+the app writes (`daemon.log` and the `.prev` its rotation leaves,
+`llama-server.log`, the installer's `install.log`, the current binary's
+`probe.log`, the Body's `device-actions.log`), the end of the chosen one in
+monospace, Refresh, and Share. Share writes a bug report under
+`cache/bugreport/` (`BugReport.render`: app and Runtime versions, device and
+Android, the service's state lines, Shizuku, free storage and memory, then
+each log's tail) and offers it through the share sheet as a text file, by a
+`FileProvider` on `<applicationId>.files` that serves that directory and
+nothing else. Secrets are blanked before anything is shown or shared
+(`BugReport.scrub`: a key-ish name with `=` or `:` and its value, a bearer,
+the prefixes providers give their keys, a secret in a URL's query;
+`BugReportTest` pins the shapes and what stays). The shell and the first run
+append the installer's lines to `install.log`, so a failed install is in the
+report too. A halted Runtime ("needs a hand") puts a Logs button on the
+shell's empty state.
 
 **First config.** With no `config.toml`, the service writes one with the
 gateway on `127.0.0.1:42617` and `require_pairing = true`, and the app pairs
@@ -294,8 +312,6 @@ and a squircle launcher make of it, and the whole layer.
   F-Droid-style repo or GitHub releases for the APK; Play needs targetSdk 34.
 - **Foreground service type.** With targetSdk 28 none is required; the move
   to 34 needs `FOREGROUND_SERVICE_SPECIAL_USE` and its declaration.
-- **Logs in the app.** A log viewer for `daemon.log` and the installer's
-  output, and a share button for a bug report.
 - **Tests on a device.** Instrumented tests (`connectedDebugAndroidTest`) for
   the service and the WebView on an emulator in CI; the JVM tests cover the
   pipeline and the store today.

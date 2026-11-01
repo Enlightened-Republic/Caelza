@@ -1,0 +1,5 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!-- What the FileProvider (<applicationId>.files) may hand out: the bug reports LogsActivity writes (BugReport.REPORT_DIR). -->
+<paths>
+    <cache-path name="bugreport" path="bugreport/" />
+</paths>

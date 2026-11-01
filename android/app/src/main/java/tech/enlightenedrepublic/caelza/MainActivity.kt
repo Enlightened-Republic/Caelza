@@ -22,12 +22,15 @@ import tech.enlightenedrepublic.caelza.body.SensorPermissions
 import tech.enlightenedrepublic.caelza.databinding.ActivityMainBinding
 import tech.enlightenedrepublic.caelza.firstrun.FirstRun
 import tech.enlightenedrepublic.caelza.firstrun.FirstRunActivity
+import tech.enlightenedrepublic.caelza.logs.BugReport
+import tech.enlightenedrepublic.caelza.logs.LogsActivity
 import tech.enlightenedrepublic.caelza.runtime.Gateway
 import tech.enlightenedrepublic.caelza.runtime.GatewayPairing
 import tech.enlightenedrepublic.caelza.runtime.ProcessProber
 import tech.enlightenedrepublic.caelza.runtime.ReleaseInstaller
 import tech.enlightenedrepublic.caelza.runtime.RuntimeStore
 import tech.enlightenedrepublic.caelza.shizuku.ShizukuStatus
+import java.io.File
 
 /**
  * The shell: a status strip (the Runtime, Shizuku, start/stop, update) over
@@ -78,6 +81,8 @@ class MainActivity : AppCompatActivity() {
             if (!SensorPermissions.request(this)) renderSensors()
         }
         binding.setupAction.setOnClickListener { startActivity(Intent(this, FirstRunActivity::class.java)) }
+        binding.logsButton.setOnClickListener { startActivity(LogsActivity.intent(this)) }
+        binding.logsAction.setOnClickListener { startActivity(LogsActivity.intent(this, "daemon")) }
         // The first run, until Cael has walked the owner through it once.
         if (savedInstanceState == null && !getSharedPreferences(FirstRun.PREFS, MODE_PRIVATE).getBoolean(FirstRun.DONE, false)) {
             startActivity(Intent(this, FirstRunActivity::class.java))
@@ -146,6 +151,7 @@ class MainActivity : AppCompatActivity() {
             state.detail.isNotEmpty() -> state.detail
             else -> getString(R.string.empty_body)
         }
+        binding.logsAction.visibility = if (state.phase == RuntimeService.Phase.HALTED) View.VISIBLE else View.GONE
         if (!running && dashboardShown) showDashboard(false)
     }
 
@@ -251,20 +257,27 @@ class MainActivity : AppCompatActivity() {
         installing = true
         render(RuntimeService.state.value)
         binding.progress.text = getString(R.string.install_progress)
+        // The installer's lines go to logs/install.log as well, so a failed install is in a bug report (LogsActivity).
+        val installLog = File(store.logsDir, BugReport.INSTALL_LOG)
         lifecycleScope.launch {
             val lines = mutableListOf<String>()
             val result = withContext(Dispatchers.IO) {
+                BugReport.append(installLog, "== update from the shell")
                 try {
                     val installer = ReleaseInstaller(
                         store,
                         prober = ProcessProber(home = filesDir),
                         log = { line ->
                             lines += line
+                            BugReport.append(installLog, line)
                             runOnUiThread { binding.progress.text = lines.takeLast(6).joinToString("\n") }
                         },
                     )
-                    Result.success(installer.update())
+                    val r = installer.update()
+                    BugReport.append(installLog, if (r.promoted) "installed ${r.version}" else "${r.version}: ${r.detail}")
+                    Result.success(r)
                 } catch (e: Exception) {
+                    BugReport.append(installLog, "failed: ${e.message ?: e.javaClass.simpleName}")
                     Result.failure(e)
                 }
             }

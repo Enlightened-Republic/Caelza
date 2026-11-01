@@ -58,6 +58,13 @@
                 tools:text="Shizuku · not running" />
 
             <com.google.android.material.button.MaterialButton
+                android:id="@+id/logsButton"
+                style="@style/Widget.Material3.Button.TextButton"
+                android:layout_width="wrap_content"
+                android:layout_height="36dp"
+                android:text="@string/action_logs" />
+
+            <com.google.android.material.button.MaterialButton
                 android:id="@+id/updateButton"
                 style="@style/Widget.Material3.Button.TextButton"
                 android:layout_width="wrap_content"
@@ -180,6 +187,15 @@
                 android:layout_height="48dp"
                 android:layout_marginTop="4dp"
                 android:text="@string/action_setup" />
+
+            <!-- When the Runtime halted ("needs a hand"): the logs are the next thing to look at. -->
+            <com.google.android.material.button.MaterialButton
+                android:id="@+id/logsAction"
+                style="@style/Widget.Material3.Button.TextButton"
+                android:layout_width="match_parent"
+                android:layout_height="48dp"
+                android:text="@string/action_logs"
+                android:visibility="gone" />
 
             <TextView
                 android:id="@+id/progress"

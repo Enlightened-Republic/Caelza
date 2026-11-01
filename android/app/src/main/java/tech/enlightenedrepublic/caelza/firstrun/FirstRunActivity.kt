@@ -18,6 +18,7 @@ import tech.enlightenedrepublic.caelza.R
 import tech.enlightenedrepublic.caelza.RuntimeService
 import tech.enlightenedrepublic.caelza.body.SensorPermissions
 import tech.enlightenedrepublic.caelza.databinding.ActivityFirstRunBinding
+import tech.enlightenedrepublic.caelza.logs.BugReport
 import tech.enlightenedrepublic.caelza.model.HttpDownloader
 import tech.enlightenedrepublic.caelza.model.LlamaPin
 import tech.enlightenedrepublic.caelza.model.LlamaRuntime
@@ -289,8 +290,18 @@ class FirstRunActivity : AppCompatActivity() {
     // --- the steps' actions ---------------------------------------------------------
 
     private fun installRuntime() = work {
-        val result = ReleaseInstaller(store, prober = ProcessProber(home = filesDir), log = ::line).update()
-        line(if (result.promoted) getString(R.string.install_done, result.version) else "${result.version}: ${result.detail}")
+        // The installer's lines go to logs/install.log as well (the Logs screen's bug report).
+        val installLog = File(store.logsDir, BugReport.INSTALL_LOG)
+        BugReport.append(installLog, "== update from the first run")
+        val result = try {
+            ReleaseInstaller(store, prober = ProcessProber(home = filesDir), log = { line(it); BugReport.append(installLog, it) }).update()
+        } catch (e: Exception) {
+            BugReport.append(installLog, "failed: ${e.message ?: e.javaClass.simpleName}")
+            throw e
+        }
+        val outcome = if (result.promoted) getString(R.string.install_done, result.version) else "${result.version}: ${result.detail}"
+        BugReport.append(installLog, outcome)
+        line(outcome)
     }
 
     /** The free, local door: llama.cpp's Android build, the pick's GGUFs, the Runtime pointed at them, Cael created. */
