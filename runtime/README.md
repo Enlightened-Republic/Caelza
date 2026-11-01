@@ -27,7 +27,9 @@ runtime/
 │                      (the digest route, Home at /, the dashboard at /dashboard, sidebar + palette + titles, strings);
 │                      0006 the phone-first pass (header actions wrap, globe-only language button, chat toolbar wraps,
 │                      Runs padding and titles, no font CDN); 0007 the two doors on quickstart's first screen (the page
-│                      renders the overlay's Doors.tsx, the strings, the web test list)
+│                      renders the overlay's Doors.tsx, the strings, the web test list); 0008 the Mind's standing context
+│                      (a turn_context_for_agent hook on the Memory trait, the wrappers forwarding it, the memory
+│                      preamble opening with it, the xanima storage keys for it and for provisioning)
 ├── tools/phone-shots/ Playwright over every dashboard route at 390 × 844: screenshots, sideways scroll, elements past
 │                      the edge, controls under 32 px; a mock proxy for the Mind and Body routes
 ├── lib/rename.pl      the replacement engine
