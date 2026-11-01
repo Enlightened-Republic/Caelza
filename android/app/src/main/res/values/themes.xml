@@ -21,4 +21,22 @@
         <item name="android:navigationBarColor">@color/space</item>
         <item name="android:windowLightStatusBar">false</item>
     </style>
+
+    <!-- Eyebrows above a control: mono-ish caps, dim, like the dashboard's .cz-kicker. -->
+    <style name="Caelza.Kicker" parent="android:Widget.TextView">
+        <item name="android:layout_width">wrap_content</item>
+        <item name="android:layout_height">wrap_content</item>
+        <item name="android:letterSpacing">0.14</item>
+        <item name="android:textAllCaps">true</item>
+        <item name="android:textColor">@color/text_dim</item>
+        <item name="android:textSize">11sp</item>
+    </style>
+
+    <!-- The first run's wheels: a NumberPicker draws its rows in textColorPrimary and its two
+         divider lines in colorControlNormal, so the overlay gives it bone text and cyan lines. -->
+    <style name="ThemeOverlay.Caelza.Wheel" parent="ThemeOverlay.Material3.Dark">
+        <item name="android:textColorPrimary">@color/text</item>
+        <item name="colorControlNormal">@color/primary</item>
+        <item name="android:colorControlNormal">@color/primary</item>
+    </style>
 </resources>

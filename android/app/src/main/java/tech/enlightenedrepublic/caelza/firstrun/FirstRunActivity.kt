@@ -8,7 +8,8 @@ import android.os.Bundle
 import android.os.PowerManager
 import android.provider.Settings
 import android.view.View
-import android.widget.RadioButton
+import android.view.ViewGroup
+import android.widget.NumberPicker
 import androidx.appcompat.app.AppCompatActivity
 import androidx.lifecycle.lifecycleScope
 import kotlinx.coroutines.Dispatchers
@@ -48,6 +49,8 @@ class FirstRunActivity : AppCompatActivity() {
     private val lines = mutableListOf<String>()
     private var lastProgressAt = 0L
     private val pick: ModelLadder.Pick by lazy { ModelLadder.pick(ModelLadder.ramMb(totalRam())) }
+    /** The key door's wheels: the curated providers and their picks (bundle/models.json, bundled). */
+    private val providers: List<ModelCatalog.Provider> by lazy { ModelCatalog.load { assets.open(it) } }
 
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
@@ -109,7 +112,7 @@ class FirstRunActivity : AppCompatActivity() {
     private fun render() {
         val steps = FirstRun.Step.values()
         b.stepLabel.text = getString(R.string.fr_step, step.ordinal + 1, steps.size)
-        b.choices.visibility = View.GONE
+        b.wheels.visibility = View.GONE
         b.modelInput.visibility = View.GONE
         b.keyInput.visibility = View.GONE
         b.secondary.visibility = View.GONE
@@ -170,37 +173,56 @@ class FirstRunActivity : AppCompatActivity() {
         }
     }
 
+    /** The key door: two wheels (the provider, then one of its models with Cael's picks on top) and the key box. */
     private fun showKeyForm() {
-        if (b.choices.childCount == 0) {
-            FirstRun.PROVIDERS.forEachIndexed { i, p ->
-                b.choices.addView(RadioButton(this).apply {
-                    id = View.generateViewId()
-                    tag = i
-                    text = p.label
-                    setTextColor(getColor(R.color.text))
-                })
-            }
-            (b.choices.getChildAt(0) as RadioButton).isChecked = true
-            b.modelInput.setText(FirstRun.PROVIDERS[0].defaultModel)
-            b.choices.setOnCheckedChangeListener { group, checkedId ->
-                val p = provider()
-                val current = b.modelInput.text.toString().trim()
-                if (current.isEmpty() || FirstRun.PROVIDERS.any { it.defaultModel == current }) b.modelInput.setText(p.defaultModel)
-                b.keyInput.hint = getString(R.string.fr_key_hint, p.keyPrefix, p.where)
-                group.findViewById<RadioButton>(checkedId)?.requestFocus()
-            }
+        if (b.providerWheel.displayedValues == null) {
+            wheel(b.providerWheel, providers.map { it.label })
+            b.providerWheel.setOnValueChangedListener { _, _, _ -> showModels(reset = true) }
+            b.modelWheel.setOnValueChangedListener { _, _, _ -> modelChanged() }
+            showModels(reset = true)
         }
-        val p = provider()
-        b.keyInput.hint = getString(R.string.fr_key_hint, p.keyPrefix, p.where)
-        b.choices.visibility = View.VISIBLE
-        b.modelInput.visibility = View.VISIBLE
+        b.wheels.visibility = View.VISIBLE
         b.keyInput.visibility = View.VISIBLE
+        b.modelInput.visibility = if (typingModel()) View.VISIBLE else View.GONE
     }
 
-    private fun provider(): FirstRun.Provider {
-        val checked = b.choices.findViewById<RadioButton>(b.choices.checkedRadioButtonId)
-        return FirstRun.PROVIDERS[(checked?.tag as? Int) ?: 0]
+    /** A NumberPicker as a wheel of names: no wrap, no keyboard editing of the row. */
+    private fun wheel(w: NumberPicker, rows: List<String>) {
+        w.displayedValues = null
+        w.minValue = 0
+        w.maxValue = rows.size - 1
+        w.displayedValues = rows.toTypedArray()
+        w.wrapSelectorWheel = false
+        w.descendantFocusability = ViewGroup.FOCUS_BLOCK_DESCENDANTS
     }
+
+    private fun provider(): ModelCatalog.Provider = providers[b.providerWheel.value.coerceIn(0, providers.size - 1)]
+
+    /** The model wheel for the chosen provider: its picks, then "Type a name…" as the last row. */
+    private fun showModels(reset: Boolean) {
+        val p = provider()
+        wheel(b.modelWheel, p.models.map { it.row } + getString(R.string.fr_type_model))
+        if (reset) b.modelWheel.value = p.models.indexOf(p.best).coerceAtLeast(0)
+        b.keyInput.hint = getString(R.string.fr_key_hint, p.keyPrefix, p.where)
+        modelChanged()
+    }
+
+    /** The wheel rests on the last row: the owner types the model's name. */
+    private fun typingModel(): Boolean = b.modelWheel.value >= provider().models.size
+
+    private fun modelChanged() {
+        if (typingModel()) {
+            b.modelLine.text = ""
+            b.modelInput.visibility = View.VISIBLE
+            b.modelInput.requestFocus()
+        } else {
+            b.modelLine.text = provider().models[b.modelWheel.value].id
+            b.modelInput.visibility = View.GONE
+        }
+    }
+
+    private fun chosenModel(): String =
+        if (typingModel()) b.modelInput.text.toString().trim() else provider().models[b.modelWheel.value].id
 
     private fun batteryExempt(): Boolean =
         getSystemService(PowerManager::class.java)?.isIgnoringBatteryOptimizations(packageName) ?: false
@@ -354,7 +376,7 @@ class FirstRunActivity : AppCompatActivity() {
         }
         val p = provider()
         val key = b.keyInput.text.toString()
-        val model = b.modelInput.text.toString()
+        val model = chosenModel()
         if (!FirstRun.keyLooksRight(key)) {
             line(getString(R.string.fr_key_short))
             render()

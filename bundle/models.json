@@ -1,0 +1,119 @@
+{
+  "_": "The curated model catalog behind the simplified setup (docs/design/caelza-vision.md M4 phase 4a). The dashboard's /setup and the Android app's first run both spin these wheels: the eight providers most people bring a key for, and for each the picks Cael pins at the top of the model wheel (one `best`, the all-rounder he suggests; a `fast` one that is cheap and quick; the `strong` one that costs more; `free` where a provider has one), then a few more worth knowing. Below the picks the dashboard shows everything the provider offers right now, from the Runtime's live catalog. `id` is the Runtime's provider kind (the key under providers.models), `models_dev` the models.dev catalog key when it differs, `key_prefix` how that provider's keys start (empty when they have no fixed start), `key_page` where a key comes from. Update this as models ship: `python3 scripts/model_catalog.py check --online` confirms every id against models.dev, `python3 scripts/model_catalog.py sync` copies it into the app.",
+  "version": 1,
+  "updated": "2026-11-01",
+  "source": "https://models.dev/api.json",
+  "tags": {
+    "best": "best pick",
+    "fast": "fast and cheap",
+    "strong": "strongest",
+    "free": "free"
+  },
+  "providers": [
+    {
+      "id": "anthropic",
+      "label": "Anthropic",
+      "key_prefix": "sk-ant-",
+      "key_page": "https://console.anthropic.com/settings/keys",
+      "models": [
+        { "id": "claude-sonnet-5-5", "label": "Claude Sonnet 5.5", "tag": "best" },
+        { "id": "claude-haiku-5-5", "label": "Claude Haiku 5.5", "tag": "fast" },
+        { "id": "claude-fable-5-1", "label": "Claude Fable 5.1", "tag": "strong" },
+        { "id": "claude-opus-5-5", "label": "Claude Opus 5.5" },
+        { "id": "claude-sonnet-5", "label": "Claude Sonnet 5" }
+      ]
+    },
+    {
+      "id": "openai",
+      "label": "OpenAI",
+      "key_prefix": "sk-",
+      "key_page": "https://platform.openai.com/api-keys",
+      "models": [
+        { "id": "gpt-6.1-sol", "label": "GPT-6.1 Sol", "tag": "best" },
+        { "id": "gpt-6-luna", "label": "GPT-6 Luna", "tag": "fast" },
+        { "id": "gpt-6-astra", "label": "GPT-6 Astra", "tag": "strong" },
+        { "id": "gpt-6.1-terra", "label": "GPT-6.1 Terra" },
+        { "id": "gpt-5.6", "label": "GPT-5.6" }
+      ]
+    },
+    {
+      "id": "gemini",
+      "label": "Google Gemini",
+      "models_dev": "google",
+      "key_prefix": "AIza",
+      "key_page": "https://aistudio.google.com/apikey",
+      "models": [
+        { "id": "gemini-4-argon", "label": "Gemini 4 Argon", "tag": "best" },
+        { "id": "gemini-3.8-flash", "label": "Gemini 3.8 Flash", "tag": "fast" },
+        { "id": "gemini-3.5-flash-lite", "label": "Gemini 3.5 Flash Lite" },
+        { "id": "gemini-pro-latest", "label": "Gemini Pro (latest)" },
+        { "id": "gemini-flash-latest", "label": "Gemini Flash (latest)" }
+      ]
+    },
+    {
+      "id": "openrouter",
+      "label": "OpenRouter",
+      "key_prefix": "sk-or-",
+      "key_page": "https://openrouter.ai/settings/keys",
+      "models": [
+        { "id": "anthropic/claude-sonnet-5.5", "label": "Claude Sonnet 5.5", "tag": "best" },
+        { "id": "deepseek/deepseek-v4.1-flash-1017", "label": "DeepSeek V4.1 Flash", "tag": "fast" },
+        { "id": "anthropic/claude-fable-5.1", "label": "Claude Fable 5.1", "tag": "strong" },
+        { "id": "nvidia/nemotron-3.5-super-vl:free", "label": "Nemotron 3.5 Super (free)", "tag": "free" },
+        { "id": "openai/gpt-6.1-sol", "label": "GPT-6.1 Sol" },
+        { "id": "google/gemini-4-argon", "label": "Gemini 4 Argon" },
+        { "id": "x-ai/grok-4.7", "label": "Grok 4.7" },
+        { "id": "moonshotai/kimi-k3.1-pro", "label": "Kimi K3.1 Pro" }
+      ]
+    },
+    {
+      "id": "groq",
+      "label": "Groq",
+      "key_prefix": "gsk_",
+      "key_page": "https://console.groq.com/keys",
+      "models": [
+        { "id": "openai/gpt-oss-120b", "label": "GPT-OSS 120B", "tag": "best" },
+        { "id": "llama-3.1-8b-instant", "label": "Llama 3.1 8B Instant", "tag": "fast" },
+        { "id": "llama-3.3-70b-versatile", "label": "Llama 3.3 70B" },
+        { "id": "qwen/qwen3.8-27b", "label": "Qwen3.8 27B" },
+        { "id": "openai/gpt-oss-20b", "label": "GPT-OSS 20B" }
+      ]
+    },
+    {
+      "id": "deepseek",
+      "label": "DeepSeek",
+      "key_prefix": "sk-",
+      "key_page": "https://platform.deepseek.com/api_keys",
+      "models": [
+        { "id": "deepseek-v4-pro", "label": "DeepSeek V4 Pro", "tag": "best" },
+        { "id": "deepseek-flash", "label": "DeepSeek V4.1 Flash", "tag": "fast" },
+        { "id": "deepseek-v4-flash", "label": "DeepSeek V4 Flash" }
+      ]
+    },
+    {
+      "id": "mistral",
+      "label": "Mistral",
+      "key_prefix": "",
+      "key_page": "https://console.mistral.ai/api-keys",
+      "models": [
+        { "id": "mistral-large-4", "label": "Mistral Large 4", "tag": "best" },
+        { "id": "mistral-small-latest", "label": "Mistral Small (latest)", "tag": "fast" },
+        { "id": "mistral-medium-latest", "label": "Mistral Medium (latest)" },
+        { "id": "devstral-latest", "label": "Devstral 2 (code)" },
+        { "id": "ministral-14b-2512", "label": "Ministral 3 14B" }
+      ]
+    },
+    {
+      "id": "xai",
+      "label": "xAI (Grok)",
+      "key_prefix": "xai-",
+      "key_page": "https://console.x.ai/",
+      "models": [
+        { "id": "grok-4.7", "label": "Grok 4.7", "tag": "best" },
+        { "id": "grok-4.3", "label": "Grok 4.3", "tag": "fast" },
+        { "id": "grok-4.6", "label": "Grok 4.6" },
+        { "id": "grok-4.5", "label": "Grok 4.5" }
+      ]
+    }
+  ]
+}

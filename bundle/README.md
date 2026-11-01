@@ -47,5 +47,13 @@ picture, the roadmap, the UI redesign).
    runtime config so the Runtime spawns `caelza-body serve` and gets the
    Body's tools as `body__<tool>` ([`../body/README.md`](../body/README.md)).
 
+`models.json` is the curated model catalog behind the simplified setup: the
+providers most people bring a key for and, per provider, the picks Cael pins
+at the top of the model wheel (`best`, `fast`, `strong`, `free`). The
+dashboard's `/setup` and the Android app's first run spin the same file;
+`python3 scripts/model_catalog.py check --online` confirms every model id
+against models.dev, and `sync` refreshes the app's copy. Edit it as models
+ship.
+
 A one-command installer that does all three is on the roadmap; the manifest is
 what it will read.

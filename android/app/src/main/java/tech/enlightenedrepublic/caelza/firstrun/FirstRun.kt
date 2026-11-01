@@ -7,7 +7,8 @@ import tech.enlightenedrepublic.caelza.model.ModelLadder
  * it: the steps in order, the two doors to a brain (design §5, vision §3.4),
  * the `caelza config set` entries each door writes (the same ones
  * `scripts/model-setup.sh` and `caelza quickstart` write on Termux), and
- * Cael's line about what this phone can run. The Activity renders it.
+ * Cael's line about what this phone can run. The Activity renders it; the
+ * key door's providers and picks come from ModelCatalog (bundle/models.json).
  */
 object FirstRun {
     const val PREFS = "caelza"
@@ -16,17 +17,6 @@ object FirstRun {
     enum class Step { HELLO, RUNTIME, BRAIN, SHIZUKU, PERMISSIONS, BATTERY, HUB, START }
 
     enum class Door { LOCAL, KEY }
-
-    /** A provider the owner can bring a key for; the alias quickstart creates is `default`. */
-    data class Provider(val id: String, val label: String, val defaultModel: String, val keyPrefix: String, val where: String) {
-        val alias: String get() = "$id.default"
-    }
-
-    val PROVIDERS: List<Provider> = listOf(
-        Provider("anthropic", "Anthropic", "claude-sonnet-4-5", "sk-ant-", "console.anthropic.com"),
-        Provider("openai", "OpenAI", "gpt-4o", "sk-", "platform.openai.com"),
-        Provider("openrouter", "OpenRouter", "anthropic/claude-sonnet-4.5", "sk-or-", "openrouter.ai/keys"),
-    )
 
     fun next(step: Step): Step? = Step.values().getOrNull(step.ordinal + 1)
 
@@ -45,10 +35,14 @@ object FirstRun {
         "agents.main.model_provider" to pick.providerAgent,
     ) + caelConfig(pick.providerGuide)
 
-    /** Bring your own: the key and model under `<provider>.default`, the agent and Cael on it. */
-    fun keyConfig(provider: Provider, model: String, key: String): List<Pair<String, String>> = listOf(
+    /**
+     * Bring your own: the key and model under `<provider>.default`, the agent and Cael on it.
+     * The provider comes from the curated catalog (ModelCatalog, bundle/models.json); an empty
+     * model means its best pick.
+     */
+    fun keyConfig(provider: ModelCatalog.Provider, model: String, key: String): List<Pair<String, String>> = listOf(
         "providers.models.${provider.id}.default.api_key" to key.trim(),
-        "providers.models.${provider.id}.default.model" to model.trim().ifEmpty { provider.defaultModel },
+        "providers.models.${provider.id}.default.model" to model.trim().ifEmpty { provider.best.id },
         "agents.main.model_provider" to provider.alias,
     ) + caelConfig(provider.alias)
 

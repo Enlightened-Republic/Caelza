@@ -21,11 +21,18 @@ compares against; regenerate them with the same tool when a page changes.
 | `drawer.png` | the mobile menu: Home, Bodies, Memory, Procedures first |
 | `quickstart-doors.png` | Quickstart's first screen: the two doors, free and local or bring your own key (vision §3.4) |
 | `quickstart-local-door.png` | the local door: where Caelza runs, the RAM band, the ladder's model, Cael's line and the honest notes |
+| `setup-doors.png` | the simplified setup (`/setup`, M4 phase 4a): Cael's hello and the two doors, in the brand's colours |
+| `setup-provider.png` | the provider wheel: the curated eight, "More providers" for the rest the Runtime lists |
+| `setup-model.png` | the model wheel: Cael's picks tagged on top (best pick, fast and cheap, strongest), the live catalog below |
+| `setup-key.png` | the key box with where to get one, the show/hide eye, the chosen provider and model |
+| `setup-local.png` | the local door: this phone or a computer, the RAM wheel, the ladder's pick and the honest notes |
 
 The two quickstart shots were taken over the vite dev server with the daemon's
 answers canned (Playwright routes for `/api/quickstart/*`, `/api/status`, the
 pairing and reload probes), an Android user agent and this box's
 `deviceMemory`, so the local door opens on the phone runner at the 8 GB band.
+The setup shots were taken the same way (the catalog endpoint canned with a
+few Anthropic models so the model wheel shows the live list under the picks).
 
 ## The app's launcher icon
 

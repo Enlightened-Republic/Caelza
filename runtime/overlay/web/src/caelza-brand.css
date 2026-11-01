@@ -108,3 +108,381 @@
     min-width: 2.25rem;
   }
 }
+
+/* ---- The simplified setup (/setup, vision M4 phase 4a) ----------------------
+   Cael's screens in our colours: the space backdrop with the nebula glows, the
+   title in the mark's gradient, Cael's bubble, 52 px buttons, the scroll
+   wheel. One glowing element per view (the title), cyan does the work. The
+   page sits outside the dashboard chrome, so these are the page's own rules. */
+
+.cz-setup {
+  min-height: 100vh;
+  min-height: 100dvh;
+  color: var(--pc-text-primary);
+  background:
+    radial-gradient(60% 40% at 15% 10%, rgba(180, 79, 255, 0.22), transparent 70%),
+    radial-gradient(50% 35% at 85% 90%, rgba(34, 230, 255, 0.16), transparent 70%),
+    radial-gradient(30% 25% at 70% 20%, rgba(255, 45, 120, 0.08), transparent 70%),
+    #050310;
+  font-family: var(--pc-font-ui);
+}
+.cz-setup-col {
+  max-width: 440px;
+  margin: 0 auto;
+  padding: 20px 16px 36px;
+  display: flex;
+  flex-direction: column;
+  gap: 14px;
+}
+.cz-setup-head {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+}
+.cz-setup-step {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  min-height: 2.25rem;
+  margin-top: 4px;
+}
+.cz-kicker {
+  font-family: var(--pc-font-mono);
+  font-size: 11px;
+  letter-spacing: 0.16em;
+  text-transform: uppercase;
+  color: var(--pc-text-muted);
+}
+.cz-kicker-violet {
+  color: #7b6bff;
+}
+.cz-title {
+  margin: 0;
+  font-weight: 700;
+  font-size: 30px;
+  line-height: 1.1;
+  letter-spacing: -0.02em;
+  background: var(--cz-gradient-mark);
+  -webkit-background-clip: text;
+  background-clip: text;
+  color: transparent;
+  -webkit-text-fill-color: transparent;
+  filter: drop-shadow(0 0 14px rgba(34, 230, 255, 0.18));
+}
+.cz-bubble {
+  background: rgba(18, 14, 34, 0.85);
+  border: 1px solid var(--pc-border);
+  border-left: 2px solid #7b6bff;
+  border-radius: 14px;
+  padding: 14px 16px;
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+}
+.cz-bubble-text {
+  font-size: 16px;
+  line-height: 1.55;
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+}
+.cz-bubble-text p {
+  margin: 0;
+}
+.cz-note {
+  font-size: 13px;
+  line-height: 1.5;
+  color: var(--pc-text-secondary);
+}
+.cz-mono {
+  font-family: var(--pc-font-mono);
+  font-size: 12px;
+  color: var(--pc-text-secondary);
+  word-break: break-all;
+  text-align: center;
+  min-height: 1.2em;
+}
+.cz-link {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  color: var(--pc-accent-light);
+  font-size: 14px;
+  min-height: 2.25rem;
+}
+.cz-setup-control {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+}
+.cz-setup-actions {
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+  margin-top: 4px;
+}
+.cz-setup-foot {
+  display: flex;
+  justify-content: space-between;
+  gap: 12px;
+  margin-top: 8px;
+  font-size: 13px;
+}
+.cz-setup-foot a {
+  color: var(--pc-text-muted);
+  min-height: 2.25rem;
+  display: inline-flex;
+  align-items: center;
+}
+.cz-setup-foot a:hover {
+  color: var(--pc-text-primary);
+}
+
+/* Buttons: one gradient primary per screen, an outlined secondary, text buttons. */
+.cz-btn {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: 8px;
+  width: 100%;
+  height: 52px;
+  border-radius: 14px;
+  font-size: 16px;
+  font-weight: 700;
+  cursor: pointer;
+  transition: opacity 180ms, box-shadow 180ms, transform 180ms;
+}
+.cz-btn:disabled {
+  opacity: 0.4;
+  cursor: not-allowed;
+}
+.cz-btn-primary {
+  border: none;
+  color: #050310;
+  background: linear-gradient(90deg, #22e6ff 0%, #7b6bff 100%);
+  box-shadow: 0 8px 28px rgba(34, 230, 255, 0.18);
+}
+.cz-btn-primary:hover:not(:disabled) {
+  box-shadow: 0 10px 32px rgba(34, 230, 255, 0.3);
+}
+.cz-btn-primary:active:not(:disabled) {
+  transform: translateY(1px);
+}
+.cz-btn-secondary {
+  border: 1px solid rgba(34, 230, 255, 0.4);
+  background: rgba(34, 230, 255, 0.06);
+  color: #7af0ff;
+}
+.cz-btn-secondary:hover:not(:disabled) {
+  background: rgba(34, 230, 255, 0.12);
+}
+.cz-btn-text {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: 6px;
+  min-height: 2.25rem;
+  padding: 0 6px;
+  border: none;
+  background: transparent;
+  color: var(--pc-text-muted);
+  font-size: 14px;
+  cursor: pointer;
+}
+.cz-btn-text:hover:not(:disabled) {
+  color: var(--pc-text-primary);
+}
+.cz-btn:focus-visible,
+.cz-btn-text:focus-visible,
+.cz-chip:focus-visible,
+.cz-icon-btn:focus-visible,
+.cz-wheel:focus-visible {
+  outline: 2px solid rgba(34, 230, 255, 0.7);
+  outline-offset: 2px;
+}
+
+/* Chips: a two-way choice (this phone / a computer). */
+.cz-chip-row {
+  display: flex;
+  gap: 8px;
+}
+.cz-chip {
+  flex: 1;
+  height: 44px;
+  border-radius: 12px;
+  border: 1px solid var(--pc-border);
+  background: transparent;
+  color: var(--pc-text-secondary);
+  font-size: 15px;
+  cursor: pointer;
+}
+.cz-chip.is-on {
+  border-color: rgba(34, 230, 255, 0.55);
+  background: rgba(34, 230, 255, 0.08);
+  color: var(--pc-text-primary);
+}
+.cz-chip:disabled {
+  opacity: 0.4;
+  cursor: not-allowed;
+}
+
+/* Inputs: one box, 48 px, the key with its show/hide eye. */
+.cz-input {
+  width: 100%;
+  height: 48px;
+  padding: 0 14px;
+  border-radius: 12px;
+  border: 1px solid var(--pc-border);
+  background: var(--pc-bg-input);
+  color: var(--pc-text-primary);
+  font-size: 16px;
+  font-family: var(--pc-font-mono);
+}
+.cz-input::placeholder {
+  color: var(--pc-text-faint);
+}
+.cz-input:focus {
+  outline: none;
+  border-color: rgba(34, 230, 255, 0.6);
+  box-shadow: 0 0 0 3px rgba(34, 230, 255, 0.15);
+}
+.cz-input-row {
+  position: relative;
+}
+.cz-input-row .cz-input {
+  padding-right: 48px;
+}
+.cz-icon-btn {
+  position: absolute;
+  right: 4px;
+  top: 4px;
+  width: 40px;
+  height: 40px;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  border: none;
+  border-radius: 10px;
+  background: transparent;
+  color: var(--pc-text-muted);
+  cursor: pointer;
+}
+.cz-icon-btn:hover {
+  color: var(--pc-text-primary);
+}
+.cz-error {
+  border: 1px solid rgba(255, 45, 120, 0.45);
+  background: rgba(255, 45, 120, 0.08);
+  border-radius: 12px;
+  padding: 12px 14px;
+  font-size: 14px;
+  line-height: 1.5;
+}
+.cz-error ul {
+  margin: 6px 0 0;
+  padding-left: 18px;
+  font-family: var(--pc-font-mono);
+  font-size: 12px;
+  color: var(--pc-text-secondary);
+}
+
+/* The pick's tag on a wheel row. */
+.cz-tag {
+  font-family: var(--pc-font-mono);
+  font-size: 10px;
+  letter-spacing: 0.12em;
+  text-transform: uppercase;
+  padding: 2px 7px;
+  border-radius: 999px;
+  border: 1px solid currentColor;
+  white-space: nowrap;
+}
+.cz-tag-best {
+  color: #22e6ff;
+}
+.cz-tag-fast {
+  color: #39ff14;
+}
+.cz-tag-strong {
+  color: #c970ff;
+}
+.cz-tag-free {
+  color: #ffe600;
+}
+
+/* The wheel: a snapping column with a band in the middle. */
+.cz-wheel-wrap {
+  position: relative;
+  border-radius: 14px;
+  border: 1px solid var(--pc-border);
+  background: rgba(12, 9, 24, 0.7);
+  overflow: hidden;
+}
+.cz-wheel-band {
+  position: absolute;
+  left: 8px;
+  right: 8px;
+  top: calc(50% - 22px);
+  height: 44px;
+  border-radius: 10px;
+  background: rgba(34, 230, 255, 0.07);
+  border-top: 1px solid rgba(34, 230, 255, 0.35);
+  border-bottom: 1px solid rgba(180, 79, 255, 0.35);
+  pointer-events: none;
+}
+.cz-wheel {
+  height: 100%;
+  overflow-y: auto;
+  overscroll-behavior: contain;
+  scroll-snap-type: y mandatory;
+  -webkit-overflow-scrolling: touch;
+  scrollbar-width: none;
+  -webkit-mask-image: linear-gradient(to bottom, transparent, #000 28%, #000 72%, transparent);
+  mask-image: linear-gradient(to bottom, transparent, #000 28%, #000 72%, transparent);
+}
+.cz-wheel::-webkit-scrollbar {
+  display: none;
+}
+.cz-wheel-row {
+  height: 44px;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px;
+  padding: 0 18px;
+  scroll-snap-align: center;
+  scroll-snap-stop: always;
+  color: var(--pc-text-secondary);
+  font-size: 16px;
+  cursor: pointer;
+  user-select: none;
+  transition: color 180ms, opacity 180ms;
+}
+.cz-wheel-row[data-dist="2"] {
+  opacity: 0.6;
+}
+.cz-wheel-row[data-dist="3"] {
+  opacity: 0.35;
+}
+.cz-wheel-row.is-selected {
+  color: var(--pc-text-primary);
+  font-weight: 700;
+  font-size: 17px;
+}
+.cz-wheel-label {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.cz-wheel-hint {
+  flex-shrink: 0;
+}
+@media (prefers-reduced-motion: reduce) {
+  .cz-wheel {
+    scroll-behavior: auto;
+  }
+  .cz-wheel-row,
+  .cz-btn {
+    transition: none;
+  }
+}

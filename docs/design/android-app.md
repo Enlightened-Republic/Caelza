@@ -278,12 +278,19 @@ files dir), so the Runtime validates every value and encrypts a key itself:
   Cael's workspace gets `SOUL.md` from the bundled `guide/cael.system.md`
   (a copy in `assets/`, pinned equal by `tests/test_android_body.py`) and the
   `IDENTITY.md` card `model-setup.sh` writes.
-- **Bring your own key.** Anthropic, OpenAI or OpenRouter, the model name
-  prefilled and editable, the key pasted once: `providers.models.<provider>.default.api_key`
-  and `.model`, `agents.main.model_provider = "<provider>.default"` (the
-  dotted alias the Runtime resolves), and Cael on the same provider with the
-  guide profile. The key goes to the Runtime's encrypted store, never into a
-  chat.
+- **Bring your own key.** Two wheels (`NumberPicker`s in the brand's
+  colours) and one box: the provider, then one of its models, then the key
+  pasted once. The wheels spin the curated catalog `bundle/models.json`,
+  bundled as `assets/models.json` byte for byte (`firstrun/ModelCatalog.kt`
+  reads it; `ModelCatalogTest` and `tests/test_setup_page.py` pin the copy;
+  `python3 scripts/model_catalog.py sync` refreshes it): the eight providers
+  most people bring a key for and, per provider, Cael's picks (best, fast and
+  cheap, strongest, free) with a last row to type any model name. The dashboard's
+  `/setup` spins the same file (vision M4 phase 4a). What gets written is
+  unchanged: `providers.models.<provider>.default.api_key` and `.model`,
+  `agents.main.model_provider = "<provider>.default"` (the dotted alias the
+  Runtime resolves), and Cael on the same provider with the guide profile.
+  The key goes to the Runtime's encrypted store, never into a chat.
 
 The dashboard's quickstart stays the configuration surface; the app only gets
 the owner to the first working turn. W^X (§2) applies to `llama-server` as it

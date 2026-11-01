@@ -19,7 +19,8 @@ runtime/
 │                      memory backend); crates/caelza-gateway/src/api_mind.rs (/api/mind, the brain service proxied
 │                      for the dashboard); crates/caelza-gateway/src/api_bodies.rs (/api/bodies, the Body's MCP server
 │                      reached for the dashboard); web/ brand CSS, the lockup component, PWA manifest + service worker,
-│                      the Home, Bodies, Memory and Procedures pages, the shared ApprovalQueue
+│                      the Home, Bodies, Memory and Procedures pages, the shared ApprovalQueue, the simplified
+│                      setup (pages/setup: Cael's screens, the scroll wheel, the logic over bundle/models.json)
 ├── patches/           *.patch applied after the rename: 0001 xanima memory backend (config schema, backend registry,
 │                      factory, dashboard picker); 0002 UI phase 1 (fonts default, lockup, attribution, accent labels,
 │                      PWA hooks, Service-Worker-Allowed in the gateway); 0003 the Memory page (routes, router, sidebar);
@@ -29,7 +30,9 @@ runtime/
 │                      Runs padding and titles, no font CDN); 0007 the two doors on quickstart's first screen (the page
 │                      renders the overlay's Doors.tsx, the strings, the web test list); 0008 the Mind's standing context
 │                      (a turn_context_for_agent hook on the Memory trait, the wrappers forwarding it, the memory
-│                      preamble opening with it, the xanima storage keys for it and for provisioning)
+│                      preamble opening with it, the xanima storage keys for it and for provisioning); 0009 the
+│                      simplified setup (/setup routed outside the chrome, fresh installs land on it, "Set up" in the
+│                      sidebar, the strings, JSON imports for the catalog, the logic test in the web test list)
 ├── tools/phone-shots/ Playwright over every dashboard route at 390 × 844: screenshots, sideways scroll, elements past
 │                      the edge, controls under 32 px; a mock proxy for the Mind and Body routes
 ├── lib/rename.pl      the replacement engine

@@ -130,6 +130,14 @@ Rules of thumb: cyan does the work; purple marks the brand; the gradient is a
 flourish, not a fill; status colours are reserved for status. One glowing
 element per view.
 
+The one surface that wears more is the simplified setup (`/setup` on the
+dashboard, the first run in the app): Space as the backdrop with the nebula
+glows, the title in the mark gradient, the screen's one primary button filled
+cyan → violet, Cael's bubble on Bg 3 with a violet rule. It is the first thing a
+new owner sees, so it carries the brand; the pages behind it go back to the
+rules above. The Republic gradient still appears only in the parent's own
+moments.
+
 ## Type
 
 - **Orbitron 900** for the wordmark only.

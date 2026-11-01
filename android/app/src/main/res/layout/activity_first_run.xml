@@ -74,13 +74,53 @@
             android:textSize="12sp"
             tools:text="42% · 470 of 1065 MiB" />
 
-        <RadioGroup
-            android:id="@+id/choices"
+        <!-- The key door's two wheels: the provider, then one of its models (bundle/models.json). -->
+        <LinearLayout
+            android:id="@+id/wheels"
             android:layout_width="match_parent"
             android:layout_height="wrap_content"
             android:layout_marginTop="12dp"
             android:orientation="vertical"
-            android:visibility="gone" />
+            android:visibility="gone">
+
+            <TextView
+                style="@style/Caelza.Kicker"
+                android:text="@string/fr_provider" />
+
+            <NumberPicker
+                android:id="@+id/providerWheel"
+                android:layout_width="match_parent"
+                android:layout_height="132dp"
+                android:layout_marginTop="4dp"
+                android:background="@color/bg3"
+                android:descendantFocusability="blocksDescendants"
+                android:theme="@style/ThemeOverlay.Caelza.Wheel" />
+
+            <TextView
+                style="@style/Caelza.Kicker"
+                android:layout_marginTop="12dp"
+                android:text="@string/fr_model" />
+
+            <NumberPicker
+                android:id="@+id/modelWheel"
+                android:layout_width="match_parent"
+                android:layout_height="132dp"
+                android:layout_marginTop="4dp"
+                android:background="@color/bg3"
+                android:descendantFocusability="blocksDescendants"
+                android:theme="@style/ThemeOverlay.Caelza.Wheel" />
+
+            <TextView
+                android:id="@+id/modelLine"
+                android:layout_width="match_parent"
+                android:layout_height="wrap_content"
+                android:layout_marginTop="6dp"
+                android:fontFamily="monospace"
+                android:gravity="center"
+                android:textColor="@color/primary_light"
+                android:textSize="12sp"
+                tools:text="claude-sonnet-5-5" />
+        </LinearLayout>
 
         <EditText
             android:id="@+id/modelInput"

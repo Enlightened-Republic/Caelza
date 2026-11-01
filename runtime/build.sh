@@ -146,6 +146,11 @@ apply_overlay() {
       mkdir -p "$WORK/$(dirname "$f")"; cp "$HERE/overlay/$f" "$WORK/$f"
     done
   fi
+  # The curated model catalog the setup page's wheels spin (bundle/models.json
+  # is the one source; the Android app's assets/models.json is a pinned copy).
+  log "copying bundle/models.json beside the setup page"
+  mkdir -p "$WORK/web/src/pages/setup"
+  cp "$ROOT/bundle/models.json" "$WORK/web/src/pages/setup/models.json"
 }
 
 apply_assets() {
