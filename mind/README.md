@@ -87,6 +87,7 @@ backend registry, the factory, the dashboard picker) and goes into every build
 
 | Runtime call | Brain service | Note |
 |---|---|---|
+| `turn_context_for_agent` (every turn, ahead of the recalled entries) | `brain_turn_context` with `query`, `session_key`, `owner_turn` | the agent's standing context as the service's own host shows it: `[BRAIN: identity]`, `[BRAIN: active goals]`, the `[BRAIN: goals]` note, `[BRAIN: now]` (the current task); it opens the `[Memory context]` block, re-rendered every turn and never stored in history, so it outlives context compaction; capped by `turn_context_max_chars`; the note ids it carries are acked on the next assistant auto-save; a read-only token (Cael's) is told once and skipped |
 | `recall(query)` (every turn, context assembly) | `brain_query` with `format = json`, `scope` from config | private + shared, fused by the service; confidence and `created_at` carried into the entry; empty or `*` queries recall nothing (the service needs a query) |
 | `store` of an auto-saved turn (`conversation`) | `brain_episode_append` | role from the key (`user_msg_*` → user, `assistant_resp_*` → assistant); the service's own noise filter drops heartbeat / cron / `NO_REPLY` turns |
 | `store` of a fact (`core`, `daily`, custom) | `brain_write` | label = key; `core` → `semantic`, `daily` → `episodic`, a custom category that names a node type is used as is; importance passes through, pinned → 1.0 |
@@ -94,37 +95,53 @@ backend registry, the factory, the dashboard picker) and goes into every build
 | `count` / `stats` | `brain_stats` | nodes per brain and per type |
 | `health_check` | `GET /health` | no token |
 | `list` | none | the service has no enumerate-everything call; `caelza memory list` is empty on this backend |
+| an agent with no token file | `brain_provision_agent` with `agentId`, called with the provision-scoped token in `provision_token_file` | the service makes the agent's brain and mints its token (the scopes in the service's `provisioning.scopes`, `read, write, shared-write` by default); the backend writes `~/.xanima/tokens/<agent>.token` owner-only and carries on, so a new `[agents.<alias>]` needs no manual mint; loopback only, by the service's rule; a failure is said once and the usual "no token" error names both ways out |
 
 Selected with `[memory] backend = "xanima"`; `[storage.xanima.<alias>]` holds
 `url` (default `http://127.0.0.1:18790`), `token_file`
 (`~/.xanima/tokens/{agent}.token`, one token per agent alias) or a single
-`token`, `agent` (the brain for operations that name no agent), `scope` and
-`timeout_secs`. A bare `backend = "xanima"` with no storage block uses those
-defaults. Agents: the `AgentScopedMemory` wrapper passes the agent alias, the
-backend picks that alias's token, so the service's private brains and the
+`token`, `agent` (the brain for operations that name no agent), `scope`,
+`timeout_secs`, `turn_context` (default true) with `turn_context_max_chars`
+(1500), and `provision_token_file` (`~/.xanima/tokens/provision.token`; `""`
+turns provisioning off). A bare `backend = "xanima"` with no storage block uses
+those defaults. Agents: the `AgentScopedMemory` wrapper passes the agent alias,
+the backend picks that alias's token, so the service's private brains and the
 runtime's isolation agree; recall across granted siblings
 (`workspace.read_memory_from`) queries each sibling's brain with its own token
-and skips siblings that have none. Sleep stays in the service: the runtime runs
-no consolidation timers and reads what the service dreamt.
+and skips siblings that have none; the standing context is always the bound
+agent's own. Sleep stays in the service: the runtime runs no consolidation
+timers and reads what the service dreamt.
 
-Mint tokens once per agent:
+Mint tokens once per agent, or once for the provisioner and let the backend
+mint the rest:
 
 ```sh
 xanima-server token mint --agent main --scopes read,write --json | jq -r .token > ~/.xanima/tokens/main.token
 xanima-server token mint --agent cael --scopes read       --json | jq -r .token > ~/.xanima/tokens/cael.token
+# or: one provision-scoped token, and every new agent gets a brain on first use
+xanima-server token mint --agent provisioner --scopes provision --json | jq -r .token > ~/.xanima/tokens/provision.token
 ```
 
-`caelza-mind.example.toml` has the block; `caelza memory stats` against a
-running service is the smoke test.
+`brain_turn_context` needs the `write` scope: an agent on a read-only token
+(Cael, as minted above) gets recall but no standing context, which the backend
+says once in the log and then stops asking. A provisioned token carries the
+service's default scopes, so a provisioned Cael would get the header too.
 
-Still open from xanima's host-side behaviour, in priority order: the
-never-compacted identity/goals header and the `[BRAIN: goals]` alignment note
-(`brain_turn_context`, pinned through the runtime's system-prompt assembly);
-auto-provisioned brains for new agents (`brain_provision_agent`, so a new
-`[agents.<alias>]` needs no manual mint); the last-24h digest. The system-noise
-filter is already in the service (`brain_episode_append` skips heartbeat polls,
-cron wakes and `NO_REPLY`), so the runtime's own heartbeats and cron turns
-never become memories.
+`caelza-mind.example.toml` has the block; `caelza memory stats` against a
+running service is the smoke test, and the memory crate's ignored live test
+(`cargo test -p caelza-memory --lib -- xanima::tests::live --include-ignored`
+with `CAELZA_XANIMA_E2E_URL`, `CAELZA_XANIMA_E2E_TOKEN_FILE` and, to exercise
+provisioning, `CAELZA_XANIMA_E2E_PROVISION_TOKEN_FILE`) walks store, recall,
+the standing context, the ack and forget against the real service. The
+contract the backend speaks was read from the service's source
+(`packages/server/src/{tools,provision,tokens}.ts` at 0.7.0): the tool
+arguments, the JSON keys of the replies (`identity`, `activeGoals`, `text`,
+`now`, `noteIds`; `status`, `token`), the scopes and the loopback rule.
+
+Still open from xanima's host-side behaviour: the last-24h digest. The
+system-noise filter is already in the service (`brain_episode_append` skips
+heartbeat polls, cron wakes and `NO_REPLY`), so the runtime's own heartbeats
+and cron turns never become memories.
 
 ### Later
 

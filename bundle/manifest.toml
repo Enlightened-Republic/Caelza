@@ -78,9 +78,9 @@ formerly = "openwave"
 repo = "https://github.com/Enlightened-Republic/xanima-openclaw"   # main carries the rename (merged 2026-10-18)
 npm = "xanima-openclaw"           # published 2026-10-19; ClawHub: clawhub:xanima
 plugin_id = "xanima"              # legacyPluginIds: ["openwave"]; config entry plugins.entries.xanima
-version = "0.5.0"
+version = "0.7.0"                 # the plugin vendors the 0.7.0 engine (its README, read 2026-11-01)
 engine = "xanima-core"            # formerly sharpwave-core; published 2026-10-19
-engine_version = "0.5.0"
+engine_version = "0.7.0"          # npm, read 2026-11-01
 engine_repo = "https://github.com/Enlightened-Republic/xanima"   # main carries the rename
 service = "xanima-server"         # formerly sharpwave-server; private workspace package (not on npm), runs from a sharpwave checkout; MCP Streamable HTTP on 127.0.0.1:18790
 mcp_server = "xanima"             # published 2026-10-19; keeps a `sharpwave` alias bin
@@ -97,6 +97,12 @@ native_overlay = "runtime/overlay/crates/caelza-memory/src/xanima.rs"
 native_patch = "runtime/patches/0001-xanima-memory-backend.patch"
 service_url = "http://127.0.0.1:18790"
 token_file = "~/.xanima/tokens/{agent}.token"   # one bearer token per agent alias: xanima-server token mint --agent <alias> --scopes read,write
+# The brain's standing context (brain_turn_context: identity, active goals, the goals note, the current task) opens the
+# [Memory context] block every turn through a turn_context_for_agent hook on the Memory trait; an agent with no token
+# file is provisioned (brain_provision_agent) with the provision-scoped token below. The contract was read from the
+# service's source (packages/server/src/{tools,provision,tokens}.ts at 0.7.0).
+turn_context_patch = "runtime/patches/0008-mind-turn-context.patch"
+provision_token_file = "~/.xanima/tokens/provision.token"   # xanima-server token mint --agent provisioner --scopes provision
 
 # ---------------------------------------------------------------------------
 # Body — the device layer: Termux/Android sensors, ADB device control, the

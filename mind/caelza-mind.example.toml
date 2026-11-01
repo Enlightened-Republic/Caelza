@@ -27,7 +27,10 @@ schema_version = 3   # already present in a quickstart-written config; keep it i
 # C. Native backend. Mint one token per agent and drop each in its file:
 #      xanima-server token mint --agent main --scopes read,write --json \
 #        | jq -r .token > ~/.xanima/tokens/main.token
-#    (the same for every alias under [agents.*]; Cael needs only `read`).
+#    (the same for every alias under [agents.*]; Cael needs only `read`), or
+#    mint one provision-scoped token and let the backend make the rest:
+#      xanima-server token mint --agent provisioner --scopes provision --json \
+#        | jq -r .token > ~/.xanima/tokens/provision.token
 #    A bare `backend = "xanima"` with no [storage.xanima.*] block uses exactly
 #    these defaults.
 [memory]
@@ -39,6 +42,9 @@ token_file = "~/.xanima/tokens/{agent}.token"   # {agent} = the agent alias; or 
 agent = "main"                             # the brain used when an operation names no agent (operator CLI)
 scope = "all"                              # recall searches the private brain + the shared brain; or private | shared
 timeout_secs = 20
+turn_context = true                        # the brain's standing context ([BRAIN: identity | active goals | goals | now]) ahead of the recalled entries, every turn
+turn_context_max_chars = 1500              # its cap; the recalled entries keep [memory]'s own budget
+provision_token_file = "~/.xanima/tokens/provision.token"   # an agent with no token file gets a brain and a token through brain_provision_agent; "" turns this off
 
 # ---------------------------------------------------------------------------
 # A. Tools path (stdio). Requires: npm i -g xanima   (Node 20+)

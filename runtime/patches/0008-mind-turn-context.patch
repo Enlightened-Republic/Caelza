@@ -1,0 +1,437 @@
+The Mind's standing context in every turn, and brains that provision themselves.
+
+`turn_context_for_agent` on the `Memory` trait (default empty) lets a backend put
+its own standing context ahead of the recalled entries; `AgentScopedMemory`
+(the bound agent's, never a sibling's), `ScannedMemory` (the read-time scan),
+`AuditedMemory` and `RetrievalPipeline` (never cached) forward it, and
+`render_memory_context` opens the `[Memory context]` block with it, charged to
+the block's budget, so it is re-rendered every turn, stripped from history
+like the rest of the preamble, and outlives context compaction.
+`XanimaStorageConfig` gains `turn_context`, `turn_context_max_chars` and
+`provision_token_file`. The backend that fills all this in is the overlay's
+crates/caelza-memory/src/xanima.rs (brain_turn_context, brain_provision_agent).
+
+--- a/crates/caelza-api/src/memory_traits.rs
++++ b/crates/caelza-api/src/memory_traits.rs
+@@ -630,6 +630,26 @@
+     ) {
+     }
+ 
++    /// A backend's own standing context for the turn, put in front of the
++    /// recalled entries on every injection: who the agent is, what it is
++    /// working toward and on right now, as the backend keeps them (the brain
++    /// service's identity, goals and current-task blocks). It is re-rendered
++    /// every turn and never stored in history, so it outlives context
++    /// compaction. `agent_id` is the bound agent when the caller knows it,
++    /// `session_id` the conversation, `query` the turn's message, and
++    /// `owner_turn` whether that message is the owner's own words (a backend
++    /// may read the current task from them). Default: empty, for backends
++    /// that keep no such state.
++    async fn turn_context_for_agent(
++        &self,
++        _agent_id: Option<&str>,
++        _session_id: Option<&str>,
++        _query: &str,
++        _owner_turn: bool,
++    ) -> anyhow::Result<String> {
++        Ok(String::new())
++    }
++
+     /// Recall memories scoped to a specific namespace.
+     ///
+     /// Default implementation delegates to `recall()` and filters by namespace.
+--- a/crates/caelza-memory/src/agent_scoped.rs
++++ b/crates/caelza-memory/src/agent_scoped.rs
+@@ -180,6 +180,20 @@
+         self.inner.health_check().await
+     }
+ 
++    async fn turn_context_for_agent(
++        &self,
++        _agent_id: Option<&str>,
++        session_id: Option<&str>,
++        query: &str,
++        owner_turn: bool,
++    ) -> Result<String> {
++        // The bound agent's own standing context, never a sibling's: grants
++        // widen recall, not identity.
++        self.inner
++            .turn_context_for_agent(Some(&self.agent_id), session_id, query, owner_turn)
++            .await
++    }
++
+     fn refresh_embedder(
+         &self,
+         model_provider: &str,
+--- a/crates/caelza-memory/src/scanned.rs
++++ b/crates/caelza-memory/src/scanned.rs
+@@ -305,6 +305,27 @@
+         self.inner.name()
+     }
+ 
++    async fn turn_context_for_agent(
++        &self,
++        agent_id: Option<&str>,
++        session_id: Option<&str>,
++        query: &str,
++        owner_turn: bool,
++    ) -> anyhow::Result<String> {
++        let text = self
++            .inner
++            .turn_context_for_agent(agent_id, session_id, query, owner_turn)
++            .await?;
++        // The read-time scan the recalled entries get: standing context that
++        // reads as an injection is withheld from the prompt, like a flagged row.
++        if let Some(scope) = self.read_scope()?
++            && !threat::scan(&text, scope).is_empty()
++        {
++            return Ok(String::new());
++        }
++        Ok(text)
++    }
++
+     fn refresh_embedder(
+         &self,
+         model_provider: &str,
+--- a/crates/caelza-memory/src/audit.rs
++++ b/crates/caelza-memory/src/audit.rs
+@@ -178,6 +178,19 @@
+         self.inner.name()
+     }
+ 
++    async fn turn_context_for_agent(
++        &self,
++        agent_id: Option<&str>,
++        session_id: Option<&str>,
++        query: &str,
++        owner_turn: bool,
++    ) -> anyhow::Result<String> {
++        // Not a recall of stored rows, so not an audit row: forwarded as is.
++        self.inner
++            .turn_context_for_agent(agent_id, session_id, query, owner_turn)
++            .await
++    }
++
+     fn refresh_embedder(
+         &self,
+         model_provider: &str,
+--- a/crates/caelza-memory/src/retrieval.rs
++++ b/crates/caelza-memory/src/retrieval.rs
+@@ -308,6 +308,20 @@
+         self.memory.name()
+     }
+ 
++    async fn turn_context_for_agent(
++        &self,
++        agent_id: Option<&str>,
++        session_id: Option<&str>,
++        query: &str,
++        owner_turn: bool,
++    ) -> anyhow::Result<String> {
++        // Standing context changes between turns (the current task above all),
++        // so it never goes through the recall cache.
++        self.memory
++            .turn_context_for_agent(agent_id, session_id, query, owner_turn)
++            .await
++    }
++
+     async fn store(
+         &self,
+         key: &str,
+--- a/crates/caelza-config/src/schema.rs
++++ b/crates/caelza-config/src/schema.rs
+@@ -12711,6 +12711,21 @@
+     pub scope: String,
+     /// Request timeout in seconds (default 20).
+     pub timeout_secs: u64,
++    /// Put the brain's standing context in front of the recalled entries on
++    /// every turn (`brain_turn_context`: the agent's identity, its goals and
++    /// the current task), re-rendered each turn so it outlives context
++    /// compaction. Default true.
++    pub turn_context: bool,
++    /// Cap on that context, in characters (default 1500). The recalled
++    /// entries keep their own budget under `[memory]`.
++    pub turn_context_max_chars: usize,
++    /// Path of a provision-scoped token (`xanima-server token mint --agent
++    /// provisioner --scopes provision`). When an agent has no token file, the
++    /// backend asks the service for a brain and a token with it
++    /// (`brain_provision_agent`) and writes the agent's token file, so a new
++    /// `[agents.<alias>]` needs no manual mint. Default
++    /// `~/.xanima/tokens/provision.token`; `""` turns provisioning off.
++    pub provision_token_file: Option<String>,
+ }
+ 
+ impl Default for XanimaStorageConfig {
+@@ -12722,6 +12737,9 @@
+             agent: "main".into(),
+             scope: "all".into(),
+             timeout_secs: 20,
++            turn_context: true,
++            turn_context_max_chars: default_xanima_turn_context_max_chars(),
++            provision_token_file: None,
+         }
+     }
+ }
+@@ -12730,6 +12748,10 @@
+     "http://127.0.0.1:18790".into()
+ }
+ 
++fn default_xanima_turn_context_max_chars() -> usize {
++    1500
++}
++
+ fn default_storage_schema() -> String {
+     "public".into()
+ }
+--- a/crates/caelza-runtime/src/agent/memory_inject.rs
++++ b/crates/caelza-runtime/src/agent/memory_inject.rs
+@@ -351,10 +351,44 @@
+         decay::apply_time_decay(&mut entries, decay::DEFAULT_HALF_LIFE_DAYS);
+     }
+ 
++    // The backend's standing context for this turn (the Mind's identity, goals
++    // and current task), ahead of the recalled entries and re-rendered every
++    // turn, so compaction never drops it. A failure costs the turn nothing.
++    // The message counts as the owner's own words only on a conversational
++    // turn (a user-facing origin with a session): scheduled and sessionless
++    // turns never claim it.
++    let standing = match mem
++        .turn_context_for_agent(
++            turn.agent_alias,
++            scopes.first().copied().flatten(),
++            user_msg,
++            !exclude_conversation,
++        )
++        .await
++    {
++        Ok(text) => text.trim().to_string(),
++        Err(_) => String::new(),
++    };
++
+     let mut context = String::new();
+     let mut included = 0usize;
+     let mut used_chars = 0usize;
+ 
++    if !standing.is_empty() {
++        // Charged to the block's budget first; the entries share what is left.
++        let room = cfg.max_total_chars.saturating_sub(1);
++        let block = if standing.chars().count() > room {
++            truncate_with_ellipsis(&standing, room)
++        } else {
++            standing
++        };
++        context.push_str(MEMORY_CONTEXT_OPEN);
++        context.push('\n');
++        context.push_str(&block);
++        context.push('\n');
++        used_chars += block.chars().count() + 1;
++    }
++
+     for entry in entries.iter().filter(|e| match e.score {
+         Some(score) => score >= cfg.min_relevance_score,
+         None => true, // keep unscored entries (non-vector backends)
+@@ -392,7 +426,7 @@
+             break;
+         }
+ 
+-        if included == 0 {
++        if context.is_empty() {
+             context.push_str(MEMORY_CONTEXT_OPEN);
+             context.push('\n');
+         }
+@@ -401,7 +435,7 @@
+         included += 1;
+     }
+ 
+-    if included > 0 {
++    if !context.is_empty() {
+         context.push_str(MEMORY_CONTEXT_CLOSE);
+         context.push_str("\n\n");
+     }
+@@ -475,6 +509,10 @@
+         fail: bool,
+         recalls: std::sync::atomic::AtomicUsize,
+         recorded_limits: Mutex<Vec<usize>>,
++        /// What `turn_context_for_agent` answers; `Err` when the backend fails there.
++        standing: Result<String, ()>,
++        /// Every `turn_context_for_agent` call: (agent, session, query, owner_turn).
++        standing_calls: Mutex<Vec<(Option<String>, Option<String>, String, bool)>>,
+     }
+ 
+     impl FixtureMemory {
+@@ -490,6 +528,8 @@
+                 fail: false,
+                 recalls: std::sync::atomic::AtomicUsize::new(0),
+                 recorded_limits: Mutex::new(Vec::new()),
++                standing: Ok(String::new()),
++                standing_calls: Mutex::new(Vec::new()),
+             }
+         }
+ 
+@@ -499,12 +539,44 @@
+                 fail: true,
+                 recalls: std::sync::atomic::AtomicUsize::new(0),
+                 recorded_limits: Mutex::new(Vec::new()),
++                standing: Ok(String::new()),
++                standing_calls: Mutex::new(Vec::new()),
+             }
+         }
++
++        /// A backend with standing context of its own (the Mind's blocks).
++        fn standing(mut self, text: &str) -> Self {
++            self.standing = Ok(text.to_string());
++            self
++        }
++
++        fn standing_fails(mut self) -> Self {
++            self.standing = Err(());
++            self
++        }
+     }
+ 
+     #[async_trait]
+     impl Memory for FixtureMemory {
++        async fn turn_context_for_agent(
++            &self,
++            agent_id: Option<&str>,
++            session_id: Option<&str>,
++            query: &str,
++            owner_turn: bool,
++        ) -> anyhow::Result<String> {
++            self.standing_calls.lock().push((
++                agent_id.map(str::to_string),
++                session_id.map(str::to_string),
++                query.to_string(),
++                owner_turn,
++            ));
++            match &self.standing {
++                Ok(text) => Ok(text.clone()),
++                Err(()) => anyhow::bail!("brain service down"),
++            }
++        }
++
+         async fn store(
+             &self,
+             _key: &str,
+@@ -703,6 +775,121 @@
+         }
+     }
+ 
++    // ── the backend's standing context ────────────────────────────────────
++
++    const STANDING: &str = "[BRAIN: identity]\n- **Name:** Cael\n\n[BRAIN: now]\nthe first run on the REVVL";
++
++    #[tokio::test]
++    async fn the_standing_context_opens_the_block_even_when_nothing_is_recalled() {
++        let mem = FixtureMemory::with(vec![]).standing(STANDING);
++        let observer = RecordingObserver::default();
++
++        let context = render_memory_context(
++            &mem,
++            &observer,
++            "how is the phone doing?",
++            &[Some("telegram:42")],
++            &MemoryInjectConfig::default(),
++            false,
++            TurnMeta {
++                parent_agent_alias: None,
++                agent_alias: Some("cael"),
++                turn_id: "t",
++                channel_name: "telegram",
++            },
++        )
++        .await;
++
++        assert_eq!(
++            context,
++            format!("{MEMORY_CONTEXT_OPEN}\n{STANDING}\n{MEMORY_CONTEXT_CLOSE}\n\n")
++        );
++        // The backend was told whose turn it is, which conversation, the message,
++        // and that a conversational turn carries the owner's own words.
++        assert_eq!(
++            mem.standing_calls.lock().as_slice(),
++            &[(
++                Some("cael".to_string()),
++                Some("telegram:42".to_string()),
++                "how is the phone doing?".to_string(),
++                true
++            )]
++        );
++        // The observer's recall event is unchanged by it.
++        assert_eq!(observer.recalls.lock().as_slice(), &[(0, true)]);
++    }
++
++    #[tokio::test]
++    async fn the_standing_context_comes_before_the_entries_and_is_charged_to_the_budget() {
++        let mem = FixtureMemory::with(vec![
++            entry("alpha", "deploy target is prod-cluster-3", MemoryCategory::Core, Some(0.9)),
++            entry("beta", "team standup moved to 0930", MemoryCategory::Core, Some(0.8)),
++        ])
++        .standing(STANDING);
++
++        let full = render_memory_context(
++            &mem,
++            &RecordingObserver::default(),
++            "query",
++            &[],
++            &MemoryInjectConfig { date_stamp: false, ..Default::default() },
++            true,
++            TurnMeta { parent_agent_alias: None, agent_alias: None, turn_id: "t", channel_name: "cron" },
++        )
++        .await;
++        assert_eq!(
++            full,
++            format!(
++                "{MEMORY_CONTEXT_OPEN}\n{STANDING}\n\
++                 - alpha: deploy target is prod-cluster-3\n\
++                 - beta: team standup moved to 0930\n\
++                 {MEMORY_CONTEXT_CLOSE}\n\n"
++            )
++        );
++        // A scheduled or sessionless turn never claims the owner's words.
++        assert!(!mem.standing_calls.lock()[0].3);
++
++        // A budget the standing context nearly fills leaves no room for entries;
++        // one it exceeds cuts it rather than dropping it.
++        let tight = render_memory_context(
++            &mem,
++            &RecordingObserver::default(),
++            "query",
++            &[],
++            &MemoryInjectConfig { date_stamp: false, max_total_chars: STANDING.len() + 10, ..Default::default() },
++            true,
++            TurnMeta { parent_agent_alias: None, agent_alias: None, turn_id: "t", channel_name: "cron" },
++        )
++        .await;
++        assert_eq!(tight, format!("{MEMORY_CONTEXT_OPEN}\n{STANDING}\n{MEMORY_CONTEXT_CLOSE}\n\n"));
++        let cut = render_memory_context(
++            &mem,
++            &RecordingObserver::default(),
++            "query",
++            &[],
++            &MemoryInjectConfig { date_stamp: false, max_total_chars: 30, ..Default::default() },
++            true,
++            TurnMeta { parent_agent_alias: None, agent_alias: None, turn_id: "t", channel_name: "cron" },
++        )
++        .await;
++        assert!(cut.starts_with(&format!("{MEMORY_CONTEXT_OPEN}\n[BRAIN: identity]")), "{cut}");
++        assert!(cut.contains("...") && !cut.contains("alpha"), "{cut}");
++    }
++
++    #[tokio::test]
++    async fn a_failing_standing_context_costs_the_turn_nothing() {
++        let entries = vec![entry("alpha", "deploy target is prod-cluster-3", MemoryCategory::Core, Some(0.9))];
++        let plain = FixtureMemory::with(entries.clone());
++        let broken = FixtureMemory::with(entries).standing_fails();
++        let cfg = MemoryInjectConfig { date_stamp: false, ..Default::default() };
++        let meta = || TurnMeta { parent_agent_alias: None, agent_alias: None, turn_id: "t", channel_name: "test" };
++
++        let expected = render_memory_context(&plain, &RecordingObserver::default(), "q", &[], &cfg, false, meta()).await;
++        let got = render_memory_context(&broken, &RecordingObserver::default(), "q", &[], &cfg, false, meta()).await;
++        assert_eq!(got, expected);
++        assert_eq!(got, format!("{MEMORY_CONTEXT_OPEN}\n- alpha: deploy target is prod-cluster-3\n{MEMORY_CONTEXT_CLOSE}\n\n"));
++    }
++
+     // ── renderer ──────────────────────────────────────────────────────────
+ 
+     #[test]

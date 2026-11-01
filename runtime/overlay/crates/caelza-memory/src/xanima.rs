@@ -9,6 +9,11 @@
 //!
 //! Mapping:
 //! - `recall` → `brain_query` (`format = json`; private + shared, fused by the service)
+//! - `turn_context_for_agent` → `brain_turn_context` (the agent's identity, active
+//!   goals, the goals note and the current task, as the standing header the
+//!   Runtime puts in front of the recalled entries every turn); the note ids it
+//!   carries are acked on the next assistant auto-save, so a delivered nudge is
+//!   not offered again
 //! - `store` with category `conversation` → `brain_episode_append` (the turn log sleep consolidates)
 //! - `store` with any other category → `brain_write` (label = key; `core` → semantic, `daily` → episodic)
 //! - `get` / `forget` → `brain_query` by label, then `brain_forget`
@@ -17,7 +22,10 @@
 //!
 //! Agents: the runtime passes an agent alias on scoped operations; each alias
 //! resolves to its own token (`token_file` with `{agent}`), so the service's
-//! per-agent isolation and the `AgentScopedMemory` wrapper agree.
+//! per-agent isolation and the `AgentScopedMemory` wrapper agree. An agent
+//! with no token file gets one minted through `brain_provision_agent` when a
+//! provision-scoped token is on this host (`provision_token_file`), so a new
+//! `[agents.<alias>]` needs no manual mint.
 
 use super::traits::{
     Memory, MemoryCategory, MemoryEntry, MemoryKind, MemoryStats, StoreOptions,
@@ -29,7 +37,7 @@ use parking_lot::{Mutex, RwLock};
 use serde_json::{Value, json};
 use std::cmp::Ordering as CmpOrdering;
 use std::collections::{HashMap, HashSet};
-use std::path::PathBuf;
+use std::path::{Path, PathBuf};
 use std::sync::atomic::{AtomicU64, Ordering};
 use std::time::Duration;
 
@@ -37,11 +45,18 @@ use std::time::Duration;
 pub const DEFAULT_URL: &str = "http://127.0.0.1:18790";
 /// One token per agent; `{agent}` is the agent alias.
 pub const DEFAULT_TOKEN_FILE: &str = "~/.xanima/tokens/{agent}.token";
+/// A provision-scoped token (`xanima-server token mint --agent provisioner
+/// --scopes provision`): with it the backend mints a brain and a token for an
+/// agent that has none.
+pub const DEFAULT_PROVISION_TOKEN_FILE: &str = "~/.xanima/tokens/provision.token";
+/// Cap on the standing context, in characters.
+pub const DEFAULT_TURN_CONTEXT_MAX_CHARS: usize = 1_500;
 
 const LABEL_MAX: usize = 500;
 const CONTENT_MAX: usize = 100_000;
 const EPISODE_MAX: usize = 32_000;
-const SESSION_MAX: usize = 512;
+const SESSION_MAX: usize = 200;
+const TURN_QUERY_MAX: usize = 4_000;
 const QUERY_LIMIT_MAX: usize = 1000;
 /// Node types `brain_write` accepts.
 const WRITE_NODE_TYPES: [&str; 9] = [
@@ -71,6 +86,12 @@ pub struct XanimaSettings {
     pub scope: String,
     /// Per-request timeout.
     pub timeout: Duration,
+    /// Put the brain's standing context in front of the recalled entries.
+    pub turn_context: bool,
+    /// Cap on that context, in characters.
+    pub turn_context_max_chars: usize,
+    /// Path of the provision-scoped token; `None` turns provisioning off.
+    pub provision_token_file: Option<String>,
 }
 
 impl XanimaSettings {
@@ -83,6 +104,9 @@ impl XanimaSettings {
             agent: "main".to_string(),
             scope: "all".to_string(),
             timeout: Duration::from_secs(20),
+            turn_context: true,
+            turn_context_max_chars: DEFAULT_TURN_CONTEXT_MAX_CHARS,
+            provision_token_file: Some(DEFAULT_PROVISION_TOKEN_FILE.to_string()),
         }
     }
 
@@ -109,6 +133,11 @@ impl XanimaSettings {
                 .filter(|s| !s.is_empty())
                 .map(str::to_string)
         };
+        // Unset means the default path; an empty string turns provisioning off.
+        let provision_token_file = match &cfg.provision_token_file {
+            None => Some(DEFAULT_PROVISION_TOKEN_FILE.to_string()),
+            Some(path) => clean(&Some(path.clone())),
+        };
         Ok(Self {
             url: url.to_string(),
             token: clean(&cfg.token),
@@ -116,6 +145,9 @@ impl XanimaSettings {
             agent: agent.to_string(),
             scope,
             timeout: Duration::from_secs(cfg.timeout_secs.max(1)),
+            turn_context: cfg.turn_context,
+            turn_context_max_chars: cfg.turn_context_max_chars.max(80),
+            provision_token_file,
         })
     }
 }
@@ -125,10 +157,18 @@ pub struct XanimaMemory {
     alias: String,
     client: reqwest::Client,
     settings: XanimaSettings,
-    /// Tokens read from token files, by agent alias.
+    /// Tokens read from token files (or minted), by agent alias.
     tokens: RwLock<HashMap<String, String>>,
     /// Warnings already emitted (missing sibling tokens, unsupported operations).
     warned: Mutex<HashSet<String>>,
+    /// Agents whose provisioning failed this process: not asked again every call.
+    provision_failed: Mutex<HashSet<String>>,
+    /// Agents whose token may not call `brain_turn_context` (a read-only token):
+    /// the standing context is left out for them without a call per turn.
+    turn_context_off: Mutex<HashSet<String>>,
+    /// Note ids the last standing context carried, by agent, acked on the next
+    /// assistant auto-save (the service retires an un-acked note after six offers).
+    pending_acks: Mutex<HashMap<String, Vec<i64>>>,
     next_id: AtomicU64,
 }
 
@@ -148,6 +188,9 @@ impl XanimaMemory {
             settings,
             tokens: RwLock::new(HashMap::new()),
             warned: Mutex::new(HashSet::new()),
+            provision_failed: Mutex::new(HashSet::new()),
+            turn_context_off: Mutex::new(HashSet::new()),
+            pending_acks: Mutex::new(HashMap::new()),
             next_id: AtomicU64::new(1),
         }
     }
@@ -161,9 +204,18 @@ impl XanimaMemory {
         expand_home(&self.settings.token_file.replace("{agent}", agent))
     }
 
-    /// The bearer token for `agent`: the configured token, else the agent's
-    /// token file. `Ok(None)` when there is no token source (the file is absent).
-    fn token_for(&self, agent: &str) -> Result<Option<String>> {
+    /// Where the provision-scoped token lives, when provisioning is on.
+    pub fn provision_token_path(&self) -> Option<PathBuf> {
+        self.settings
+            .provision_token_file
+            .as_deref()
+            .map(expand_home)
+    }
+
+    /// The token this host already holds for `agent`: the configured token,
+    /// else the cache, else the agent's token file. `Ok(None)` when there is
+    /// no token source (the file is absent).
+    fn stored_token(&self, agent: &str) -> Result<Option<String>> {
         if let Some(token) = &self.settings.token {
             return Ok(Some(token.clone()));
         }
@@ -189,17 +241,103 @@ impl XanimaMemory {
         Ok(Some(token))
     }
 
-    fn no_token_error(&self, agent: &str) -> anyhow::Error {
-        anyhow::anyhow!(
-            "xanima: no token for agent {agent:?}. Put one in {} \
-             (xanima-server token mint --agent {agent} --scopes read,write --json | jq -r .token) \
-             or set storage.xanima.<alias>.token",
-            self.token_path_for(agent).display()
-        )
+    /// The bearer token for `agent`: what this host holds, else one minted
+    /// through `brain_provision_agent` when a provision token is here.
+    /// `Ok(None)` when neither yields one; provisioning failures are warned
+    /// once and reported through [`Self::no_token_error`].
+    async fn token_for(&self, agent: &str) -> Result<Option<String>> {
+        if let Some(token) = self.stored_token(agent)? {
+            return Ok(Some(token));
+        }
+        self.provision(agent).await
     }
 
-    fn require_token(&self, agent: &str) -> Result<String> {
-        self.token_for(agent)?
+    /// Mint a brain and a token for `agent` with the provision-scoped token,
+    /// write the agent's token file (owner-only) and cache the token.
+    async fn provision(&self, agent: &str) -> Result<Option<String>> {
+        let Some(provision_path) = self.provision_token_path() else {
+            return Ok(None);
+        };
+        let provision_token = match std::fs::read_to_string(&provision_path) {
+            Ok(raw) if !raw.trim().is_empty() => raw.trim().to_string(),
+            Ok(_) => {
+                self.warn_once(
+                    "provision-token",
+                    "xanima: the provision token file is empty; agents without a token are not provisioned",
+                    json!({"provision_token_file": provision_path.display().to_string()}),
+                );
+                return Ok(None);
+            }
+            Err(e) if e.kind() == std::io::ErrorKind::NotFound => return Ok(None),
+            Err(e) => {
+                return Err(e).with_context(|| {
+                    format!("xanima: reading the provision token {}", provision_path.display())
+                });
+            }
+        };
+        if self.provision_failed.lock().contains(agent) {
+            return Ok(None);
+        }
+        let outcome = self
+            .call_tool_as(
+                &provision_token,
+                None,
+                "brain_provision_agent",
+                json!({"agentId": agent, "label": format!("Caelza agent {agent}")}),
+            )
+            .await
+            .and_then(|text| provisioned_token(&text));
+        match outcome {
+            Ok(token) => {
+                let path = self.token_path_for(agent);
+                write_owner_only(&path, &format!("{token}\n"))
+                    .with_context(|| format!("xanima: writing the token file {}", path.display()))?;
+                self.tokens
+                    .write()
+                    .insert(agent.to_string(), token.clone());
+                ::caelza_log::record!(
+                    INFO,
+                    ::caelza_log::Event::new(module_path!(), ::caelza_log::Action::Note)
+                        .with_attrs(json!({"agent": agent, "token_file": path.display().to_string()})),
+                    "xanima: provisioned a brain and a token for this agent"
+                );
+                Ok(Some(token))
+            }
+            Err(e) => {
+                self.provision_failed.lock().insert(agent.to_string());
+                self.warn_once(
+                    &format!("provision:{agent}"),
+                    "xanima: could not provision a brain for this agent",
+                    json!({
+                        "agent": agent,
+                        "error": e.to_string(),
+                        "provision_token_file": provision_path.display().to_string(),
+                    }),
+                );
+                Ok(None)
+            }
+        }
+    }
+
+    fn no_token_error(&self, agent: &str) -> anyhow::Error {
+        let mut how = format!(
+            "Put one in {} (xanima-server token mint --agent {agent} --scopes read,write --json | jq -r .token) \
+             or set storage.xanima.<alias>.token",
+            self.token_path_for(agent).display()
+        );
+        if let Some(provision_path) = self.provision_token_path() {
+            how.push_str(&format!(
+                "; or drop a provision-scoped token in {} (xanima-server token mint --agent provisioner \
+                 --scopes provision) and the backend mints one",
+                provision_path.display()
+            ));
+        }
+        anyhow::anyhow!("xanima: no token for agent {agent:?}. {how}")
+    }
+
+    async fn require_token(&self, agent: &str) -> Result<String> {
+        self.token_for(agent)
+            .await?
             .ok_or_else(|| self.no_token_error(agent))
     }
 
@@ -221,10 +359,10 @@ impl XanimaMemory {
         &self.settings.agent
     }
 
-    /// Whether a token source exists for `agent`: the configured token, or
-    /// the agent's token file on disk.
+    /// Whether a token source exists for `agent` on this host: the configured
+    /// token, or the agent's token file on disk. Provisioning is not attempted.
     pub fn has_token(&self, agent: &str) -> bool {
-        matches!(self.token_for(agent), Ok(Some(_)))
+        matches!(self.stored_token(agent), Ok(Some(_)))
     }
 
     /// One brain tool call for operator surfaces (the dashboard's Mind page):
@@ -235,9 +373,21 @@ impl XanimaMemory {
         Ok(serde_json::from_str::<Value>(&text).unwrap_or_else(|_| json!({"text": text})))
     }
 
-    /// One MCP `tools/call` round trip. Returns the joined text content.
+    /// One MCP `tools/call` round trip as `agent`. Returns the joined text content.
     async fn call_tool(&self, agent: &str, tool: &str, arguments: Value) -> Result<String> {
-        let token = self.require_token(agent)?;
+        let token = self.require_token(agent).await?;
+        self.call_tool_as(&token, Some(agent), tool, arguments).await
+    }
+
+    /// One MCP `tools/call` round trip with `token`; `cached_as` names the
+    /// agent whose cached token this is, dropped from the cache on a 401.
+    async fn call_tool_as(
+        &self,
+        token: &str,
+        cached_as: Option<&str>,
+        tool: &str,
+        arguments: Value,
+    ) -> Result<String> {
         let id = self.next_id.fetch_add(1, Ordering::Relaxed);
         let body = json!({
             "jsonrpc": "2.0",
@@ -249,7 +399,7 @@ impl XanimaMemory {
         let response = self
             .client
             .post(&url)
-            .bearer_auth(&token)
+            .bearer_auth(token)
             .header("accept", "application/json, text/event-stream")
             .header("content-type", "application/json")
             .timeout(self.settings.timeout)
@@ -266,11 +416,14 @@ impl XanimaMemory {
             .with_context(|| format!("xanima: {tool}: reading the reply from {url}"))?;
         if status == reqwest::StatusCode::UNAUTHORIZED {
             // A rotated token file is picked up on the next call.
-            self.tokens.write().remove(agent);
-            bail!(
-                "xanima: the token for agent {agent:?} was rejected (401) by {url}; \
-                 mint a new one: xanima-server token mint --agent {agent} --scopes read,write"
-            );
+            if let Some(agent) = cached_as {
+                self.tokens.write().remove(agent);
+                bail!(
+                    "xanima: the token for agent {agent:?} was rejected (401) by {url}; \
+                     mint a new one: xanima-server token mint --agent {agent} --scopes read,write"
+                );
+            }
+            bail!("xanima: {tool}: the token was rejected (401) by {url}");
         }
         if !status.is_success() {
             bail!("xanima: {tool}: HTTP {status} from {url}: {}", snippet(&text));
@@ -299,6 +452,85 @@ impl XanimaMemory {
             bail!("xanima: {tool}: {}", snippet(&out));
         }
         Ok(out)
+    }
+
+    /// The brain's standing context for `agent`'s turn: `brain_turn_context`
+    /// (the agent's identity, active goals, the goals note and the current
+    /// task), rendered as the `[BRAIN: …]` blocks the service's own host
+    /// shows, capped. Empty when turned off, when the service has nothing to
+    /// say, or when the agent's token may not call it (a read-only token: said
+    /// once, then skipped). The note ids it carries are acked on the next
+    /// assistant auto-save.
+    pub async fn turn_context(
+        &self,
+        agent: &str,
+        session_id: Option<&str>,
+        query: &str,
+        owner_turn: bool,
+    ) -> Result<String> {
+        if !self.settings.turn_context || self.turn_context_off.lock().contains(agent) {
+            return Ok(String::new());
+        }
+        let session = session_id
+            .map(str::trim)
+            .filter(|s| !s.is_empty())
+            .map(str::to_string)
+            .unwrap_or_else(|| format!("caelza:{agent}"));
+        let mut args = json!({
+            "query": truncate(query.trim(), TURN_QUERY_MAX),
+            "session_key": truncate(&session, SESSION_MAX),
+        });
+        if owner_turn {
+            args["owner_turn"] = json!(true);
+        }
+        let text = match self.call_tool(agent, "brain_turn_context", args).await {
+            Ok(text) => text,
+            Err(e) => {
+                let reason = e.to_string();
+                if reason.contains("write scope") || reason.contains("forbidden") {
+                    // Cael's read-only token, by design: the context stays out for him.
+                    self.turn_context_off.lock().insert(agent.to_string());
+                    self.warn_once(
+                        &format!("turn_context:{agent}"),
+                        "xanima: this agent's token may not read the standing context (brain_turn_context needs the write scope); left out",
+                        json!({"agent": agent, "error": reason}),
+                    );
+                    return Ok(String::new());
+                }
+                self.warn_once(
+                    &format!("turn_context:{agent}"),
+                    "xanima: brain_turn_context failed; the standing context is left out",
+                    json!({"agent": agent, "error": reason}),
+                );
+                return Err(e);
+            }
+        };
+        let (rendered, note_ids) = render_turn_context(&text);
+        if !note_ids.is_empty() {
+            self.pending_acks
+                .lock()
+                .insert(agent.to_string(), note_ids);
+        }
+        Ok(cap(&rendered, self.settings.turn_context_max_chars))
+    }
+
+    /// Tell the service the notes of the last standing context were delivered:
+    /// the turn produced a reply (an assistant auto-save). Best effort.
+    async fn ack_turn_notes(&self, agent: &str) {
+        let Some(ids) = self.pending_acks.lock().remove(agent) else {
+            return;
+        };
+        if ids.is_empty() {
+            return;
+        }
+        let args = json!({"ack_note_ids": ids.iter().take(10).collect::<Vec<_>>()});
+        if let Err(e) = self.call_tool(agent, "brain_turn_context", args).await {
+            self.warn_once(
+                &format!("ack:{agent}"),
+                "xanima: could not ack the delivered brain notes",
+                json!({"agent": agent, "error": e.to_string()}),
+            );
+        }
     }
 
     /// `brain_query` in JSON form, as memory entries attributed to `agent`.
@@ -362,7 +594,7 @@ impl XanimaMemory {
         let mut out = Vec::new();
         let mut reachable = 0usize;
         for agent in agents {
-            if self.token_for(agent)?.is_none() {
+            if self.token_for(agent).await?.is_none() {
                 self.warn_once(
                     &format!("token:{agent}"),
                     "xanima: no token for this agent; its brain is skipped",
@@ -430,6 +662,10 @@ impl XanimaMemory {
                 args["importance"] = json!(clamp01(i));
             }
             self.call_tool(agent, "brain_episode_append", args).await?;
+            if role == "assistant" {
+                // The turn produced a reply: the notes shown with it were delivered.
+                self.ack_turn_notes(agent).await;
+            }
             return Ok(());
         }
         let label = if key.trim().is_empty() {
@@ -489,6 +725,17 @@ impl ::caelza_api::attribution::Attributable for XanimaMemory {
 impl Memory for XanimaMemory {
     fn name(&self) -> &str {
         "xanima"
+    }
+
+    async fn turn_context_for_agent(
+        &self,
+        agent_id: Option<&str>,
+        session_id: Option<&str>,
+        query: &str,
+        owner_turn: bool,
+    ) -> Result<String> {
+        let agent = agent_id.unwrap_or(&self.settings.agent);
+        self.turn_context(agent, session_id, query, owner_turn).await
     }
 
     async fn store(
@@ -729,6 +976,138 @@ fn parse_rpc_body(text: &str) -> Result<Value> {
         }
     }
     last.ok_or_else(|| anyhow::anyhow!("no JSON-RPC frame in the reply"))
+}
+
+/// A `brain_turn_context` reply as the standing header: `identity` under a
+/// `[BRAIN: identity]` heading, `activeGoals` as a `[BRAIN: active goals]`
+/// list, then the goals note (`text`, already `[BRAIN: goals]…`) and the
+/// current task (`now`, already `[BRAIN: now]…`). Any other string field
+/// that is itself a `[…]` block is kept after them, so a newer block is not
+/// lost; metadata is not. Also returns the `noteIds` to ack. A plain-text
+/// reply is taken as it is.
+fn render_turn_context(text: &str) -> (String, Vec<i64>) {
+    let trimmed = text.trim();
+    if trimmed.is_empty() {
+        return (String::new(), Vec::new());
+    }
+    let Ok(payload) = serde_json::from_str::<Value>(trimmed) else {
+        return (trimmed.to_string(), Vec::new());
+    };
+    let Some(map) = payload.as_object() else {
+        return (
+            payload.as_str().map(str::trim).unwrap_or_default().to_string(),
+            Vec::new(),
+        );
+    };
+    let mut parts: Vec<String> = Vec::new();
+    if let Some(identity) = map.get("identity").and_then(Value::as_str).map(str::trim)
+        && !identity.is_empty()
+    {
+        parts.push(if identity.starts_with('[') {
+            identity.to_string()
+        } else {
+            format!("[BRAIN: identity]\n{identity}")
+        });
+    }
+    if let Some(goals) = map.get("activeGoals").and_then(Value::as_array) {
+        let titles: Vec<&str> = goals
+            .iter()
+            .filter_map(Value::as_str)
+            .map(str::trim)
+            .filter(|g| !g.is_empty())
+            .collect();
+        if !titles.is_empty() {
+            parts.push(format!(
+                "[BRAIN: active goals]\n{}",
+                titles.iter().map(|g| format!("• {g}")).collect::<Vec<_>>().join("\n")
+            ));
+        }
+    }
+    for key in ["text", "now"] {
+        if let Some(block) = map.get(key).and_then(Value::as_str).map(str::trim)
+            && !block.is_empty()
+        {
+            parts.push(block.to_string());
+        }
+    }
+    for (key, value) in map {
+        if matches!(key.as_str(), "identity" | "activeGoals" | "text" | "now") {
+            continue;
+        }
+        if let Some(block) = value.as_str().map(str::trim)
+            && block.starts_with('[')
+            && block.contains(']')
+        {
+            parts.push(block.to_string());
+        }
+    }
+    let note_ids = map
+        .get("noteIds")
+        .and_then(Value::as_array)
+        .map(|ids| ids.iter().filter_map(Value::as_i64).collect())
+        .unwrap_or_default();
+    (parts.join("\n\n"), note_ids)
+}
+
+/// The token a `brain_provision_agent` reply carries; the service's own
+/// wording when it carries none (already provisioned, or an error).
+fn provisioned_token(text: &str) -> Result<String> {
+    let payload: Value = serde_json::from_str(text.trim())
+        .with_context(|| format!("xanima: brain_provision_agent returned no JSON: {}", snippet(text)))?;
+    if let Some(token) = payload.get("token").and_then(Value::as_str).map(str::trim)
+        && !token.is_empty()
+    {
+        return Ok(token.to_string());
+    }
+    let status = payload.get("status").and_then(Value::as_str).unwrap_or("?");
+    if status == "already-provisioned" {
+        bail!(
+            "xanima: the service already has a brain and tokens for this agent but this host has no token file; \
+             mint one (xanima-server token mint --agent <alias> --scopes read,write) or rotate by hand \
+             (brain_provision_agent with rotate = true)"
+        );
+    }
+    bail!("xanima: brain_provision_agent answered {status:?} without a token: {}", snippet(text))
+}
+
+/// Write a file nobody else can read: the directory 0700, the file 0600.
+fn write_owner_only(path: &Path, text: &str) -> std::io::Result<()> {
+    if let Some(dir) = path.parent() {
+        std::fs::create_dir_all(dir)?;
+        #[cfg(unix)]
+        {
+            use std::os::unix::fs::PermissionsExt;
+            let _ = std::fs::set_permissions(dir, std::fs::Permissions::from_mode(0o700));
+        }
+    }
+    #[cfg(unix)]
+    {
+        use std::io::Write;
+        use std::os::unix::fs::{OpenOptionsExt, PermissionsExt};
+        let mut file = std::fs::OpenOptions::new()
+            .write(true)
+            .create(true)
+            .truncate(true)
+            .mode(0o600)
+            .open(path)?;
+        file.write_all(text.as_bytes())?;
+        std::fs::set_permissions(path, std::fs::Permissions::from_mode(0o600))?;
+        Ok(())
+    }
+    #[cfg(not(unix))]
+    {
+        std::fs::write(path, text)
+    }
+}
+
+/// `text` within `max_chars`, cut with a note when it is not.
+fn cap(text: &str, max_chars: usize) -> String {
+    const NOTE: &str = "\n[...truncated]";
+    if text.chars().count() <= max_chars {
+        return text.to_string();
+    }
+    let keep = max_chars.saturating_sub(NOTE.chars().count()).max(1);
+    format!("{}{NOTE}", truncate(text, keep).trim_end())
 }
 
 /// One `brain_query` result row as a memory entry visible to `agent`.
@@ -990,9 +1369,11 @@ mod tests {
         XanimaMemory::with_client("xanima", settings, client())
     }
 
+    /// Token files under `dir`; provisioning off unless a test puts a provision token there.
     fn memory_with_token_dir(endpoint: &str, dir: &std::path::Path, agent: &str) -> XanimaMemory {
         let mut settings = XanimaSettings::new(endpoint);
         settings.token_file = dir.join("{agent}.token").display().to_string();
+        settings.provision_token_file = Some(dir.join("provision.token").display().to_string());
         settings.agent = agent.to_string();
         XanimaMemory::with_client("xanima", settings, client())
     }
@@ -1006,6 +1387,9 @@ mod tests {
         assert_eq!(s.agent, "main");
         assert_eq!(s.scope, "all");
         assert_eq!(s.timeout, Duration::from_secs(20));
+        assert!(s.turn_context);
+        assert_eq!(s.turn_context_max_chars, DEFAULT_TURN_CONTEXT_MAX_CHARS);
+        assert_eq!(s.provision_token_file.as_deref(), Some(DEFAULT_PROVISION_TOKEN_FILE));
 
         let mut bad = caelza_config::schema::XanimaStorageConfig::default();
         bad.scope = "everything".into();
@@ -1016,9 +1400,15 @@ mod tests {
         let mut trailing = caelza_config::schema::XanimaStorageConfig::default();
         trailing.url = "http://brain.local:18790/".into();
         trailing.token = Some("  swt_x  ".into());
+        trailing.turn_context = false;
+        trailing.turn_context_max_chars = 10; // too small to mean anything: floored
+        trailing.provision_token_file = Some("  ".into()); // off
         let s = XanimaSettings::from_storage(&trailing).unwrap();
         assert_eq!(s.url, "http://brain.local:18790");
         assert_eq!(s.token.as_deref(), Some("swt_x"));
+        assert!(!s.turn_context);
+        assert_eq!(s.turn_context_max_chars, 80);
+        assert_eq!(s.provision_token_file, None);
     }
 
     #[test]
@@ -1040,6 +1430,53 @@ mod tests {
         assert_eq!(kind_for_node_type("skill"), Some(MemoryKind::Procedural));
         assert!(parse_rpc_body("event: message\ndata: {\"jsonrpc\":\"2.0\",\"id\":1,\"result\":{\"content\":[]}}\n\n").is_ok());
         assert!(parse_rpc_body("nonsense").is_err());
+    }
+
+    #[test]
+    fn a_turn_context_reply_renders_as_the_brain_blocks_in_order() {
+        // The service's reply (packages/server/src/tools.ts): the goals note as `text`,
+        // `now`, the raw identity, the active goal titles, the note ids to ack, and
+        // bookkeeping that is not prompt material.
+        let reply = json!({
+            "noteIds": [41, 42],
+            "triggered": ["ship"],
+            "openItemId": 7,
+            "text": "[BRAIN: goals]\nYou said you'd finish the REVVL run this week.",
+            "now": "[BRAIN: now]\nthe first run on the REVVL",
+            "identity": "- **Name:** Cael\n- **Pronouns:** he/him",
+            "activeGoals": ["ship v0.1.0", " keep the phone safe "],
+            "recent": "[BRAIN: recent]\nyesterday: the icon landed",
+            "sessionKey": "telegram:42"
+        });
+        let (rendered, notes) = render_turn_context(&reply.to_string());
+        assert_eq!(
+            rendered,
+            "[BRAIN: identity]\n- **Name:** Cael\n- **Pronouns:** he/him\n\n\
+             [BRAIN: active goals]\n• ship v0.1.0\n• keep the phone safe\n\n\
+             [BRAIN: goals]\nYou said you'd finish the REVVL run this week.\n\n\
+             [BRAIN: now]\nthe first run on the REVVL\n\n\
+             [BRAIN: recent]\nyesterday: the icon landed"
+        );
+        assert_eq!(notes, vec![41, 42]);
+
+        // Nothing to say: nothing rendered. Plain text: taken as it is.
+        assert_eq!(render_turn_context(&json!({"noteIds": [], "triggered": []}).to_string()), (String::new(), vec![]));
+        assert_eq!(render_turn_context("  "), (String::new(), vec![]));
+        assert_eq!(render_turn_context("[BRAIN: now]\nx"), ("[BRAIN: now]\nx".to_string(), vec![]));
+
+        assert_eq!(cap("abc", 3), "abc");
+        let capped = cap(&"x".repeat(100), 40);
+        assert!(capped.ends_with("\n[...truncated]") && capped.chars().count() <= 40, "{capped}");
+    }
+
+    #[test]
+    fn a_provisioning_reply_yields_the_token_or_says_why_not() {
+        let ok = json!({"status": "provisioned", "agentId": "cael", "tokenId": "tok_1", "scopes": ["read", "write"], "token": "swt_new"});
+        assert_eq!(provisioned_token(&ok.to_string()).unwrap(), "swt_new");
+        let had = json!({"status": "already-provisioned", "agentId": "cael", "tokenIds": ["tok_1"]});
+        let err = provisioned_token(&had.to_string()).unwrap_err().to_string();
+        assert!(err.contains("already has a brain") && err.contains("token mint"), "{err}");
+        assert!(provisioned_token("nope").is_err());
     }
 
     #[tokio::test]
@@ -1147,6 +1584,134 @@ mod tests {
     }
 
     #[tokio::test]
+    async fn the_standing_context_is_asked_for_every_turn_and_its_notes_acked_after_the_reply() {
+        let reply = json!({
+            "noteIds": [41], "triggered": [],
+            "text": "[BRAIN: goals]\nFinish the REVVL run.",
+            "now": "[BRAIN: now]\nthe first run",
+            "identity": "- **Name:** Cael",
+            "activeGoals": ["ship v0.1.0"]
+        });
+        let fixture = serve(vec![
+            (200, rpc_text(&reply.to_string())),
+            (200, rpc_text("Appended: episode 8 (assistant) brain=private writer=main")),
+            (200, rpc_text(&json!({"acked": true, "noteIds": [41]}).to_string())),
+            (200, rpc_text(&json!({"noteIds": [], "triggered": []}).to_string())),
+        ]);
+        let memory = memory_with_token(&fixture.endpoint, "swt_test");
+
+        let header = memory
+            .turn_context_for_agent(Some("main"), Some("telegram:42"), "how is the phone doing?", true)
+            .await
+            .unwrap();
+        assert_eq!(
+            header,
+            "[BRAIN: identity]\n- **Name:** Cael\n\n[BRAIN: active goals]\n• ship v0.1.0\n\n\
+             [BRAIN: goals]\nFinish the REVVL run.\n\n[BRAIN: now]\nthe first run"
+        );
+        // The turn produced a reply: the assistant auto-save acks the note it carried.
+        memory
+            .store("assistant_resp_1700000001", "It is fine.", MemoryCategory::Conversation, Some("telegram:42"))
+            .await
+            .unwrap();
+        // Nothing to say next turn: an empty header, no ack pending.
+        let empty = memory
+            .turn_context_for_agent(None, None, "ok", false)
+            .await
+            .unwrap();
+        assert_eq!(empty, "");
+        let recorded = fixture.finish();
+
+        assert_eq!(recorded.len(), 4);
+        let ask = &recorded[0].body["params"];
+        assert_eq!(ask["name"], "brain_turn_context");
+        assert_eq!(ask["arguments"]["query"], "how is the phone doing?");
+        assert_eq!(ask["arguments"]["session_key"], "telegram:42");
+        assert_eq!(ask["arguments"]["owner_turn"], true);
+        assert!(ask["arguments"].get("agent").is_none() && ask["arguments"].get("format").is_none());
+        assert_eq!(recorded[1].body["params"]["name"], "brain_episode_append");
+        let ack = &recorded[2].body["params"];
+        assert_eq!(ack["name"], "brain_turn_context");
+        assert_eq!(ack["arguments"]["ack_note_ids"], json!([41]));
+        assert!(ack["arguments"].get("query").is_none());
+        let again = &recorded[3].body["params"]["arguments"];
+        assert_eq!(again["session_key"], "caelza:main", "no session: the agent's own key");
+        assert!(again.get("owner_turn").is_none(), "a scheduled turn never claims the owner's words");
+    }
+
+    #[tokio::test]
+    async fn a_read_only_token_is_told_once_and_the_context_left_out_without_more_calls() {
+        let fixture = serve(vec![(
+            200,
+            rpc_tool_error("Error: forbidden — brain_turn_context needs the write scope"),
+        )]);
+        let memory = memory_with_token(&fixture.endpoint, "swt_cael");
+        assert_eq!(memory.turn_context("cael", None, "hi", true).await.unwrap(), "");
+        assert_eq!(memory.turn_context("cael", None, "hi again", true).await.unwrap(), "");
+        assert_eq!(fixture.finish().len(), 1, "the second turn did not ask again");
+
+        let mut off = XanimaSettings::new("http://127.0.0.1:9");
+        off.token = Some("swt_x".into());
+        off.turn_context = false;
+        let memory = XanimaMemory::with_client("xanima", off, client());
+        assert_eq!(memory.turn_context("main", None, "hi", true).await.unwrap(), "", "off: no call at all");
+    }
+
+    #[tokio::test]
+    async fn an_agent_without_a_token_is_provisioned_once_with_the_provision_token() {
+        let dir = tempfile::tempdir().unwrap();
+        std::fs::write(dir.path().join("provision.token"), "swt_prov\n").unwrap();
+        let minted = json!({"status": "provisioned", "agentId": "nova", "tokenId": "tok_9", "scopes": ["read", "write", "shared-write"], "token": "swt_nova_new"});
+        let fixture = serve(vec![
+            (200, rpc_text(&minted.to_string())),
+            (200, rpc_text("Written: node 1")),
+            (200, rpc_text("Written: node 2")),
+        ]);
+        let memory = memory_with_token_dir(&fixture.endpoint, dir.path(), "nova");
+        assert!(!memory.has_token("nova"), "nothing on disk yet; has_token never provisions");
+
+        memory.store("k", "v", MemoryCategory::Core, None).await.unwrap();
+        memory.store("k2", "v2", MemoryCategory::Core, None).await.unwrap();
+        let recorded = fixture.finish();
+
+        assert_eq!(recorded.len(), 3, "one provisioning, then the two stores");
+        assert_eq!(recorded[0].authorization.as_deref(), Some("Bearer swt_prov"));
+        assert_eq!(recorded[0].body["params"]["name"], "brain_provision_agent");
+        assert_eq!(recorded[0].body["params"]["arguments"]["agentId"], "nova");
+        assert_eq!(recorded[0].body["params"]["arguments"]["label"], "Caelza agent nova");
+        assert_eq!(recorded[1].authorization.as_deref(), Some("Bearer swt_nova_new"));
+        assert_eq!(recorded[2].authorization.as_deref(), Some("Bearer swt_nova_new"));
+        let token_file = dir.path().join("nova.token");
+        assert_eq!(std::fs::read_to_string(&token_file).unwrap(), "swt_nova_new\n");
+        #[cfg(unix)]
+        {
+            use std::os::unix::fs::PermissionsExt;
+            assert_eq!(std::fs::metadata(&token_file).unwrap().permissions().mode() & 0o777, 0o600);
+        }
+        assert!(memory.has_token("nova"));
+    }
+
+    #[tokio::test]
+    async fn a_failed_provisioning_is_tried_once_and_the_error_names_both_ways_out() {
+        let dir = tempfile::tempdir().unwrap();
+        std::fs::write(dir.path().join("provision.token"), "swt_prov").unwrap();
+        let fixture = serve(vec![(
+            200,
+            rpc_tool_error("Error: forbidden — provisioning is only accepted on 127.0.0.1"),
+        )]);
+        let memory = memory_with_token_dir(&fixture.endpoint, dir.path(), "nova");
+
+        let err = memory.store("k", "v", MemoryCategory::Core, None).await.unwrap_err().to_string();
+        assert!(err.contains("no token for agent \"nova\""), "{err}");
+        assert!(err.contains("nova.token") && err.contains("token mint"), "{err}");
+        assert!(err.contains("provision.token") && err.contains("--scopes provision"), "{err}");
+        let again = memory.store("k", "v", MemoryCategory::Core, None).await.unwrap_err().to_string();
+        assert!(again.contains("no token for agent"), "{again}");
+        assert_eq!(fixture.finish().len(), 1, "provisioning is not retried every call");
+        assert!(!dir.path().join("nova.token").exists());
+    }
+
+    #[tokio::test]
     async fn forget_finds_the_node_by_label_then_forgets_it() {
         let fixture = serve(vec![
             (
@@ -1217,6 +1782,7 @@ mod tests {
         assert_eq!(recorded[0].authorization.as_deref(), Some("Bearer swt_alpha"));
         assert_eq!(recorded[1].authorization.as_deref(), Some("Bearer swt_beta"));
 
+        // No provision token in this dir: a missing agent token is the plain error.
         let err = memory
             .store_with_agent("k", "v", MemoryCategory::Core, None, None, None, Some("ghost"))
             .await
@@ -1283,6 +1849,9 @@ mod tests {
     /// CAELZA_XANIMA_E2E_TOKEN_FILE=~/.xanima/tokens/{agent}.token \
     /// cargo test -p caelza-memory --lib -- xanima::tests::live --include-ignored
     /// ```
+    ///
+    /// With `CAELZA_XANIMA_E2E_PROVISION_TOKEN_FILE` set as well, the agent
+    /// `caelza-e2e-<random>` is provisioned through the service first.
     #[tokio::test]
     #[ignore = "needs a running xanima-server (CAELZA_XANIMA_E2E_URL, CAELZA_XANIMA_E2E_TOKEN_FILE)"]
     async fn live_round_trip_against_a_running_service() {
@@ -1293,7 +1862,14 @@ mod tests {
         let mut settings = XanimaSettings::new(&url);
         settings.token_file = std::env::var("CAELZA_XANIMA_E2E_TOKEN_FILE")
             .expect("CAELZA_XANIMA_E2E_TOKEN_FILE ({agent} placeholder allowed)");
-        settings.agent = std::env::var("CAELZA_XANIMA_E2E_AGENT").unwrap_or_else(|_| "main".into());
+        settings.provision_token_file = std::env::var("CAELZA_XANIMA_E2E_PROVISION_TOKEN_FILE").ok();
+        settings.agent = match std::env::var("CAELZA_XANIMA_E2E_AGENT") {
+            Ok(agent) => agent,
+            Err(_) if settings.provision_token_file.is_some() => {
+                format!("caelza-e2e-{}", uuid::Uuid::new_v4().simple())
+            }
+            Err(_) => "main".into(),
+        };
         let memory = XanimaMemory::with_client("xanima", settings, client());
 
         assert!(memory.health_check().await, "service at {url} is not healthy");
@@ -1320,6 +1896,17 @@ mod tests {
         assert_eq!(got.category, MemoryCategory::Core);
         assert!(memory.count().await.unwrap() >= 1);
         assert!(memory.stats().await.unwrap().total_rows >= 1);
+
+        // The standing context: whatever the brain has to say, as `[BRAIN: …]` blocks or nothing.
+        let header = memory
+            .turn_context_for_agent(None, Some("caelza:e2e"), "what is the hub in the attic called", true)
+            .await
+            .unwrap();
+        assert!(header.is_empty() || header.starts_with("[BRAIN: "), "{header}");
+        memory
+            .store("assistant_resp_e2e", "The hub in the attic is called Tycho.", MemoryCategory::Conversation, Some("caelza:e2e"))
+            .await
+            .unwrap();
 
         assert!(memory.forget(&key).await.unwrap(), "forget should find the node");
         assert!(memory.get(&key).await.unwrap().is_none(), "forgotten node still recalled");
