@@ -49,7 +49,33 @@ adb install app/build/outputs/apk/debug/app-debug.apk
 ```
 
 CI builds the same ([`.github/workflows/android.yml`](../.github/workflows/android.yml))
-and keeps the APK as an artifact. The unit tests run on the JVM: the release
+and keeps the APK as an artifact. A `v*` tag builds the release APK as well
+([`release.yml`](../.github/workflows/release.yml), job `app`) and attaches it
+to the GitHub release beside the Runtime tarballs as `caelza-app-<version>.apk`
+with its `.sha256`. The version comes from the tag through
+[`scripts/app_version.py`](../scripts/app_version.py) (`v0.1.0` → versionName
+`0.1.0`, versionCode `1000`; a build without a tag is `0.0.0-dev` at code 1,
+which any tagged APK upgrades), passed to Gradle as `-P` properties:
+
+```sh
+./gradlew assembleRelease $(python3 ../scripts/app_version.py v0.1.0 --gradle)
+```
+
+The release build type signs with the keystore the environment names
+(`CAELZA_KEYSTORE`, `CAELZA_KEYSTORE_PASSWORD`, `CAELZA_KEY_ALIAS`,
+`CAELZA_KEY_PASSWORD`; CI decodes it from the repo secrets
+`ANDROID_KEYSTORE_BASE64` and the three passwords/alias of the same names
+with the `ANDROID_` prefix). Without one it signs with the debug key, so the
+build still installs, and CI names that APK `-debug-signed`: good for trying
+things, but Android will not upgrade it to a release-signed build (uninstall
+first). To make the keystore once:
+
+```sh
+keytool -genkeypair -v -keystore caelza-release.jks -alias caelza -keyalg RSA -keysize 4096 -validity 10000
+base64 -w0 caelza-release.jks     # → the ANDROID_KEYSTORE_BASE64 secret
+```
+
+The unit tests run on the JVM: the release
 installer against a fake release (a tarball with a shell-script `caelza` that
 answers `--version` and serves `/health` through python3, or crashes, or lies
 about its version), the store's pointers and pruning, the crash loop, the

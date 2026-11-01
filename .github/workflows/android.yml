@@ -1,8 +1,10 @@
 name: android
 
-# The Caelza Android app (android/): builds the debug APK and runs the JVM
-# unit tests. Only when the app, this file, or the recorded phone the app's
-# Body tests replay (tests/fixtures/playbooks, the REVVL snapshot) changes.
+# The Caelza Android app (android/): builds the debug APK and the release one
+# (as a dev build, signed with the debug key: the path release.yml takes at a
+# tag) and runs the JVM unit tests. Only when the app, this file, or the
+# recorded phone the app's Body tests replay (tests/fixtures/playbooks, the
+# REVVL snapshot) changes.
 on:
   push:
     branches: [main]
@@ -39,7 +41,7 @@ jobs:
       - uses: gradle/actions/setup-gradle@v4
       - name: Build and test
         working-directory: android
-        run: ./gradlew --no-daemon --console=plain assembleDebug testDebugUnitTest
+        run: ./gradlew --no-daemon --console=plain assembleDebug assembleRelease testDebugUnitTest
       - uses: actions/upload-artifact@v4
         if: always()
         with:
