@@ -44,10 +44,12 @@ class CaelCorpusTest {
     @Test
     fun everyChunkIsUpsertedForCaelOncePerCorpusVersion() {
         val posts = mutableListOf<Pair<String, JSONObject>>()
-        val corpus = CaelCorpus(tmp.root) { url, body -> posts += url to JSONObject(body); 200 }
+        val bearers = mutableListOf<String?>()
+        val corpus = CaelCorpus(tmp.root) { url, body, token -> posts += url to JSONObject(body); bearers += token; 200 }
         assertNull(corpus.loadedFingerprint())
 
-        val first = corpus.load(sample, 42617)
+        val first = corpus.load(sample, 42617, "paired-token")
+        assertTrue("the app's paired bearer goes on every post", bearers.all { it == "paired-token" })
         assertEquals(Triple(3, 0, false), Triple(first.loaded, first.failed, first.skipped))
         assertEquals(3, posts.size)
         assertTrue(posts.all { it.first == "http://127.0.0.1:42617/api/memory" })
@@ -75,7 +77,7 @@ class CaelCorpusTest {
     @Test
     fun aGatewayThatDoesNotKnowCaelLeavesNoMarkerAndAFailureIsReported() {
         var calls = 0
-        val unknown = CaelCorpus(tmp.root) { _, _ -> calls++; 400 }
+        val unknown = CaelCorpus(tmp.root) { _, _, _ -> calls++; 400 }
         val result = unknown.load(sample, 42617)
         assertEquals(1, calls)
         assertEquals(1, result.failed)
@@ -83,12 +85,12 @@ class CaelCorpusTest {
         assertNull(unknown.loadedFingerprint())
 
         var n = 0
-        val flaky = CaelCorpus(tmp.root) { _, _ -> if (++n == 2) 500 else 200 }
+        val flaky = CaelCorpus(tmp.root) { _, _, _ -> if (++n == 2) 500 else 200 }
         val partial = flaky.load(sample, 42617)
         assertEquals(Triple(2, 1, "HTTP 500 at docs/faq#2"), Triple(partial.loaded, partial.failed, partial.detail))
         assertNull("a partial load is retried next start", flaky.loadedFingerprint())
 
-        val dead = CaelCorpus(tmp.root) { _, _ -> throw java.net.ConnectException("refused") }
+        val dead = CaelCorpus(tmp.root) { _, _, _ -> throw java.net.ConnectException("refused") }
         val gone = dead.load(sample, 42617)
         assertEquals(1, gone.failed)
         assertTrue(gone.detail.contains("stopped answering"))

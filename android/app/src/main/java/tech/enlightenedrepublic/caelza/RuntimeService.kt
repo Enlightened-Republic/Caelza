@@ -31,6 +31,7 @@ import tech.enlightenedrepublic.caelza.model.LlamaRuntime
 import tech.enlightenedrepublic.caelza.model.ModelServe
 import tech.enlightenedrepublic.caelza.model.ModelStore
 import tech.enlightenedrepublic.caelza.runtime.CrashLoop
+import tech.enlightenedrepublic.caelza.runtime.GatewayPairing
 import tech.enlightenedrepublic.caelza.runtime.Gateway
 import tech.enlightenedrepublic.caelza.runtime.RuntimeStore
 import java.io.File
@@ -297,9 +298,17 @@ class RuntimeService : Service() {
         repeat(CORPUS_HEALTH_TRIES) {
             if (stopping) return
             if (Gateway.healthy(port)) {
+                val token = when (val paired = GatewayPairing.forStore(store).ensureToken(port)) {
+                    is GatewayPairing.Outcome.Paired -> paired.token
+                    is GatewayPairing.Outcome.Off -> null
+                    is GatewayPairing.Outcome.Failed -> {
+                        Log.w(TAG, "gateway pairing: ${paired.detail}")
+                        return
+                    }
+                }
                 val result = try {
                     val jsonl = assets.open(CaelCorpus.ASSET).bufferedReader().readText()
-                    CaelCorpus(store.configDir).load(jsonl, port)
+                    CaelCorpus(store.configDir).load(jsonl, port, token)
                 } catch (e: Exception) {
                     Log.w(TAG, "Cael's corpus not loaded", e)
                     return

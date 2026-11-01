@@ -74,10 +74,21 @@ Update are the strip's buttons; the installer asks the service to restart
 after a new version probed ok.
 
 **First config.** With no `config.toml`, the service writes one with the
-gateway on `127.0.0.1:42617` and `require_pairing = false`: only this phone's
-apps can reach loopback, and the shell is the client. That is the same
-exposure as the Termux install (any app on the phone can reach a loopback
-gateway); §6 keeps it on the list.
+gateway on `127.0.0.1:42617` and `require_pairing = true`, and the app pairs
+its own shell (`runtime/GatewayPairing.kt`): the gateway writes an admin
+token owner-only under its data dir at startup (`data/gateway-admin.token`),
+and with it, from loopback, the app mints a pairing code
+(`POST /admin/paircode/new`, what `caelza gateway get-paircode --new` calls)
+and pairs (`POST /api/pair` as device "Caelza app (this phone)"). The bearer
+token lives in the app's files (`gateway-token`), is checked against
+`/api/status` at every start and renewed when the gateway no longer knows it,
+goes on the app's own API calls (Cael's corpus loader) and is handed to the
+dashboard before its scripts run: the shell opens `/health` on the gateway's
+origin, drops the token into `localStorage` there, then navigates to the
+dashboard, which finds itself paired. So no other app on the phone can use the
+gateway's API, which was the open item in §6; a config the app wrote before
+it could pair is turned on at the next start, and `require_pairing` is
+re-asserted at every start.
 
 **targetSdk 28.** From API 29 Android enforces W^X on app data: a binary the
 app downloaded into `files/` cannot be executed. Three ways out:
@@ -260,10 +271,6 @@ and a squircle launcher make of it, and the whole layer.
 
 - **W^X** (§2): measure `linker64` and the native-library payload on the
   REVVL before settling the targetSdk.
-- **Loopback exposure.** The gateway with pairing off is reachable by any app
-  on the phone. Options: keep pairing on and let the shell read the code from
-  the daemon log; a Unix domain socket once the gateway can listen on one;
-  a token header the WebView injects. (The Body on 42618 is behind its token.)
 - **The Body's binder path.** `IPackageManager` / `IAppOpsService` over the
   Shizuku binder instead of `pm` / `appops` in a shell; faster, no parsing,
   but hidden-API stubs to carry. Measure first.

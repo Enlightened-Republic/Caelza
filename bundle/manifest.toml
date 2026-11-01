@@ -165,6 +165,10 @@ llama_sha256 = "77d9f19fad41d6d8efbc29bcc1c1ab60a605018564cfc32203892eb1973ba4b9
 models_dir = ".caelza/models"
 model_server_port = 8080
 cael_corpus = "android/app/src/main/assets/cael-corpus.jsonl"   # guide/corpus.jsonl byte for byte; RuntimeService loads it into agents.cael's memory once the gateway answers (guide/CaelCorpus.kt)
+# The gateway runs behind pairing (require_pairing = true, re-asserted at every start): the app mints a code with the
+# gateway's admin token (.caelza/data/gateway-admin.token), pairs as "Caelza app (this phone)", keeps the token in
+# files/gateway-token, sends it on its own API calls and hands it to the dashboard before its scripts run.
+gateway_pairing = "android/app/src/main/java/tech/enlightenedrepublic/caelza/runtime/GatewayPairing.kt"
 # M6 (fleet): a hub and its phones. Each phone serves its Body over HTTP; the hub's Body joins them
 # as devices and forwards every call naming one (caelza_body/fleet.py); groups fan a procedure out.
 fleet = "caelza_body/fleet.py"

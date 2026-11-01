@@ -17,7 +17,7 @@ import java.security.MessageDigest
  */
 class CaelCorpus(
     private val configDir: File,
-    private val post: (url: String, body: String) -> Int = ::httpPost,
+    private val post: (url: String, body: String, token: String?) -> Int = ::httpPost,
 ) {
     data class Chunk(val key: String, val content: String)
 
@@ -28,8 +28,12 @@ class CaelCorpus(
     /** The fingerprint of the corpus loaded before, if any. */
     fun loadedFingerprint(): String? = marker.takeIf { it.isFile }?.readText()?.trim()?.ifEmpty { null }
 
-    /** Every chunk of `jsonl` into Cael's memory through the gateway on `port`, unless this corpus is already in. */
-    fun load(jsonl: String, port: Int): Result {
+    /**
+     * Every chunk of `jsonl` into Cael's memory through the gateway on `port`, unless this
+     * corpus is already in. `token` is the app's paired bearer (GatewayPairing); null when
+     * the gateway runs with pairing off.
+     */
+    fun load(jsonl: String, port: Int, token: String? = null): Result {
         val fingerprint = fingerprint(jsonl)
         if (loadedFingerprint() == fingerprint) return Result(0, 0, true, "corpus $fingerprint already loaded")
         val chunks = parse(jsonl)
@@ -44,7 +48,7 @@ class CaelCorpus(
                 .put("agent", AGENT)
                 .toString()
             val code = try {
-                post(url(port), body)
+                post(url(port), body, token)
             } catch (_: Exception) {
                 -1
             }
@@ -88,7 +92,7 @@ class CaelCorpus(
             MessageDigest.getInstance("SHA-256").digest(jsonl.toByteArray(Charsets.UTF_8))
                 .joinToString("") { "%02x".format(it) }.substring(0, 16)
 
-        fun httpPost(url: String, body: String): Int {
+        fun httpPost(url: String, body: String, token: String?): Int {
             val conn = URL(url).openConnection() as HttpURLConnection
             try {
                 conn.connectTimeout = 5_000
@@ -96,6 +100,7 @@ class CaelCorpus(
                 conn.requestMethod = "POST"
                 conn.doOutput = true
                 conn.setRequestProperty("Content-Type", "application/json")
+                if (token != null) conn.setRequestProperty("Authorization", "Bearer $token")
                 conn.outputStream.use { it.write(body.toByteArray(Charsets.UTF_8)) }
                 return conn.responseCode
             } finally {

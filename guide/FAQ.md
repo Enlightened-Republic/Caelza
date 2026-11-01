@@ -103,8 +103,8 @@ played by wireless debugging (ADB) on the phone itself, set up by
 The first browser or app to open the dashboard must pair. The gateway prints a
 pairing code in its log; `caelza gateway get-paircode` prints it again and
 `caelza gateway get-paircode --new` makes a fresh one. Type it on the pairing
-screen. The Caelza app on a phone runs its own gateway with pairing off, so
-its dashboard opens without a code.
+screen. The Caelza app on a phone pairs its own dashboard shell by itself, so
+no code is typed there, and no other app on the phone can use its gateway.
 
 ## How do I pair another phone?
 

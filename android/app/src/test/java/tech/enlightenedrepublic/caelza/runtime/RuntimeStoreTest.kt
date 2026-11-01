@@ -85,11 +85,17 @@ class RuntimeStoreTest {
     fun ensure_config_writes_a_loopback_gateway_once_and_the_web_dist_goes_where_the_gateway_looks() {
         val s = store()
         val config = s.ensureConfig()
-        assertTrue(config.readText().contains("require_pairing = false"))
+        assertTrue(config.readText().contains("require_pairing = true"))
         assertEquals(RuntimeStore.GATEWAY_PORT, Gateway.port(s.configDir))
         config.writeText("schema_version = 3\n\n[gateway]\nport = 4242\n")
         s.ensureConfig()
         assertEquals(4242, Gateway.port(s.configDir))
+        // A config this app wrote before it could pair itself (M7a: pairing off) is turned on, nothing else touched.
+        config.writeText("schema_version = 3\n\n[gateway]\nhost = \"127.0.0.1\"\nport = 4242\n  require_pairing = false\n\n[agents.main]\nrisk_profile = \"phone\"\n")
+        s.ensureConfig()
+        assertEquals("schema_version = 3\n\n[gateway]\nhost = \"127.0.0.1\"\nport = 4242\n  require_pairing = true\n\n[agents.main]\nrisk_profile = \"phone\"\n", config.readText())
+        s.ensureConfig()
+        assertTrue(config.readText().contains("  require_pairing = true\n"))
         val dist = File(tmp.root, "dist").apply { mkdirs() }
         File(dist, "index.html").writeText("<html>caelza</html>")
         s.installWebDist(dist)
