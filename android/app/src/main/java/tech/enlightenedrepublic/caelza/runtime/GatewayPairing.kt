@@ -41,8 +41,15 @@ class GatewayPairing(
 
     fun storedToken(): String? = tokenFile.takeIf { it.isFile }?.readText()?.trim()?.ifEmpty { null }
 
-    /** A bearer token the gateway on `port` accepts: the stored one when it still works, else a fresh pairing. */
-    fun ensureToken(port: Int): Outcome {
+    /**
+     * A bearer token the gateway on `port` accepts: the stored one when it still works, else a
+     * fresh pairing. One at a time across the process: the gateway holds a single pending
+     * pairing code, so two callers minting at once (the shell and the service, on the same
+     * /health) would have one of them pair with a code the other just replaced.
+     */
+    fun ensureToken(port: Int): Outcome = synchronized(PAIRING) { ensureTokenLocked(port) }
+
+    private fun ensureTokenLocked(port: Int): Outcome {
         val base = "http://127.0.0.1:$port"
         storedToken()?.let { token ->
             val probe = send("GET", "$base/api/status", mapOf("Authorization" to "Bearer $token"))
@@ -98,6 +105,8 @@ class GatewayPairing(
         const val DEVICE_TYPE = "app"
         /** The key the dashboard keeps its token under in localStorage (web/src/lib/auth.ts). */
         const val WEB_TOKEN_KEY = "caelza_token"
+        /** Serialises `ensureToken` across every instance in the process (the shell's and the service's). */
+        private val PAIRING = Any()
 
         fun forStore(store: RuntimeStore): GatewayPairing = GatewayPairing(store.configDir, File(store.home, TOKEN_FILE))
 

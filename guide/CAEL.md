@@ -97,7 +97,8 @@ installer writes in step.
   `scripts/cael_corpus.py load` upserts them through `POST /api/memory` for
   `agents.cael` (keys `docs/<page>#<n>`, category `core`; `--prune` drops
   what an older corpus left), and the Android app loads the bundled copy once
-  its gateway answers. Recall is the Runtime's own: FTS5 keyword search under
+  its gateway answers and prunes the same way (the keys are dense per page, so
+  a page that shrank would otherwise leave a stale tail in his memory). Recall is the Runtime's own: FTS5 keyword search under
   the sqlite backend, `brain_query` under the Mind. The facts he must not get
   wrong stay in `cael.system.md` as well. The whole path is proven against
   the real binary by `tests/test_cael_corpus_e2e.py` (`CAELZA_BIN=…`): a

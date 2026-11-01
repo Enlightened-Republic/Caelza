@@ -54,10 +54,19 @@ class FirstRunActivity : AppCompatActivity() {
         b = ActivityFirstRunBinding.inflate(layoutInflater)
         setContentView(b.root)
         store = RuntimeStore(filesDir)
+        // Recreated (not a rotation, which the manifest keeps in place): back to the step the owner was on.
+        savedInstanceState?.getString(STATE_STEP)?.let { step = runCatching { FirstRun.Step.valueOf(it) }.getOrDefault(step) }
+        savedInstanceState?.getString(STATE_DOOR)?.let { door = runCatching { FirstRun.Door.valueOf(it) }.getOrNull() }
         b.primary.setOnClickListener { onPrimary() }
         b.secondary.setOnClickListener { onSecondary() }
         b.tertiary.setOnClickListener { onTertiary() }
         render()
+    }
+
+    override fun onSaveInstanceState(outState: Bundle) {
+        super.onSaveInstanceState(outState)
+        outState.putString(STATE_STEP, step.name)
+        door?.let { outState.putString(STATE_DOOR, it.name) }
     }
 
     override fun onResume() {
@@ -388,6 +397,8 @@ class FirstRunActivity : AppCompatActivity() {
     }
 
     companion object {
+        private const val STATE_STEP = "step"
+        private const val STATE_DOOR = "door"
         const val CAEL_SOUL = "cael.system.md"
         const val SHIZUKU_PACKAGE = "moe.shizuku.privileged.api"
         const val SHIZUKU_SITE = "https://shizuku.rikka.app/"

@@ -77,7 +77,13 @@ class RuntimeService : Service() {
     private val scope = CoroutineScope(SupervisorJob() + Dispatchers.IO)
     private lateinit var store: RuntimeStore
     private var job: Job? = null
+    private var corpusJob: Job? = null
     private var process: Process? = null
+    /** Bumped by every stop: a `supervise()` loop whose generation has passed stands down instead of touching the new daemon's state. */
+    @Volatile private var generation = 0
+    /** A daemon told to stop whose exit the next launch waits for, so the port is free before the new one binds. */
+    @Volatile private var retiring: Process? = null
+    @Volatile private var retiringModel: Process? = null
     private var bodyServer: BodyServer? = null
     private var modelJob: Job? = null
     private var modelProcess: Process? = null
@@ -98,6 +104,7 @@ class RuntimeService : Service() {
         startForeground(NOTIFICATION_ID, notification(getString(R.string.runtime_notification_title)))
         when (intent?.action) {
             ACTION_STOP -> {
+                rememberStartAtBoot(false)
                 stopRuntime()
                 stopModel()
                 stopBody()
@@ -106,6 +113,7 @@ class RuntimeService : Service() {
                 stopSelf()
             }
             ACTION_RESTART -> {
+                rememberStartAtBoot(true)
                 stopRuntime()
                 crashes.reset()
                 lastGoodLooping = false
@@ -114,12 +122,23 @@ class RuntimeService : Service() {
                 startRuntime()
             }
             else -> {
+                rememberStartAtBoot(true)
+                if (_state.value.phase == Phase.HALTED) {
+                    // A Start after a halt is a fresh try: the exits that halted it must not count against it.
+                    crashes.reset()
+                    lastGoodLooping = false
+                }
                 startBody()
                 startModel()
                 if (job?.isActive != true) startRuntime()
             }
         }
         return START_STICKY
+    }
+
+    /** What BootReceiver reads after a reboot: the owner's last word, Start or Stop. */
+    private fun rememberStartAtBoot(on: Boolean) {
+        getSharedPreferences(BootReceiver.PREFS, MODE_PRIVATE).edit().putBoolean(BootReceiver.KEY_START_AT_BOOT, on).apply()
     }
 
     override fun onDestroy() {
@@ -160,6 +179,10 @@ class RuntimeService : Service() {
     }
 
     private suspend fun superviseModel(server: File, model: File, serve: ModelServe) {
+        retiringModel?.let { old ->
+            if (old.isAlive) old.waitFor(5, TimeUnit.SECONDS)
+            retiringModel = null
+        }
         while (!modelStopping) {
             _model.value = ModelState(configured = true, model = model.name, detail = "loading")
             val proc = try {
@@ -205,11 +228,23 @@ class RuntimeService : Service() {
         modelJob?.cancel()
         modelJob = null
         modelProcess?.let { proc ->
-            proc.destroy()
-            if (!proc.waitFor(5, TimeUnit.SECONDS)) proc.destroyForcibly()
+            retiringModel = proc
+            reap(proc)
         }
         modelProcess = null
         _model.value = ModelState()
+    }
+
+    /**
+     * Ask a process to stop and, off the main thread, force it after a grace period. The
+     * callers run on the main thread (onStartCommand, onDestroy), which must not sit in
+     * `waitFor` while llama-server unmaps a 4 GB model; the next launch waits instead.
+     */
+    private fun reap(proc: Process) {
+        proc.destroy()
+        Thread {
+            if (!proc.waitFor(5, TimeUnit.SECONDS)) proc.destroyForcibly()
+        }.apply { isDaemon = true; name = "caelza-reap" }.start()
     }
 
     /**
@@ -248,17 +283,26 @@ class RuntimeService : Service() {
 
     private fun stopRuntime() {
         stopping = true
+        generation++
         job?.cancel()
         job = null
+        corpusJob?.cancel()
+        corpusJob = null
         process?.let { proc ->
-            proc.destroy()
-            if (!proc.waitFor(5, TimeUnit.SECONDS)) proc.destroyForcibly()
+            retiring = proc
+            reap(proc)
         }
         process = null
     }
 
     private suspend fun supervise() {
-        while (!stopping) {
+        // The daemon told to stop just before this one starts: let it release the port first.
+        retiring?.let { old ->
+            if (old.isAlive) old.waitFor(5, TimeUnit.SECONDS)
+            retiring = null
+        }
+        val myGeneration = generation
+        while (!stopping && myGeneration == generation) {
             val binary = store.currentBinary
             if (binary == null) {
                 halt(getString(R.string.status_not_installed))
@@ -278,13 +322,33 @@ class RuntimeService : Service() {
             process = proc
             _state.value = RuntimeState(Phase.RUNNING, version)
             updateNotification(getString(R.string.status_running, version ?: ""))
-            scope.launch { loadCaelCorpus() }
+            corpusJob = scope.launch { loadCaelCorpus() }
+            scope.launch { promoteWhenStable(proc, version, myGeneration) }
             val code = withContextWait(proc)
-            process = null
-            if (stopping) return
+            // A stop that happened while this waited has moved on: only this run's handle is ours to clear.
+            if (process === proc) process = null
+            if (stopping || myGeneration != generation) return
             recordCrash("$version exited $code")
             if (_state.value.phase == Phase.HALTED) return
             delay(RESTART_DELAY_MS)
+        }
+    }
+
+    /**
+     * The supervisor's rule (`caelza_body/supervisor.py` RUNTIME_STABLE_AFTER): a version that
+     * has run for ten minutes and still answers /health becomes `last-good`, so a later crash
+     * loop rolls back to it and not to the first version ever installed.
+     */
+    private suspend fun promoteWhenStable(proc: Process, version: String?, gen: Int) {
+        delay(STABLE_AFTER_MS)
+        if (version == null || stopping || gen != generation || !proc.isAlive) return
+        if (store.current != version || store.lastGood == version) return
+        if (!Gateway.healthy(Gateway.port(store.configDir))) return
+        try {
+            store.promote(version)
+            Log.i(TAG, "$version held for ${STABLE_AFTER_MS / 60_000} minutes: now last-good")
+        } catch (e: Exception) {
+            Log.w(TAG, "could not promote $version to last-good", e)
         }
     }
 
@@ -403,6 +467,8 @@ class RuntimeService : Service() {
         const val ACTION_STOP = "tech.enlightenedrepublic.caelza.STOP"
         const val ACTION_RESTART = "tech.enlightenedrepublic.caelza.RESTART"
         const val RESTART_DELAY_MS = 2_000L
+        /** How long a version has to hold before it becomes `last-good` (the supervisor's RUNTIME_STABLE_AFTER, 600 s). */
+        const val STABLE_AFTER_MS = 10 * 60_000L
         const val LOG_ROTATE_BYTES = 5L * 1024 * 1024
 
         private val _state = MutableStateFlow(RuntimeState())
