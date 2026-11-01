@@ -115,7 +115,7 @@ class LogsActivity : AppCompatActivity() {
         val model = RuntimeService.model.value
         val memory = ActivityManager.MemoryInfo().also { (getSystemService(Context.ACTIVITY_SERVICE) as ActivityManager).getMemoryInfo(it) }
         return listOf(
-            "app" to "${BuildConfig.VERSION_NAME} (${BuildConfig.VERSION_CODE}, ${BuildConfig.BUILD_TYPE})",
+            "app" to "${BuildConfig.VERSION_NAME} (${BuildConfig.VERSION_CODE}, ${BuildConfig.BUILD_TYPE}, build ${BuildConfig.BUILD_ID})",
             "device" to "${Build.MANUFACTURER} ${Build.MODEL}, Android ${Build.VERSION.RELEASE} (SDK ${Build.VERSION.SDK_INT}), ${Build.SUPPORTED_ABIS.joinToString(",")}",
             "runtime" to "current ${store.current ?: "none"}, last-good ${store.lastGood ?: "none"}, installed ${store.installed().joinToString(", ").ifEmpty { "nothing" }}",
             "runtime state" to "${state.phase} ${state.version ?: ""} ${state.detail}".trim(),

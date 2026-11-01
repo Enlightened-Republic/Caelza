@@ -74,6 +74,23 @@ halts without a rollback (not the binary's fault). `MainActivity` watches
 Update are the strip's buttons; the installer asks the service to restart
 after a new version probed ok.
 
+**Release.** A `v*` tag builds the app too (`release.yml`, job `app`) and
+attaches `caelza-app-<version>.apk` with its `.sha256` to the GitHub release
+beside the Runtime tarballs. `scripts/app_version.py` turns the tag into
+`versionName` and `versionCode` (`v0.1.0` → `0.1.0`, `1000`: major × 10⁶ +
+minor × 10³ + patch, so every later tag upgrades every earlier one; a build
+without a tag is `0.0.0-dev` at code 1) and into `BuildConfig.BUILD_ID`, which
+the bug report's header shows. The release build type signs with the keystore
+the environment names (`CAELZA_KEYSTORE` + password, alias, key password; CI
+decodes it from the `ANDROID_KEYSTORE_BASE64` secret and its three
+companions); without one it signs with the debug key and CI names the APK
+`-debug-signed`, installable for trying things but not upgradable to a
+release-signed build. A broken app build never holds the Runtime's release
+back (`continue-on-error`, like the experimental Android leg). The installers
+pick their tarball by its `-<target>.tar.gz` suffix, so the APK beside it is
+never mistaken for the Runtime (`tests/test_app_release.py` pins that from
+both sides).
+
 **Logs.** `Logs` on the strip opens `logs/LogsActivity.kt`: one chip per log
 the app writes (`daemon.log` and the `.prev` its rotation leaves,
 `llama-server.log`, the installer's `install.log`, the current binary's
@@ -308,8 +325,10 @@ and a squircle launcher make of it, and the whole layer.
   `prune()`. A `runtime_update`-style tool for it is not written.
 - **This phone's screen without Shizuku.** The accessibility service for
   `device_ui_dump` / `device_input` and MediaProjection for `device_screencap`.
-- **Signing and distribution.** A release keystore in CI secrets, an own
-  F-Droid-style repo or GitHub releases for the APK; Play needs targetSdk 34.
+- **Distribution beyond the GitHub release.** The APK ships on each release
+  (§2 "Release"); the release keystore still has to be made and put in the
+  repo's secrets (`android/README.md`), an own F-Droid-style repo is not set
+  up, and Play needs targetSdk 34.
 - **Foreground service type.** With targetSdk 28 none is required; the move
   to 34 needs `FOREGROUND_SERVICE_SPECIAL_USE` and its declaration.
 - **Tests on a device.** Instrumented tests (`connectedDebugAndroidTest`) for

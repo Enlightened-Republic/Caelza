@@ -173,6 +173,12 @@ gateway_pairing = "android/app/src/main/java/tech/enlightenedrepublic/caelza/run
 # the Body's audit log, secrets blanked, and Share: a bug report (versions, phone, states, the tails) through a FileProvider.
 logs_screen = "android/app/src/main/java/tech/enlightenedrepublic/caelza/logs/LogsActivity.kt"
 bug_report = "android/app/src/main/java/tech/enlightenedrepublic/caelza/logs/BugReport.kt"
+# The release's Android leg: release.yml's `app` job builds the APK for the tag and attaches it beside the Runtime
+# tarballs; scripts/app_version.py turns the tag into versionName/versionCode/BUILD_ID (v0.1.0 → 0.1.0, 1000);
+# signed with the release keystore from the repo secrets ANDROID_KEYSTORE_BASE64 + ANDROID_KEYSTORE_PASSWORD +
+# ANDROID_KEY_ALIAS + ANDROID_KEY_PASSWORD, or with the debug key and named -debug-signed when they are not set.
+app_release_asset = "caelza-app-<version>.apk"
+app_version = "scripts/app_version.py"
 # M6 (fleet): a hub and its phones. Each phone serves its Body over HTTP; the hub's Body joins them
 # as devices and forwards every call naming one (caelza_body/fleet.py); groups fan a procedure out.
 fleet = "caelza_body/fleet.py"
@@ -185,11 +191,12 @@ runtime_update = "caelza-body runtime update"         # -> ~/.caelza-body/runtim
 
 # ---------------------------------------------------------------------------
 # App — the Caelza Android app + web app (PWA of the Runtime dashboard).
-# Planned (vision doc §3.3, milestone M7). Shizuku provides shell-level
+# Vision doc §3.3, milestone M7: shipped through M7d ([android] above has the detail);
+# the APK rides each release as caelza-app-<version>.apk. Shizuku provides shell-level
 # privileges to the app without root or Termux.
 [components.app]
 kind = "android-app"
-status = "planned"
+status = "shipped"
 web = "pwa"                       # the Runtime dashboard, installable
 privilege = "shizuku"             # optional: https://github.com/RikkaApps/Shizuku (Apache-2.0); Sui on rooted devices
 hosts = ["runtime", "body", "model"]

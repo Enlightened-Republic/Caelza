@@ -90,6 +90,11 @@ git tag v0.1.0 && git push origin v0.1.0
 (`v0.1.0+zeroclaw.<commit>`), stages with it, builds each target and attaches
 `caelza-0.1.0-<target>.tar.gz` with its `.sha256` to the GitHub release. A
 `workflow_dispatch` run keeps upstream's crate version and is named `dev-<sha>`.
+The same tag builds the Android app as `caelza-app-0.1.0.apk` (versioned from
+the tag by [`../scripts/app_version.py`](../scripts/app_version.py), signed
+with the release keystore when the repo's secrets hold one, `-debug-signed`
+otherwise; [`../android/README.md`](../android/README.md)). The installers pick
+their tarball by its `-<target>.tar.gz` suffix and never see the APK.
 
 ### Android / Termux (the phone)
 

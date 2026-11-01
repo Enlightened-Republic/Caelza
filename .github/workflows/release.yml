@@ -14,6 +14,14 @@ name: release
 # probe expects: `0.1.0 (v0.1.0+zeroclaw.<commit>)`. Tag the version in
 # bundle/manifest.toml. A workflow_dispatch run keeps upstream's crate version
 # and is named dev-<sha>.
+#
+# The same tag also builds the Android app (android/) as caelza-app-0.1.0.apk,
+# versioned from the tag by scripts/app_version.py and signed with the release
+# keystore when the repo's secrets hold one (ANDROID_KEYSTORE_BASE64,
+# ANDROID_KEYSTORE_PASSWORD, ANDROID_KEY_ALIAS, ANDROID_KEY_PASSWORD); without
+# them the APK is signed with the debug key and named -debug-signed. The
+# installers pick their tarball by its -<target>.tar.gz suffix, so the APK
+# beside it is never mistaken for the Runtime.
 
 on:
   push:
@@ -190,10 +198,77 @@ jobs:
             ${{ steps.pack.outputs.sum }}
           if-no-files-found: error
 
+  # The app for the same tag. A broken app build never holds the Runtime's
+  # release back (continue-on-error, like the experimental Android leg above);
+  # the release then simply has no APK, and the job's log says why.
+  app:
+    name: Android app
+    runs-on: ubuntu-latest
+    timeout-minutes: 45
+    continue-on-error: true
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: "21"
+      - uses: android-actions/setup-android@v3
+        with:
+          packages: "platform-tools platforms;android-36 build-tools;35.0.0"
+      - uses: gradle/actions/setup-gradle@v4
+      - name: Version from the tag
+        id: version
+        run: |
+          set -euo pipefail
+          if [ "$GITHUB_REF_TYPE" = tag ]; then ref="$GITHUB_REF_NAME"; else ref=dev; fi
+          python3 scripts/app_version.py "$ref" --sha "$GITHUB_SHA" --github | tee -a "$GITHUB_OUTPUT"
+      - name: Release keystore (when the secrets are set)
+        id: keystore
+        env:
+          KEYSTORE_BASE64: ${{ secrets.ANDROID_KEYSTORE_BASE64 }}
+        run: |
+          set -euo pipefail
+          if [ -n "$KEYSTORE_BASE64" ]; then
+            printf '%s' "$KEYSTORE_BASE64" | base64 -d > "$RUNNER_TEMP/release.keystore"
+            chmod 0600 "$RUNNER_TEMP/release.keystore"
+            echo "CAELZA_KEYSTORE=$RUNNER_TEMP/release.keystore" >> "$GITHUB_ENV"
+            echo "signed=release" >> "$GITHUB_OUTPUT"
+            echo "signing with the release keystore"
+          else
+            echo "signed=debug" >> "$GITHUB_OUTPUT"
+            echo "no ANDROID_KEYSTORE_BASE64 secret: the APK is signed with the debug key and named -debug-signed"
+          fi
+      - name: Build and test
+        working-directory: android
+        env:
+          CAELZA_KEYSTORE_PASSWORD: ${{ secrets.ANDROID_KEYSTORE_PASSWORD }}
+          CAELZA_KEY_ALIAS: ${{ secrets.ANDROID_KEY_ALIAS }}
+          CAELZA_KEY_PASSWORD: ${{ secrets.ANDROID_KEY_PASSWORD }}
+        run: ./gradlew --no-daemon --console=plain assembleRelease testDebugUnitTest ${{ steps.version.outputs.gradle }}
+      - name: Package
+        id: pack
+        run: |
+          set -euo pipefail
+          ver="${{ steps.version.outputs.version }}"
+          suffix=""; [ "${{ steps.keystore.outputs.signed }}" = release ] || suffix="-debug-signed"
+          name="caelza-app-${ver}${suffix}.apk"
+          cp android/app/build/outputs/apk/release/app-release.apk "$RUNNER_TEMP/$name"
+          (cd "$RUNNER_TEMP" && sha256sum "$name" > "$name.sha256")
+          "$ANDROID_HOME/build-tools/35.0.0/apksigner" verify --print-certs "$RUNNER_TEMP/$name" | head -5
+          echo "asset=$RUNNER_TEMP/$name" >> "$GITHUB_OUTPUT"
+          echo "sum=$RUNNER_TEMP/$name.sha256" >> "$GITHUB_OUTPUT"
+      - uses: actions/upload-artifact@v4
+        with:
+          name: caelza-app
+          path: |
+            ${{ steps.pack.outputs.asset }}
+            ${{ steps.pack.outputs.sum }}
+          if-no-files-found: error
+
   release:
     name: GitHub release
     if: github.ref_type == 'tag'
-    needs: build
+    needs: [build, app]
     runs-on: ubuntu-latest
     steps:
       - uses: actions/download-artifact@v4
@@ -208,3 +283,4 @@ jobs:
           body: |
             Caelza runtime built from the pinned upstream commit (see `UPSTREAM.md` inside each archive).
             Each archive holds the `caelza` binary, the web dashboard (`web/dist`), and the upstream notices.
+            `caelza-app-<version>.apk` is the Android app for this release (`-debug-signed` when it was built without the release keystore: install it only to try things, it will not upgrade to a release-signed build).
