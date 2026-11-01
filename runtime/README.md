@@ -32,7 +32,9 @@ runtime/
 │                      (a turn_context_for_agent hook on the Memory trait, the wrappers forwarding it, the memory
 │                      preamble opening with it, the xanima storage keys for it and for provisioning); 0009 the
 │                      simplified setup (/setup routed outside the chrome, fresh installs land on it, "Set up" in the
-│                      sidebar, the strings, JSON imports for the catalog, the logic test in the web test list)
+│                      sidebar, the strings, JSON imports for the catalog, the logic test in the web test list); 0010
+│                      the brand pass (the mark and the wordmark in the top bar, page titles in the mark gradient, the
+│                      primary button cyan → violet, Space with the glows behind every page)
 ├── tools/phone-shots/ Playwright over every dashboard route at 390 × 844: screenshots, sideways scroll, elements past
 │                      the edge, controls under 32 px; a mock proxy for the Mind and Body routes
 ├── lib/rename.pl      the replacement engine

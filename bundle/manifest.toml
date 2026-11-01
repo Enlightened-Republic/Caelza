@@ -72,6 +72,10 @@ setup_page = "runtime/overlay/web/src/pages/setup/Setup.tsx"   # + WheelPicker.t
 setup_patch = "runtime/patches/0009-simplified-setup.patch"
 model_catalog = "bundle/models.json"                        # python3 scripts/model_catalog.py check --online verifies every id against models.dev
 model_catalog_check = "scripts/model_catalog.py"
+# M4 phase 4b: the brand pass over every dashboard page: the mark and the wordmark in the top bar, page titles in the
+# mark gradient, the primary action filled cyan -> violet, Space with the nebula glows behind every page (the glow
+# colours are theme variables from runtime/lib/dashboard_theme.py). CSS in the brand stylesheet; the patch has the four hunks.
+brand_pass_patch = "runtime/patches/0010-brand-pass.patch"
 # M5: the Procedures library runs a procedure by hand; a phone playbook's Run asks which phone and sends it as the trigger payload.
 procedures_run = "runtime/overlay/web/src/pages/Procedures.tsx"   # RunDialog over POST /api/sops/{name}/run (upstream's endpoint); the agent uses sop_execute
 

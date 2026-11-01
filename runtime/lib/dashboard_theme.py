@@ -62,6 +62,10 @@ def theme_entries(tokens: dict) -> list[dict]:
             "--pc-accent-dim": _rgba(c["primary"], 0.3),
             "--pc-accent-glow": _rgba(c["primary"], 0.1),
             "--pc-accent-rgb": c["primary_rgb"].replace(" ", ""),
+            # The nebula glows behind every page (.cz-space in caelza-brand.css):
+            # purple at the top left, cyan at the bottom right, as the hero has them.
+            "--cz-glow-1": _rgba(c["purple"], 0.22),
+            "--cz-glow-2": _rgba(c["primary"], 0.14),
         },
     }
     lt = {
@@ -94,6 +98,9 @@ def theme_entries(tokens: dict) -> list[dict]:
             "--pc-accent-dim": _rgba(light["primary"], 0.3),
             "--pc-accent-glow": _rgba(light["primary"], 0.1),
             "--pc-accent-rgb": light["primary_rgb"].replace(" ", ""),
+            # Faint on the light base: the tint, not the glow.
+            "--cz-glow-1": _rgba(c["purple"], 0.07),
+            "--cz-glow-2": _rgba(light["primary"], 0.06),
         },
     }
     return [dark, lt]
