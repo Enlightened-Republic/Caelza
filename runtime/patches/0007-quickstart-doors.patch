@@ -1,0 +1,128 @@
+Caelza: the two doors on quickstart's first screen (vision §3.4).
+
+Caelza works with no account and no API key, and the first thing a new owner
+sees should say so. The dashboard's Quickstart opened on a provider dropdown;
+now its model-provider section opens on two doors. "Free and local" stages
+the ladder's DeepSeek R1 for this device as `<runner>.local`, the alias
+scripts/model-setup.sh and the app's first run write, with Cael's honest line
+from the ladder (scripts/model_ladder.py); "Bring your own key" is upstream's
+provider form as it was. The doors live in the overlay
+(web/src/pages/quickstart/Doors.tsx, doors.logic.ts and its node test); these
+hunks make the page render them, hoist the one stage callback both doors
+share, name the door in the section's summary, add the strings (English; the
+other locales fall back to it) and list the logic test beside upstream's.
+Applied after 0006 and the overlay copy.
+
+--- a/web/src/pages/quickstart/Quickstart.tsx
++++ b/web/src/pages/quickstart/Quickstart.tsx
+@@ -37,6 +37,8 @@
+ } from "./runtime-selection";
+ import { ChannelAddForm, type StagedChannel } from "./ChannelAddForm";
+ import { LabeledInput } from "./quickstart-form-controls";
++import Doors from "./Doors";
++import { doorOf } from "./doors.logic";
+ 
+ // Shared tokenized field control classes. Calm input surface with an accent
+ // focus ring — replaces the legacy `input-electric` utility.
+@@ -198,6 +200,25 @@
+     navigate(`/agent/${encodeURIComponent(res.agent.alias)}`);
+   };
+ 
++  // Both doors stage through here: the local door with `<runner>.local`, the
++  // key door through upstream's provider form.
++  const stageProvider = (p: StagedProvider) => {
++    setForm((f) => {
++      const runtime = runtimeAfterProviderChange(
++        state,
++        p.provider_type,
++        f.runtime,
++        runtimeAutoDefaultedRef.current,
++      );
++      return {
++        ...f,
++        provider: p,
++        runtime,
++      };
++    });
++    recordStep("model_provider");
++  };
++
+   const providerDone = form.provider !== null;
+   const riskDone = form.risk !== null;
+   const runtimeDone = form.runtime !== null;
+@@ -258,7 +279,7 @@
+         done={providerDone}
+         summary={
+           form.provider
+-            ? `${form.provider.provider_type}.${form.provider.alias} — ${form.provider.model}`
++            ? `${t(doorOf(form.provider) === "local" ? "quickstart.door_local" : "quickstart.door_key")} · ${form.provider.provider_type}.${form.provider.alias} — ${form.provider.model}`
+             : null
+         }
+       >
+@@ -269,24 +290,10 @@
+             onRemove={() => setForm((f) => ({ ...f, provider: null }))}
+           />
+         ) : (
+-          <ProviderForm
++          <Doors
+             state={state}
+-            onStage={(p) => {
+-              setForm((f) => {
+-                const runtime = runtimeAfterProviderChange(
+-                  state,
+-                  p.provider_type,
+-                  f.runtime,
+-                  runtimeAutoDefaultedRef.current,
+-                );
+-                return {
+-                  ...f,
+-                  provider: p,
+-                  runtime,
+-                };
+-              });
+-              recordStep("model_provider");
+-            }}
++            keyDoor={<ProviderForm state={state} onStage={stageProvider} />}
++            onStage={stageProvider}
+           />
+         )}
+       </Section>
+--- a/web/src/lib/i18n.ts
++++ b/web/src/lib/i18n.ts
+@@ -864,8 +864,24 @@
+     'quickstart.create': "Create",
+     'quickstart.create_new': "Create new",
+     'quickstart.creating': "Creating...",
+-    'quickstart.description': "Create one working agent end-to-end. Pick a provider, choose your profiles, and start chatting.",
++    'quickstart.description': "Create one working agent end-to-end: pick a brain through one of the two doors, choose your profiles, and start chatting.",
+     'quickstart.discard': "Discard",
++    'quickstart.door_back': "Both doors",
++    'quickstart.door_cael': "Cael, the guide, comes along on {model}: he explains keys, providers, approvals and pairing in plain language, offline.",
++    'quickstart.door_key': "Bring your own key",
++    'quickstart.door_key_help': "Anthropic, OpenAI, OpenRouter, MiniMax, any OpenAI-compatible endpoint. The key is encrypted on this device and only ever sent to that provider.",
++    'quickstart.door_local': "Free and local",
++    'quickstart.door_local_help': "DeepSeek R1 on this device. No account, no API key. Cael, the guide, comes along.",
++    'quickstart.door_model_help': "The ladder's pick for this device; the other sizes: {names}.",
++    'quickstart.door_ram': "Memory (RAM)",
++    'quickstart.door_ram_large': "16 GB or more",
++    'quickstart.door_ram_medium': "8 to 16 GB",
++    'quickstart.door_ram_phone': "6 to 8 GB",
++    'quickstart.door_ram_small': "under 6 GB",
++    'quickstart.door_then': "Then, once: `sh scripts/model-setup.sh` fetches the model, starts the server and creates Cael. The Caelza app on a phone has done this already.",
++    'quickstart.door_where': "Where Caelza runs",
++    'quickstart.door_where_hub': "A computer or server (Ollama)",
++    'quickstart.door_where_phone': "This phone (llama.cpp)",
+     'quickstart.external_peers_label': "External peers (one per line or comma-separated)",
+     'quickstart.local_suffix': "(local)",
+     'quickstart.memory_title': "Memory",
+--- a/web/package.json
++++ b/web/package.json
+@@ -14,7 +14,7 @@
+     "typecheck": "npm run check:generated && tsc -b",
+     "build": "npm run check:generated && tsc -b && vite build",
+     "dev": "vite",
+-    "test": "node --experimental-strip-types --test src/pages/quickstart/runtime-selection.test.ts src/pages/quickstart/channel-fields.test.ts src/pages/acp-console/thought-stream.test.ts src/lib/contextBar.test.ts src/components/sections/secretMap.logic.test.ts src/pages/integrations.logic.test.ts src/lib/historyTrimNotice.test.ts src/components/runLogPresentation.test.ts src/pages/pluginCatalog.test.ts && npm run test:sops && npm run test:sop-editor && jiti src/pages/quickstart/channel-form.test.ts",
++    "test": "node --experimental-strip-types --test src/pages/quickstart/runtime-selection.test.ts src/pages/quickstart/doors.logic.test.ts src/pages/quickstart/channel-fields.test.ts src/pages/acp-console/thought-stream.test.ts src/lib/contextBar.test.ts src/components/sections/secretMap.logic.test.ts src/pages/integrations.logic.test.ts src/lib/historyTrimNotice.test.ts src/components/runLogPresentation.test.ts src/pages/pluginCatalog.test.ts && npm run test:sops && npm run test:sop-editor && jiti src/pages/quickstart/channel-form.test.ts",
+     "test:sops": "node --experimental-strip-types --test src/hooks/useRunOverlay.logic.test.ts src/pages/runs.logic.test.ts",
+     "test:sop-editor": "node --experimental-strip-types --test src/pages/sopSavePlan.test.ts",
+     "test:permissions": "jiti src/components/ToolPermissionGrid.logic.test.ts && jiti src/pages/Tools.logic.test.ts && jiti src/lib/toolCatalog.logic.test.ts && jiti src/components/ToolCatalogWarningPanel.test.ts && jiti src/lib/validationWarnings.test.ts && jiti src/components/UpgradeDialog.logic.test.ts && npm run test:navigation",
