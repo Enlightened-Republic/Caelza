@@ -152,6 +152,9 @@ against pinned checksums. The 1.5B always comes along: it is **Cael**, the
 in-app guide (`agents.cael`, read-only, no tools), who explains keys,
 providers, approvals and pairing in plain language, offline (§3.4,
 [`guide/CAEL.md`](guide/CAEL.md), persona in [`guide/cael.system.md`](guide/cael.system.md)).
+He answers from a corpus of the docs ([`guide/FAQ.md`](guide/FAQ.md), the
+READMEs, the Runtime's book) that `scripts/cael_corpus.py` loads into his
+memory; the app does it on its own.
 The wiring in TOML: [`runtime/caelza.local-model.example.toml`](runtime/caelza.local-model.example.toml).
 
 ## Design docs

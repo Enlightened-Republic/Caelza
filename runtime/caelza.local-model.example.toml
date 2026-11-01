@@ -41,9 +41,9 @@ model_provider = "llamacpp.local"
 # (~/.caelza/agents/cael/workspace/SOUL.md, copied from guide/cael.system.md)
 # plus IDENTITY.md, which the agent loop injects into the system prompt. Reach
 # Cael from the dashboard's agent picker; give him his own Telegram alias if you
-# want him there. Cael's docs corpus waits on the Runtime wiring
-# `knowledge_bundles` (schema-only at the current pin); until then the facts
-# Cael needs are in his SOUL.md.
+# want him there. His docs corpus (guide/corpus.jsonl) goes into his memory
+# with `python3 scripts/cael_corpus.py load` once the daemon runs; the
+# Runtime's per-turn recall puts the matching passages in his context.
 [agents.cael]
 model_provider = "llamacpp.guide"
 risk_profile = "guide"

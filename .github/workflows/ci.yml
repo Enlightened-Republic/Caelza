@@ -67,6 +67,8 @@ jobs:
         run: sudo apt-get update -qq && sudo apt-get install -y -qq pkg-config libudev-dev
       - name: Stage the rebranded tree (residual-token check is the gate)
         run: ./runtime/build.sh --no-build
+      - name: Cael's corpus is current with the staged book and the repo docs
+        run: python3 scripts/cael_corpus.py build --check
       - uses: Swatinem/rust-cache@v2
         with:
           workspaces: runtime/.build/src -> ../target

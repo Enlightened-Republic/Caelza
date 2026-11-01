@@ -35,6 +35,7 @@ guarded_install = "caelza-body runtime update && caelza-body runtime link"   # t
 phone_config = "runtime/caelza.phone.example.toml"   # Telegram + Mind + Body + risk profile, merged after `caelza quickstart`
 dashboard_dir = "~/.local/share/caelza/web/dist"   # one of the gateway's auto-detected locations
 daemon = "caelza daemon"          # gateway (127.0.0.1:42617) + channels + cron; Termux:Boot script via CAELZA_BOOT=1
+cael_corpus = "guide/corpus.jsonl"   # Cael's manual: scripts/cael_corpus.py builds it from the docs and loads it into agents.cael's memory through /api/memory; the app loads its bundled copy
 # M4 phase 1: the dashboard wears the brand (self-hosted Inter Tight / JetBrains Mono / Orbitron,
 # the lockup, the parent attribution) and installs as an app. Carried by runtime/overlay/web + patch 0002.
 dashboard_fonts = "brand/fonts -> web/public/fonts (brand/make_assets.py)"
@@ -163,6 +164,7 @@ llama_pin = "b11960"                                   # https://github.com/ggml
 llama_sha256 = "77d9f19fad41d6d8efbc29bcc1c1ab60a605018564cfc32203892eb1973ba4b9"   # 78,624,092 bytes, read 2026-10-31
 models_dir = ".caelza/models"
 model_server_port = 8080
+cael_corpus = "android/app/src/main/assets/cael-corpus.jsonl"   # guide/corpus.jsonl byte for byte; RuntimeService loads it into agents.cael's memory once the gateway answers (guide/CaelCorpus.kt)
 # M6 (fleet): a hub and its phones. Each phone serves its Body over HTTP; the hub's Body joins them
 # as devices and forwards every call naming one (caelza_body/fleet.py); groups fan a procedure out.
 fleet = "caelza_body/fleet.py"

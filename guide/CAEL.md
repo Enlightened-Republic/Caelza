@@ -22,10 +22,13 @@ and he is the one people are meant to love.
 | suggest the honest next step ("this phone runs the 1.5B; bring a cloud key for the agent loop") | upsell or send the owner anywhere off-device |
 | answer offline, from the bundled model and the docs corpus | invent runtime state he cannot see |
 
-Cael has read access to the docs corpus (the runtime's `docs/book/src`, the
-Mind and Body READMEs, the FAQ) through the Mind's `brain_docs` path, and to
-the current screen's context (which page, which setting, the last error).
-Nothing else.
+Cael has read access to the docs corpus (the owner-facing pages of the
+runtime's `docs/book/src`, this repo's README, the Mind and Body READMEs,
+[`FAQ.md`](FAQ.md)) through his own memory: `scripts/cael_corpus.py` chunks
+them into [`corpus.jsonl`](corpus.jsonl) and loads them through the gateway,
+and the Runtime's per-turn recall puts the matching passages in his context.
+He also sees the current screen's context (which page, which setting, the
+last error). Nothing else.
 
 ## Who he is
 
@@ -84,10 +87,19 @@ installer writes in step.
   agent's workspace `SOUL.md` (`~/.caelza/agents/cael/workspace/SOUL.md`,
   copied from [`cael.system.md`](cael.system.md)) plus a short `IDENTITY.md`,
   both injected into the system prompt by the agent loop.
-- Docs corpus: upstream's `knowledge_bundles` is schema-only at the current
-  pin and `pinned_resources` belongs to MCP servers, so Cael has no corpus yet;
-  the facts he must not get wrong are in `cael.system.md`. Revisit when the
-  Runtime wires knowledge bundles, or give Cael a read-only docs MCP server.
+- Docs corpus (**shipped**): upstream's `knowledge_bundles` is schema-only at
+  the current pin and `pinned_resources` belongs to MCP servers, so the
+  corpus goes in through the one path every agent has, memory.
+  `scripts/cael_corpus.py build` chunks the sources by heading (at most 900
+  characters each, opened by a breadcrumb, so five recalled chunks fit beside
+  `SOUL.md` on a phone's 4096-token context) into [`corpus.jsonl`](corpus.jsonl),
+  committed and kept current by CI against the staged book;
+  `scripts/cael_corpus.py load` upserts them through `POST /api/memory` for
+  `agents.cael` (keys `docs/<page>#<n>`, category `core`; `--prune` drops
+  what an older corpus left), and the Android app loads the bundled copy once
+  its gateway answers. Recall is the Runtime's own: FTS5 keyword search under
+  the sqlite backend, `brain_query` under the Mind. The facts he must not get
+  wrong stay in `cael.system.md` as well.
 - Dashboard: Cael appears in the agent picker now. "Ask Cael" on every page and
   "Explain this screen" (page context as the first turn) are UI phase 1 in the
   vision doc.
