@@ -47,9 +47,11 @@
             </intent-filter>
         </activity>
 
-        <!-- The first run, led by Cael. -->
+        <!-- The first run, led by Cael. Like the shell it survives a rotation in place: a
+             recreated Activity would lose a running download's progress (and its step). -->
         <activity
             android:name=".firstrun.FirstRunActivity"
+            android:configChanges="orientation|screenSize|keyboardHidden"
             android:exported="false"
             android:windowSoftInputMode="adjustResize" />
 

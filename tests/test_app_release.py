@@ -107,7 +107,9 @@ def test_release_yml_builds_the_app_for_the_tag_and_attaches_it():
     job = RELEASE[RELEASE.index("\n  app:\n"):RELEASE.index("\n  release:\n")]
     assert "continue-on-error: true" in job, "a broken app build never holds the Runtime's release back"
     assert 'if [ "$GITHUB_REF_TYPE" = tag ]; then ref="$GITHUB_REF_NAME"; else ref=dev; fi' in job
-    assert 'python3 scripts/app_version.py "$ref" --sha "$GITHUB_SHA" --github | tee -a "$GITHUB_OUTPUT"' in job
+    assert 'out=$(python3 scripts/app_version.py "$ref" --sha "$GITHUB_SHA" --github)' in job
+    assert 'echo "$out" | tee -a "$GITHUB_OUTPUT"' in job
+    assert "grep -qx 'release=true' <<<\"$out\"" in job, "a tag that names no release version does not get a dev APK"
     assert "secrets.ANDROID_KEYSTORE_BASE64" in job
     for secret in ("ANDROID_KEYSTORE_PASSWORD", "ANDROID_KEY_ALIAS", "ANDROID_KEY_PASSWORD"):
         assert f"CAELZA_{secret.removeprefix('ANDROID_')}: ${{{{ secrets.{secret} }}}}" in job, secret

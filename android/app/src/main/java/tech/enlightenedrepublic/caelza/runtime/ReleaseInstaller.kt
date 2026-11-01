@@ -9,14 +9,28 @@ import java.net.HttpURLConnection
 import java.net.URL
 import java.security.MessageDigest
 
-/** One HTTP GET; a seam so the tests hand the installer a canned GitHub. */
+/**
+ * One HTTP GET; a seam so the tests hand the installer a canned GitHub. `get` is for the
+ * small answers (the release JSON, a checksum); `download` streams a large one to a file,
+ * so a 60 MB tarball never sits in a 192 MB heap twice over.
+ */
 fun interface Fetch {
     fun get(url: String, accept: String): ByteArray
+
+    fun download(url: String, accept: String, into: File) {
+        into.writeBytes(get(url, accept))
+    }
 }
 
 /** `HttpURLConnection` with the GitHub headers; redirects to the asset storage follow without a token. */
 class HttpFetch(private val token: String? = null) : Fetch {
-    override fun get(url: String, accept: String): ByteArray {
+    override fun get(url: String, accept: String): ByteArray = open(url, accept) { it.readBytes() }
+
+    override fun download(url: String, accept: String, into: File) {
+        open(url, accept) { input -> FileOutputStream(into).use { input.copyTo(it) } }
+    }
+
+    private fun <T> open(url: String, accept: String, read: (java.io.InputStream) -> T): T {
         val conn = URL(url).openConnection() as HttpURLConnection
         conn.connectTimeout = 20_000
         conn.readTimeout = 120_000
@@ -26,7 +40,7 @@ class HttpFetch(private val token: String? = null) : Fetch {
         if (token != null && conn.url.host == "api.github.com") conn.setRequestProperty("Authorization", "token $token")
         try {
             if (conn.responseCode !in 200..299) throw IllegalStateException("HTTP ${conn.responseCode} for $url")
-            return conn.inputStream.use { it.readBytes() }
+            return conn.inputStream.use(read)
         } finally {
             conn.disconnect()
         }
@@ -97,7 +111,7 @@ class ReleaseInstaller(
                 }
                 log("found ${rel.tag}: ${rel.name}")
                 tarball = File(work, rel.name)
-                tarball.writeBytes(fetch.get(rel.assetUrl, "application/octet-stream"))
+                fetch.download(rel.assetUrl, "application/octet-stream", tarball)
                 shaText = rel.shaUrl?.let { String(fetch.get(it, "application/octet-stream")) }
             }
             if (shaText != null) {

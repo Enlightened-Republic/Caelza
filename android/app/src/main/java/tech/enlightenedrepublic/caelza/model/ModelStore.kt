@@ -52,6 +52,9 @@ class HttpDownloader : Downloader {
 object VerifiedDownload {
     const val ATTEMPTS = 5
 
+    /** Destinations being written right now: a second fetch of the same file would interleave bytes into its `.part`. */
+    private val inFlight: MutableSet<String> = java.util.Collections.synchronizedSet(mutableSetOf())
+
     fun fetch(
         url: String,
         sha256: String,
@@ -60,6 +63,23 @@ object VerifiedDownload {
         downloader: Downloader,
         progress: (done: Long, total: Long) -> Unit = { _, _ -> },
         attempts: Int = ATTEMPTS,
+    ): File {
+        check(inFlight.add(dest.absolutePath)) { "${dest.name} is already being downloaded" }
+        try {
+            return fetchAlone(url, sha256, bytes, dest, downloader, progress, attempts)
+        } finally {
+            inFlight.remove(dest.absolutePath)
+        }
+    }
+
+    private fun fetchAlone(
+        url: String,
+        sha256: String,
+        bytes: Long,
+        dest: File,
+        downloader: Downloader,
+        progress: (done: Long, total: Long) -> Unit,
+        attempts: Int,
     ): File {
         dest.parentFile?.mkdirs()
         val part = File(dest.parentFile, dest.name + ".part")

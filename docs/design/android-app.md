@@ -50,7 +50,8 @@ files/logs/daemon.log              the Runtime's output (rotated at 5 MB)
 
 **Install.** `ReleaseInstaller.update()` is the guard's pipeline in Kotlin:
 find the release (latest, or a tag; `0.1.0` means `v0.1.0`), pick the
-`-aarch64-linux-android.tar.gz` asset and its `.sha256`, download, verify,
+`-aarch64-linux-android.tar.gz` asset and its `.sha256`, download (streamed
+to disk, never held whole in a phone's heap), verify,
 unpack into a work dir refusing any member that escapes it, **probe** the
 binary there (`--version` must answer with the release's version;
 `gateway start -p 42619` on a copy of the config must serve `/health` within
@@ -69,10 +70,19 @@ the supervisor's ladder (`caelza_body/supervisor.py`): restart on exit with a
 2 s pause; three exits in five minutes roll `current` back to `last-good`
 and restart; a crash loop on last-good halts with a notification that says
 so; a crash loop while another Runtime already answers on the gateway port
-halts without a rollback (not the binary's fault). `MainActivity` watches
-`/health` and shows the dashboard the moment it answers. Start, Stop and
-Update are the strip's buttons; the installer asks the service to restart
-after a new version probed ok.
+halts without a rollback (not the binary's fault). A version that has run for
+ten minutes and still answers `/health` becomes `last-good` (the supervisor's
+`RUNTIME_STABLE_AFTER`), so a later rollback lands on the last version that
+held, not on the first one ever installed. A Start after a halt opens a fresh
+crash window. A stop does not wait on the main thread: the process is asked
+to exit and forced from a helper thread after five seconds, and the next
+launch waits for the old one to let go of the port first; a supervise loop
+that a stop has retired stands down instead of touching the new daemon's
+state. `BootReceiver` starts the Runtime after a reboot only when the owner's
+last word was Start, not Stop. `MainActivity` watches `/health` and shows the
+dashboard the moment it answers. Start, Stop and Update are the strip's
+buttons; the installer asks the service to restart after a new version probed
+ok.
 
 **Release.** A `v*` tag builds the app too (`release.yml`, job `app`) and
 attaches `caelza-app-<version>.apk` with its `.sha256` to the GitHub release
@@ -116,7 +126,11 @@ and with it, from loopback, the app mints a pairing code
 (`POST /admin/paircode/new`, what `caelza gateway get-paircode --new` calls)
 and pairs (`POST /api/pair` as device "Caelza app (this phone)"). The bearer
 token lives in the app's files (`gateway-token`), is checked against
-`/api/status` at every start and renewed when the gateway no longer knows it,
+`/api/status` at every start and renewed when the gateway no longer knows it
+(the shell and the service both ask, through one process-wide lock, because
+the gateway holds a single pending code and two mints at once would have one
+side pair with a code the other just replaced; a pairing that fails leaves
+the shell on its waiting screen and the next tick asks again),
 goes on the app's own API calls (Cael's corpus loader) and is handed to the
 dashboard before its scripts run: the shell opens `/health` on the gateway's
 origin, drops the token into `localStorage` there, then navigates to the
@@ -285,8 +299,12 @@ of the Runtime's book, at most 900 characters a chunk) is bundled as
 `assets/cael-corpus.jsonl`, and `RuntimeService` loads it once the gateway
 answers (`guide/CaelCorpus.kt`: one upsert per chunk through `POST
 /api/memory` for `agents.cael`, category `core`, a fingerprint marker under
-the config dir so each corpus version goes in once; a gateway that does not
-know Cael yet, because the first run was skipped, is tried again next start).
+the config dir so each corpus version goes in once; after the load the
+`docs/*` chunks the bundled corpus no longer carries are deleted, as
+`load --prune` does, since the keys are dense per page and a page that shrank
+would otherwise leave a stale tail; a gateway that does not know Cael yet,
+because the first run was skipped, is tried again next start; one that keeps
+failing stores is given up on after three, not asked once per chunk).
 The Runtime's per-turn recall (FTS5 under the sqlite backend) puts the
 matching passages in his context; Cael keeps no tools. Proven against the
 real binary: `tests/test_cael_corpus_e2e.py` (set `CAELZA_BIN`) starts a

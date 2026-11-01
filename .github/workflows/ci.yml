@@ -69,6 +69,11 @@ jobs:
         run: ./runtime/build.sh --no-build
       - name: Cael's corpus is current with the staged book and the repo docs
         run: python3 scripts/cael_corpus.py build --check
+      # These two suites compare the app's and the corpus builder's ported constants with the
+      # staged Rust (the memory write scanner's rules, the pairing module); the body job above
+      # has no staged tree, so there they skip.
+      - name: The ported scanner rules and pairing constants match the staged Runtime
+        run: pip install -e ".[dev]" && python -m pytest -q tests/test_cael_corpus.py tests/test_app_pairing.py
       - uses: Swatinem/rust-cache@v2
         with:
           workspaces: runtime/.build/src -> ../target

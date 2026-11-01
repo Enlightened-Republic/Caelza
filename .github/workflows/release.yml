@@ -122,6 +122,13 @@ jobs:
         run: |
           set -euo pipefail
           up=$(sed -n -E 's/^commit[[:space:]]*=[[:space:]]*"([0-9a-f]+)".*/\1/p' runtime/upstream.toml)
+          [ -n "$up" ] || { echo "runtime/upstream.toml names no upstream commit" >&2; exit 1; }
+          # A tag that is not v<major>.<minor>.<patch>[-pre] would build crates at upstream's version
+          # under a release named after the tag, and both installers would refuse the binary.
+          if [ "$GITHUB_REF_TYPE" = tag ] && ! [[ "$GITHUB_REF_NAME" =~ ^v[0-9]+\.[0-9]+\.[0-9]+(-[0-9A-Za-z.-]+)?$ ]]; then
+            echo "tag $GITHUB_REF_NAME is not v<major>.<minor>.<patch>[-pre]; refusing to publish a release the installers would refuse" >&2
+            exit 1
+          fi
           if [ "$GITHUB_REF_TYPE" = tag ]; then ver="${GITHUB_REF_NAME#v}"; id="$GITHUB_REF_NAME"; else ver="dev-${GITHUB_SHA::8}"; id="$ver"; fi
           echo "CAELZA_BUILD_ID=${id}+zeroclaw.${up::10}" >> "$GITHUB_ENV"
           echo "ver=$ver" >> "$GITHUB_OUTPUT"
@@ -221,7 +228,13 @@ jobs:
         run: |
           set -euo pipefail
           if [ "$GITHUB_REF_TYPE" = tag ]; then ref="$GITHUB_REF_NAME"; else ref=dev; fi
-          python3 scripts/app_version.py "$ref" --sha "$GITHUB_SHA" --github | tee -a "$GITHUB_OUTPUT"
+          out=$(python3 scripts/app_version.py "$ref" --sha "$GITHUB_SHA" --github)
+          echo "$out" | tee -a "$GITHUB_OUTPUT"
+          # The build job refuses such a tag too; this keeps a dev-versioned APK off a release either way.
+          if [ "$GITHUB_REF_TYPE" = tag ] && ! grep -qx 'release=true' <<<"$out"; then
+            echo "tag $GITHUB_REF_NAME names no release version; not attaching a dev APK to a release" >&2
+            exit 1
+          fi
       - name: Release keystore (when the secrets are set)
         id: keystore
         env:

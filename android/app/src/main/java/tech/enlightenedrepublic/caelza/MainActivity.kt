@@ -186,8 +186,16 @@ class MainActivity : AppCompatActivity() {
                 val port = Gateway.port(store.configDir)
                 val healthy = withContext(Dispatchers.IO) { Gateway.healthy(port) }
                 if (healthy && !dashboardShown) {
-                    val token = withContext(Dispatchers.IO) { pairedToken(port) }
-                    loadDashboard(port, token)
+                    when (val outcome = withContext(Dispatchers.IO) { GatewayPairing.forStore(store).ensureToken(port) }) {
+                        is GatewayPairing.Outcome.Paired -> loadDashboard(port, outcome.token)
+                        is GatewayPairing.Outcome.Off -> loadDashboard(port, null)
+                        is GatewayPairing.Outcome.Failed -> {
+                            // Not shown yet, so the next tick pairs again (the gateway may have been
+                            // mid-start, or the service may have held the one pending code).
+                            Log.w("caelza", "gateway pairing: ${outcome.detail}")
+                            binding.progress.text = outcome.detail
+                        }
+                    }
                 } else if (!healthy && dashboardShown) {
                     showDashboard(false)
                 }
@@ -206,16 +214,6 @@ class MainActivity : AppCompatActivity() {
 
     private var handoffToken: String? = null
     private var handoffTarget: String? = null
-
-    /** The app's paired bearer (GatewayPairing); null when pairing is off, or when it failed and the dashboard's pairing screen will say so. */
-    private fun pairedToken(port: Int): String? = when (val outcome = GatewayPairing.forStore(store).ensureToken(port)) {
-        is GatewayPairing.Outcome.Paired -> outcome.token
-        is GatewayPairing.Outcome.Off -> null
-        is GatewayPairing.Outcome.Failed -> {
-            Log.w("caelza", "gateway pairing: ${outcome.detail}")
-            null
-        }
-    }
 
     /**
      * The dashboard, paired: with a token the shell first opens /health on the gateway's

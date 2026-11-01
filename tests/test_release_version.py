@@ -258,6 +258,17 @@ def test_release_yml_sets_the_build_id_before_staging_and_names_the_asset_after_
     assert ('if [ "$GITHUB_REF_TYPE" = tag ]; then ver="${GITHUB_REF_NAME#v}"; id="$GITHUB_REF_NAME"; '
             'else ver="dev-${GITHUB_SHA::8}"; id="$ver"; fi') in job
     assert 'echo "CAELZA_BUILD_ID=${id}+zeroclaw.${up::10}" >> "$GITHUB_ENV"' in job
+    # A mis-shaped v* tag (v0.1, v0.1.0+1) or a lost pin is refused before anything builds: the
+    # installers would refuse the result anyway (binary at upstream's version, release named after the tag).
+    assert '[ -n "$up" ] || {' in job
+    gate = re.search(r'\[\[ "\$GITHUB_REF_NAME" =~ (\S+) \]\]', job).group(1)
+    assert gate == r"^v[0-9]+\.[0-9]+\.[0-9]+(-[0-9A-Za-z.-]+)?$"
+    for tag, ok in (("v0.1.0", True), ("v0.1.0-rc.1", True), ("v12.3.4", True), ("v0.1", False), ("v0.1.0+1", False), ("0.1.0", False)):
+        assert bool(re.match(gate, tag)) is ok, tag
+        if "+" not in tag:  # stamp_version reads `+…` as the build id's own metadata; a tag never carries one
+            assert (sv.version_from_build_id(tag) is not None) is ok, "the gate and stamp_version agree on what a release tag is"
+    app_version = (REPO_ROOT / "scripts" / "app_version.py").read_text()
+    assert r'TAG = re.compile(r"^v(\d+)\.(\d+)\.(\d+)(?:-([0-9A-Za-z.-]+))?$")' in app_version, "the APK's rule is the same shape"
     assert job.index("CAELZA_BUILD_ID=") < job.index("./runtime/build.sh --no-build") < job.index("cargo build --release --locked")
     assert 'ver="${{ steps.version.outputs.ver }}"' in job and 'name="caelza-${ver}-${{ matrix.target }}"' in job
     assert "CAELZA_BUILD_ID: ${{ github.ref_name }}" not in release, "the id is composed once, in the version step"
