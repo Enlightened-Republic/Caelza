@@ -134,9 +134,12 @@ The one surface that wears more is the simplified setup (`/setup` on the
 dashboard, the first run in the app): Space as the backdrop with the nebula
 glows, the title in the mark gradient, the screen's one primary button filled
 cyan → violet, Cael's bubble on Bg 3 with a violet rule. It is the first thing a
-new owner sees, so it carries the brand; the pages behind it go back to the
-rules above. The Republic gradient still appears only in the parent's own
-moments.
+new owner sees, so it carries the brand. The pages behind it wear less, and
+the same things on every one of them: the mark and the wordmark in the top
+bar under a hairline of the mark gradient, the page title in the mark
+gradient (the one glowing element), the primary button filled cyan → violet,
+Space with the two nebula glows behind the cards. The Republic gradient still
+appears only in the parent's own moments.
 
 ## Type
 

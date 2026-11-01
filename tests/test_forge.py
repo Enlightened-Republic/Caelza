@@ -188,7 +188,10 @@ def test_runtime_update_needs_a_reason_starts_detached_and_refuses_a_second(body
     monkeypatch.setattr(rt.subprocess, "Popen", fake_popen)
     out = call("runtime_update", reason="v0.1.1 is out; the owner approved", tag="v0.1.1")
     assert out["started"] is True and out["pid"] == os.getpid() and out["tag"] == "v0.1.1" and out["current"] is None
-    argv, kw = spawned[0]
+    # The device tools' self-connect thread (device.py, `caelza-body-adb-self`) may
+    # spawn its `adb connect` through the same patched Popen first; the update's
+    # own spawn is the one naming the server module.
+    argv, kw = next((a, k) for a, k in spawned if "caelza_body.mcp_server" in a)
     assert argv[1:] == ["-m", "caelza_body.mcp_server", "runtime", "update", "--home", str(home), "--tag", "v0.1.1"]
     assert kw["start_new_session"] is True and kw["stdin"] is subprocess.DEVNULL and kw["cwd"] == str(home)
     assert (home / rt.UPDATE_PID).read_text().strip() == str(os.getpid())

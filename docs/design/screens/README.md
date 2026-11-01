@@ -7,6 +7,10 @@ compares against; regenerate them with the same tool when a page changes.
 
 ## `390/` — phone width, 390 × 844, 1× scale, dark
 
+The set was retaken after the brand pass (M4 phase 4b): the mark and the
+wordmark in the top bar, page titles in the mark gradient, the primary button
+cyan → violet, Space with the nebula glows behind every page.
+
 | file | what it shows |
 |---|---|
 | `home.png` | Home: the Runtime / Mind / Body tiles, waiting on you, the digest |
