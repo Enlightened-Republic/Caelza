@@ -3,6 +3,7 @@ package tech.enlightenedrepublic.caelza
 import android.annotation.SuppressLint
 import android.content.Intent
 import android.os.Bundle
+import android.util.Log
 import android.view.View
 import android.webkit.WebView
 import android.webkit.WebViewClient
@@ -22,6 +23,7 @@ import tech.enlightenedrepublic.caelza.databinding.ActivityMainBinding
 import tech.enlightenedrepublic.caelza.firstrun.FirstRun
 import tech.enlightenedrepublic.caelza.firstrun.FirstRunActivity
 import tech.enlightenedrepublic.caelza.runtime.Gateway
+import tech.enlightenedrepublic.caelza.runtime.GatewayPairing
 import tech.enlightenedrepublic.caelza.runtime.ProcessProber
 import tech.enlightenedrepublic.caelza.runtime.ReleaseInstaller
 import tech.enlightenedrepublic.caelza.runtime.RuntimeStore
@@ -52,7 +54,7 @@ class MainActivity : AppCompatActivity() {
             settings.javaScriptEnabled = true
             settings.domStorageEnabled = true
             settings.mediaPlaybackRequiresUserGesture = false
-            webViewClient = WebViewClient()
+            webViewClient = TokenHandoff()
             WebView.setWebContentsDebuggingEnabled(BuildConfig.DEBUG)
         }
         onBackPressedDispatcher.addCallback(this) {
@@ -178,8 +180,8 @@ class MainActivity : AppCompatActivity() {
                 val port = Gateway.port(store.configDir)
                 val healthy = withContext(Dispatchers.IO) { Gateway.healthy(port) }
                 if (healthy && !dashboardShown) {
-                    binding.dashboard.loadUrl(Gateway.url(port))
-                    showDashboard(true)
+                    val token = withContext(Dispatchers.IO) { pairedToken(port) }
+                    loadDashboard(port, token)
                 } else if (!healthy && dashboardShown) {
                     showDashboard(false)
                 }
@@ -194,6 +196,53 @@ class MainActivity : AppCompatActivity() {
         dashboardShown = show
         binding.dashboard.visibility = if (show) View.VISIBLE else View.GONE
         binding.emptyState.visibility = if (show) View.GONE else View.VISIBLE
+    }
+
+    private var handoffToken: String? = null
+    private var handoffTarget: String? = null
+
+    /** The app's paired bearer (GatewayPairing); null when pairing is off, or when it failed and the dashboard's pairing screen will say so. */
+    private fun pairedToken(port: Int): String? = when (val outcome = GatewayPairing.forStore(store).ensureToken(port)) {
+        is GatewayPairing.Outcome.Paired -> outcome.token
+        is GatewayPairing.Outcome.Off -> null
+        is GatewayPairing.Outcome.Failed -> {
+            Log.w("caelza", "gateway pairing: ${outcome.detail}")
+            null
+        }
+    }
+
+    /**
+     * The dashboard, paired: with a token the shell first opens /health on the gateway's
+     * origin, drops the token into localStorage there (TokenHandoff), then navigates to the
+     * dashboard, which finds itself paired; the view shows once the dashboard has loaded.
+     */
+    private fun loadDashboard(port: Int, token: String?) {
+        val target = Gateway.url(port)
+        if (token == null) {
+            binding.dashboard.loadUrl(target)
+            showDashboard(true)
+            return
+        }
+        handoffToken = token
+        handoffTarget = target
+        dashboardShown = true
+        binding.dashboard.loadUrl(Gateway.url(port, "/health"))
+    }
+
+    private inner class TokenHandoff : WebViewClient() {
+        override fun onPageFinished(view: WebView, url: String?) {
+            val token = handoffToken
+            val target = handoffTarget
+            if (token != null && target != null && url != null && url.endsWith("/health")) {
+                handoffToken = null
+                view.evaluateJavascript(GatewayPairing.tokenScript(token)) { view.loadUrl(target) }
+                return
+            }
+            if (target != null && url != null && url.startsWith(target)) {
+                handoffTarget = null
+                showDashboard(true)
+            }
+        }
     }
 
     /** Pull the latest release through the guard's pipeline, then restart the Runtime on it. */

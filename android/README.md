@@ -73,7 +73,8 @@ doors, and the contract against the Python server's `list-tools`
    dashboard (`web/dist`) goes where the gateway looks for it.
 2. **Run it**: `RuntimeService` starts `caelza daemon` with `HOME` set to the
    app's files dir (so the config is `files/.caelza/config.toml`, written with
-   the gateway on loopback and pairing off on first start), logs to
+   the gateway on loopback behind pairing on first start; the app pairs its
+   own shell with the gateway's admin token, `runtime/GatewayPairing.kt`), logs to
    `files/logs/daemon.log`, restarts it when it exits, rolls `current` back to
    `last-good` on a crash loop, and halts with a notification when last-good
    itself loops or when another Runtime already holds the gateway port. A

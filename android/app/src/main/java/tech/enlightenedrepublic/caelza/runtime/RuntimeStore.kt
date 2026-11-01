@@ -116,7 +116,19 @@ class RuntimeStore(val home: File) {
             configDir.mkdirs()
             config.writeText(DEFAULT_CONFIG)
         }
+        ensurePairingOn(config)
         return config
+    }
+
+    /**
+     * The app's gateway keeps pairing on (GatewayPairing pairs the shell itself), also for a
+     * config this app wrote before it could pair: `require_pairing = false` becomes `true`.
+     * It is re-asserted at every start, so turning it off by hand does not hold.
+     */
+    fun ensurePairingOn(config: File) {
+        val text = config.readText()
+        val on = PAIRING_OFF.replace(text) { "${it.groupValues[1]}require_pairing = true" }
+        if (on != text) config.writeText(on)
     }
 
     /**
@@ -158,6 +170,7 @@ class RuntimeStore(val home: File) {
         const val BODY_PORT = 42618
 
         private val BODY_SERVER_LINE = Regex("""^\s*name\s*=\s*"body"\s*$""", RegexOption.MULTILINE)
+        private val PAIRING_OFF = Regex("""^([ \t]*)require_pairing\s*=\s*false[ \t]*$""", RegexOption.MULTILINE)
         private val AGENTS_MAIN = Regex("""^\s*\[agents\.main]""", RegexOption.MULTILINE)
         private val RISK_PHONE = Regex("""^\s*\[risk_profiles\.phone]""", RegexOption.MULTILINE)
 
@@ -190,13 +203,14 @@ class RuntimeStore(val home: File) {
 
         val DEFAULT_CONFIG = """
             |# Written by the Caelza app on first start. The gateway listens on loopback
-            |# only; the app's dashboard shell is its client.
+            |# only, behind pairing: the app pairs its own dashboard shell with the
+            |# gateway's admin token, so no other app on this phone can use the API.
             |schema_version = 3
             |
             |[gateway]
             |host = "127.0.0.1"
             |port = $GATEWAY_PORT
-            |require_pairing = false
+            |require_pairing = true
             |""".trimMargin()
 
         private val SEMVER = Regex("""^(\d+)\.(\d+)\.(\d+)(.*)$""")
