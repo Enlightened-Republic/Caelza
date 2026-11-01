@@ -5,10 +5,14 @@ import org.junit.Assert.assertFalse
 import org.junit.Assert.assertNull
 import org.junit.Assert.assertTrue
 import org.junit.Test
+import tech.enlightenedrepublic.caelza.body.Repo
 import tech.enlightenedrepublic.caelza.model.ModelLadder
+import java.io.File
 
 /** The first run's shape: the steps, what each door writes, what Cael says about this phone. */
 class FirstRunTest {
+    private val providers by lazy { ModelCatalog.parse(File(Repo.root, "bundle/models.json").readText()) }
+
     @Test
     fun the_steps_run_in_order_and_end() {
         var step: FirstRun.Step? = FirstRun.Step.HELLO
@@ -40,17 +44,21 @@ class FirstRunTest {
 
     @Test
     fun the_key_door_writes_the_dotted_alias_quickstart_creates() {
-        val anthropic = FirstRun.PROVIDERS.first { it.id == "anthropic" }
+        val anthropic = providers.first { it.id == "anthropic" }
+        // An empty model means the catalog's best pick for that provider.
         val entries = FirstRun.keyConfig(anthropic, "  ", " sk-ant-abcdefghijklmnopqrstuvwxyz ")
         assertEquals("providers.models.anthropic.default.api_key" to "sk-ant-abcdefghijklmnopqrstuvwxyz", entries[0])
-        assertEquals("providers.models.anthropic.default.model" to "claude-sonnet-4-5", entries[1])
+        assertEquals("providers.models.anthropic.default.model" to "claude-sonnet-5-5", entries[1])
         assertEquals("agents.main.model_provider" to "anthropic.default", entries[2])
         assertEquals("agents.cael.model_provider" to "anthropic.default", entries[3])
         assertTrue(entries.any { it.first == "risk_profiles.guide.deny_all_tools" && it.second == "true" })
-        val openrouter = FirstRun.PROVIDERS.first { it.id == "openrouter" }
-        assertEquals("providers.models.openrouter.default.model" to "google/gemini-2.5-pro", FirstRun.keyConfig(openrouter, "google/gemini-2.5-pro", "sk-or-v1-0123456789abcdef")[1])
-        assertEquals(3, FirstRun.PROVIDERS.size)
-        assertTrue(FirstRun.PROVIDERS.all { it.alias == "${it.id}.default" })
+        val openrouter = providers.first { it.id == "openrouter" }
+        assertEquals(
+            "providers.models.openrouter.default.model" to "google/gemini-2.5-pro",
+            FirstRun.keyConfig(openrouter, " google/gemini-2.5-pro ", "sk-or-v1-0123456789abcdef")[1],
+        )
+        assertEquals(8, providers.size)
+        assertTrue(providers.all { it.alias == "${it.id}.default" })
     }
 
     @Test

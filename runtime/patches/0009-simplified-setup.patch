@@ -1,0 +1,181 @@
+Caelza: the simplified setup (vision M4 phase 4a), Cael's screens at /setup.
+
+The dashboard's quickstart is upstream's five-section wizard with our two
+doors inserted; a new owner still meets a provider dropdown, an alias, a
+free-text model box and three profile pickers. /setup is the "dumbed down"
+path: Cael leads, one decision a screen, in the brand's own colours. Behind
+"bring your own key" a scroll wheel of the providers most people bring
+(bundle/models.json, copied beside the page by runtime/build.sh; "more"
+adds every other key provider the Runtime lists), a wheel of that
+provider's models with Cael's picks pinned on top (best, fast and cheap,
+strongest, free) above the Runtime's live catalog, one box for the key,
+then "Try it". Behind "free and local" the ladder's pick for this device.
+Everything the owner is not asked takes a default and the whole thing goes
+through upstream's /api/quickstart/apply, so the result is what the full
+wizard would have written; the wizard stays at /quickstart as "Advanced
+setup". The page, the wheel and the logic live in the overlay
+(web/src/pages/setup/); these hunks route /setup outside the dashboard
+chrome, land a fresh install on it instead of /quickstart, put "Set up" at
+the top of the sidebar's Configure group, add the strings (English; the
+other locales fall back), let tsc import the catalog as JSON and list the
+logic test beside the doors'. Applied after 0008 and the overlay copy.
+
+--- a/web/src/router/router.tsx
++++ b/web/src/router/router.tsx
+@@ -22,6 +22,7 @@
+   Quickstart,
+   RunDetail,
+   Runs,
++  Setup,
+   Skills,
+   SopEditor,
+   SopView,
+@@ -43,6 +44,10 @@
+ export const Router = () => (
+   <Suspense fallback={<RouteFallback />}>
+     <Routes>
++      {/* The simplified setup (vision M4 phase 4a): Cael's screens in the
++          brand's own colours, outside the dashboard chrome; the full wizard
++          stays at /quickstart as "Advanced setup". */}
++      <Route path="/setup" element={<Setup />} />
+       <Route element={<Layout />}>
+         {/* Home is Caelza's: status before chat. The upstream dashboard keeps
+             its tabs at /dashboard; Home forwards the old `/?tab=` links there. */}
+--- a/web/src/router/lazyPages.tsx
++++ b/web/src/router/lazyPages.tsx
+@@ -27,3 +27,4 @@
+ export const Bodies = lazy(() => import('../pages/Bodies'));
+ export const Home = lazy(() => import('../pages/Home'));
+ export const Procedures = lazy(() => import('../pages/Procedures'));
++export const Setup = lazy(() => import('../pages/setup/Setup'));
+--- a/web/src/App.tsx
++++ b/web/src/App.tsx
+@@ -422,7 +422,8 @@
+ }
+ 
+ // Redirects fresh installs (no agents yet, Quickstart never completed)
+-// from `/` to `/quickstart`. The daemon always writes a default
++// from `/` to `/setup`, the simplified Cael-led setup; the full wizard stays
++// at `/quickstart` as its "Advanced setup". The daemon always writes a default
+ // config.toml on init, so file existence isn't the right signal —
+ // we ask the gateway via /api/quickstart/state which reports
+ // quickstart_completed plus the live agents list.
+@@ -442,7 +443,7 @@
+     void getQuickstartState()
+       .then((state) => {
+         if (!state.quickstart_completed && state.agents.length === 0) {
+-          navigate("/quickstart", { replace: true });
++          navigate("/setup", { replace: true });
+         }
+       })
+       .catch(() => {
+--- a/web/tsconfig.app.json
++++ b/web/tsconfig.app.json
+@@ -9,6 +9,7 @@
+ 
+     /* Bundler mode */
+     "moduleResolution": "bundler",
++    "resolveJsonModule": true,
+     "allowImportingTsExtensions": true,
+     "isolatedModules": true,
+     "moduleDetection": "force",
+--- a/web/package.json
++++ b/web/package.json
+@@ -14,7 +14,7 @@
+     "typecheck": "npm run check:generated && tsc -b",
+     "build": "npm run check:generated && tsc -b && vite build",
+     "dev": "vite",
+-    "test": "node --experimental-strip-types --test src/pages/quickstart/runtime-selection.test.ts src/pages/quickstart/doors.logic.test.ts src/pages/quickstart/channel-fields.test.ts src/pages/acp-console/thought-stream.test.ts src/lib/contextBar.test.ts src/components/sections/secretMap.logic.test.ts src/pages/integrations.logic.test.ts src/lib/historyTrimNotice.test.ts src/components/runLogPresentation.test.ts src/pages/pluginCatalog.test.ts && npm run test:sops && npm run test:sop-editor && jiti src/pages/quickstart/channel-form.test.ts",
++    "test": "node --experimental-strip-types --test src/pages/quickstart/runtime-selection.test.ts src/pages/quickstart/doors.logic.test.ts src/pages/setup/setup.logic.test.ts src/pages/quickstart/channel-fields.test.ts src/pages/acp-console/thought-stream.test.ts src/lib/contextBar.test.ts src/components/sections/secretMap.logic.test.ts src/pages/integrations.logic.test.ts src/lib/historyTrimNotice.test.ts src/components/runLogPresentation.test.ts src/pages/pluginCatalog.test.ts && npm run test:sops && npm run test:sop-editor && jiti src/pages/quickstart/channel-form.test.ts",
+     "test:sops": "node --experimental-strip-types --test src/hooks/useRunOverlay.logic.test.ts src/pages/runs.logic.test.ts",
+     "test:sop-editor": "node --experimental-strip-types --test src/pages/sopSavePlan.test.ts",
+     "test:permissions": "jiti src/components/ToolPermissionGrid.logic.test.ts && jiti src/pages/Tools.logic.test.ts && jiti src/lib/toolCatalog.logic.test.ts && jiti src/components/ToolCatalogWarningPanel.test.ts && jiti src/lib/validationWarnings.test.ts && jiti src/components/UpgradeDialog.logic.test.ts && npm run test:navigation",
+--- a/web/src/components/layout/Sidebar.tsx
++++ b/web/src/components/layout/Sidebar.tsx
+@@ -17,6 +17,7 @@
+   MessageSquare,
+   Monitor,
+   Puzzle,
++  Rocket,
+   Settings,
+   Smartphone,
+   Sparkles,
+@@ -70,6 +71,8 @@
+   {
+     headingKey: 'nav.group.configure',
+     items: [
++      // The simplified setup (Cael's screens); the full wizard is its "Advanced setup".
++      { to: '/setup', icon: Rocket, labelKey: 'nav.setup' },
+       { to: '/config', icon: Settings, labelKey: 'nav.config' },
+       { to: '/config/agents', icon: Bot, labelKey: 'nav.agent' },
+       { to: '/tools', icon: Wrench, labelKey: 'nav.tools' },
+--- a/web/src/lib/i18n.ts
++++ b/web/src/lib/i18n.ts
+@@ -965,6 +965,59 @@
+     'settings.default_dark': "Default Dark",
+     'settings.light_themes': "Light Themes",
+     'settings.tab.themes': "Themes",
++    'setup.advanced': "Advanced setup",
++    'setup.back': "Back",
++    'setup.back_to_wheel': "Back to the wheel",
++    'setup.body_doors': "I'm the guide inside Caelza. First, a brain for your agent. Free and local: a small DeepSeek model runs on this device, offline, and nobody else sees your words. Or bring your own key: a provider such as Anthropic or OpenAI runs a bigger model. Either way I come along, and you can change it any time.",
++    'setup.body_done': "Your agent {agent} runs on {model} through {provider}, and so do I. Say hello.",
++    'setup.body_done_local': "Your agent {agent} runs on {model}, right here on this device, and I run on {guide}. Say hello.",
++    'setup.body_key': "An API key is a password for {provider}. Get one at {page} and paste it here once. It stays encrypted on this device and is only ever sent to {provider}.",
++    'setup.body_local': "Tell me where Caelza runs and how much memory it has, and I'll pick the right size: {model} for the agent, and I run on {guide}.",
++    'setup.body_model': "My picks sit at the top: the best all-rounder, the fast and cheap one, the strongest. Below them is everything {provider} offers right now.",
++    'setup.body_model_live_only': "Everything {provider} offers right now. Spin to the one you want, or type a name.",
++    'setup.body_model_offline': "My picks sit at the top: the best all-rounder, the fast and cheap one, the strongest. {provider}'s full list appears here once a key is in.",
++    'setup.body_provider': "These are the ones most people bring a key for. Spin the wheel to yours.",
++    'setup.cael_says': "Cael says",
++    'setup.door_key': "Bring your own key",
++    'setup.door_local': "Free and local",
++    'setup.failed': "That did not work; nothing was changed. {reason}",
++    'setup.fewer_providers': "Just the usual ones",
++    'setup.get_key': "Get a key",
++    'setup.key_hide': "Hide the key",
++    'setup.key_hint': "{prefix}\u2026",
++    'setup.key_label': "API key",
++    'setup.key_prefix_warning': "{provider} keys usually start with {prefix}. I'll try this one anyway.",
++    'setup.key_short': "That key looks too short. Paste the whole thing from the provider's page; it is one long word.",
++    'setup.key_show': "Show the key",
++    'setup.key_spaces': "A key is one long word, no spaces.",
++    'setup.loading': "Asking the Runtime\u2026",
++    'setup.local_then': "Then, once: `sh scripts/model-setup.sh` fetches the model, starts the server and creates me. The Caelza app on a phone has done this already.",
++    'setup.model_name': "Model name",
++    'setup.more_providers': "More providers",
++    'setup.next': "Next",
++    'setup.no_providers': "The Runtime lists no key providers yet; the local door still works.",
++    'setup.open_chat': "Open the chat",
++    'setup.ram': "Memory (RAM)",
++    'setup.runtime_unreachable': "I can't reach the Runtime right now. The wheels still spin; saving will tell us more.",
++    'setup.skip': "Skip to the dashboard",
++    'setup.step': "Step {n} of {total}",
++    'setup.tag_best': "best pick",
++    'setup.tag_fast': "fast and cheap",
++    'setup.tag_free': "free",
++    'setup.tag_strong': "strongest",
++    'setup.title_doors': "Hi, I'm Cael",
++    'setup.title_done': "That worked!",
++    'setup.title_key': "Paste your key",
++    'setup.title_local': "Free and local",
++    'setup.title_model': "Pick a model",
++    'setup.title_provider': "Pick a provider",
++    'setup.try_it': "Try it",
++    'setup.type_model': "Type a model name instead",
++    'setup.use_this': "Use this",
++    'setup.where': "Where Caelza runs",
++    'setup.where_hub': "A computer",
++    'setup.where_phone': "This phone",
++    'setup.working': "Setting up\u2026",
+     'sidebar.brand': "Caelza",
+     'sidebar.close_menu': "Close menu",
+     'sidebar.gateway': "Caelza Gateway",
+@@ -1412,6 +1465,7 @@
+     'nav.memory': 'Memory',
+     'nav.bodies': 'Bodies',
+     'nav.home': 'Home',
++    'nav.setup': 'Set up',
+     'nav.procedures': 'Procedures',
+     'nav.config': 'Config',
+     'nav.cost': 'Cost Tracker',

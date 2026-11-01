@@ -83,7 +83,10 @@
     <string name="fr_download">Download (%1$d MiB)</string>
     <string name="fr_that_worked_local">That worked! %1$s is on this phone and the Runtime knows where to find it.</string>
     <string name="fr_key_title">Bring your own key</string>
-    <string name="fr_key_body">An API key is a password for a model provider. Caelza keeps it encrypted on this device and only ever sends it to that provider. Pick the provider, keep or change the model name, and paste the key. You can swap it later with one command.</string>
+    <string name="fr_key_body">An API key is a password for a model provider. Spin the first wheel to the provider and the second to a model: my picks sit at the top, and the last row lets you type any name. Paste the key once; Caelza keeps it encrypted on this device and only ever sends it to that provider. More providers live under Advanced setup on the dashboard.</string>
+    <string name="fr_provider">Provider</string>
+    <string name="fr_model">Model</string>
+    <string name="fr_type_model">Type a name…</string>
     <string name="fr_model_hint">model name</string>
     <string name="fr_key_hint">%1$s… from %2$s</string>
     <string name="fr_key_short">That key looks too short. Paste the whole thing from the provider\'s page; it is one long word.</string>
