@@ -26,7 +26,8 @@ runtime/
 │                      0004 the Bodies page (routes, router, sidebar, the nav.bodies string); 0005 Home and Procedures
 │                      (the digest route, Home at /, the dashboard at /dashboard, sidebar + palette + titles, strings);
 │                      0006 the phone-first pass (header actions wrap, globe-only language button, chat toolbar wraps,
-│                      Runs padding and titles, no font CDN)
+│                      Runs padding and titles, no font CDN); 0007 the two doors on quickstart's first screen (the page
+│                      renders the overlay's Doors.tsx, the strings, the web test list)
 ├── tools/phone-shots/ Playwright over every dashboard route at 390 × 844: screenshots, sideways scroll, elements past
 │                      the edge, controls under 32 px; a mock proxy for the Mind and Body routes
 ├── lib/rename.pl      the replacement engine

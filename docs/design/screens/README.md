@@ -19,6 +19,13 @@ compares against; regenerate them with the same tool when a page changes.
 | `tools.png` | Tools, its controls wrapped and the CLI table scrolling inside its card |
 | `runs.png` | SOP Runs with its page padding and a header title |
 | `drawer.png` | the mobile menu: Home, Bodies, Memory, Procedures first |
+| `quickstart-doors.png` | Quickstart's first screen: the two doors, free and local or bring your own key (vision §3.4) |
+| `quickstart-local-door.png` | the local door: where Caelza runs, the RAM band, the ladder's model, Cael's line and the honest notes |
+
+The two quickstart shots were taken over the vite dev server with the daemon's
+answers canned (Playwright routes for `/api/quickstart/*`, `/api/status`, the
+pairing and reload probes), an Android user agent and this box's
+`deviceMemory`, so the local door opens on the phone runner at the 8 GB band.
 
 ## The app's launcher icon
 
