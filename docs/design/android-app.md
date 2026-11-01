@@ -232,6 +232,18 @@ under targetSdk 28. Not yet run on a device: the download and verification
 are tested over a fake server and archive; the first real `llama-server`
 start on the REVVL is the next thing to try.
 
+**Cael's corpus** (shipped after M7d). The guide answers from the docs the
+way every agent remembers: `guide/corpus.jsonl` (built by
+`scripts/cael_corpus.py` from the FAQ, the READMEs and the owner-facing pages
+of the Runtime's book, at most 900 characters a chunk) is bundled as
+`assets/cael-corpus.jsonl`, and `RuntimeService` loads it once the gateway
+answers (`guide/CaelCorpus.kt`: one upsert per chunk through `POST
+/api/memory` for `agents.cael`, category `core`, a fingerprint marker under
+the config dir so each corpus version goes in once; a gateway that does not
+know Cael yet, because the first run was skipped, is tried again next start).
+The Runtime's per-turn recall (FTS5 under the sqlite backend) puts the
+matching passages in his context; Cael keeps no tools.
+
 **The launcher icon** (shipped after M7d). The brand mark as an adaptive icon:
 `brand/make_assets.py --android android/app` renders the mark alone onto the
 foreground layer, inside the 66 dp circle every launcher shape shows, the

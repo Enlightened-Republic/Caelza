@@ -26,6 +26,7 @@ import tech.enlightenedrepublic.caelza.body.BodyServer
 import tech.enlightenedrepublic.caelza.body.BodyShell
 import tech.enlightenedrepublic.caelza.body.BodyTools
 import tech.enlightenedrepublic.caelza.body.ShizukuShell
+import tech.enlightenedrepublic.caelza.guide.CaelCorpus
 import tech.enlightenedrepublic.caelza.model.LlamaRuntime
 import tech.enlightenedrepublic.caelza.model.ModelServe
 import tech.enlightenedrepublic.caelza.model.ModelStore
@@ -276,12 +277,37 @@ class RuntimeService : Service() {
             process = proc
             _state.value = RuntimeState(Phase.RUNNING, version)
             updateNotification(getString(R.string.status_running, version ?: ""))
+            scope.launch { loadCaelCorpus() }
             val code = withContextWait(proc)
             process = null
             if (stopping) return
             recordCrash("$version exited $code")
             if (_state.value.phase == Phase.HALTED) return
             delay(RESTART_DELAY_MS)
+        }
+    }
+
+    /**
+     * Cael's manual into his memory once the gateway answers: the bundled corpus, one upsert
+     * per chunk, remembered by fingerprint so each version goes in once (CaelCorpus). Before
+     * the first run has created agents.cael the gateway says so and the next start tries again.
+     */
+    private suspend fun loadCaelCorpus() {
+        val port = Gateway.port(store.configDir)
+        repeat(CORPUS_HEALTH_TRIES) {
+            if (stopping) return
+            if (Gateway.healthy(port)) {
+                val result = try {
+                    val jsonl = assets.open(CaelCorpus.ASSET).bufferedReader().readText()
+                    CaelCorpus(store.configDir).load(jsonl, port)
+                } catch (e: Exception) {
+                    Log.w(TAG, "Cael's corpus not loaded", e)
+                    return
+                }
+                if (!result.skipped) Log.i(TAG, "Cael's corpus: ${result.detail}")
+                return
+            }
+            delay(1_000)
         }
     }
 
@@ -360,6 +386,8 @@ class RuntimeService : Service() {
 
     companion object {
         private const val TAG = "caelza"
+        /** How long the corpus loader waits for `/health` after the daemon starts, in seconds. */
+        private const val CORPUS_HEALTH_TRIES = 90
         const val CHANNEL_ID = "runtime"
         const val NOTIFICATION_ID = 1
         const val ACTION_START = "tech.enlightenedrepublic.caelza.START"

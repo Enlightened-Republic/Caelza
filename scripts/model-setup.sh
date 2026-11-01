@@ -159,6 +159,7 @@ EOF
 fi
 cat <<EOF
   caelza daemon                 # the agent (agents.main) and Cael (agents.cael) on the dashboard
+  python3 scripts/cael_corpus.py load   # then, once: Cael's manual (guide/corpus.jsonl) into his memory
   # bigger brain later: caelza quickstart --model-provider anthropic   (or openai, openrouter, ...)
   #   then caelza config set agents.main.model_provider <provider>.<alias>
 EOF
