@@ -28,6 +28,9 @@ class CaelCorpusTest {
         {"key": "docs/book/x#1", "title": "X", "source": "runtime docs/book/src/x.md", "content": "[Runtime docs › X]\nC."}
     """.trimIndent() + "\n"
 
+    private val ok = CaelCorpus.Reply(200, "{\"success\":true}")
+    private val scanned = CaelCorpus.Reply(500, "{\"error\":\"Memory store failed: memory write blocked by content scan: send_to_url\"}")
+
     @Test
     fun theAssetIsTheRepoCorpusAndFitsAPhone() {
         val text = asset.readText()
@@ -45,7 +48,7 @@ class CaelCorpusTest {
     fun everyChunkIsUpsertedForCaelOncePerCorpusVersion() {
         val posts = mutableListOf<Pair<String, JSONObject>>()
         val bearers = mutableListOf<String?>()
-        val corpus = CaelCorpus(tmp.root) { url, body, token -> posts += url to JSONObject(body); bearers += token; 200 }
+        val corpus = CaelCorpus(tmp.root) { url, body, token -> posts += url to JSONObject(body); bearers += token; ok }
         assertNull(corpus.loadedFingerprint())
 
         val first = corpus.load(sample, 42617, "paired-token")
@@ -77,7 +80,7 @@ class CaelCorpusTest {
     @Test
     fun aGatewayThatDoesNotKnowCaelLeavesNoMarkerAndAFailureIsReported() {
         var calls = 0
-        val unknown = CaelCorpus(tmp.root) { _, _, _ -> calls++; 400 }
+        val unknown = CaelCorpus(tmp.root) { _, _, _ -> calls++; CaelCorpus.Reply(400, "{\"error\":\"Unknown agent: cael\"}") }
         val result = unknown.load(sample, 42617)
         assertEquals(1, calls)
         assertEquals(1, result.failed)
@@ -85,7 +88,7 @@ class CaelCorpusTest {
         assertNull(unknown.loadedFingerprint())
 
         var n = 0
-        val flaky = CaelCorpus(tmp.root) { _, _, _ -> if (++n == 2) 500 else 200 }
+        val flaky = CaelCorpus(tmp.root) { _, _, _ -> if (++n == 2) CaelCorpus.Reply(500, "{\"error\":\"Memory store failed: boom\"}") else ok }
         val partial = flaky.load(sample, 42617)
         assertEquals(Triple(2, 1, "HTTP 500 at docs/faq#2"), Triple(partial.loaded, partial.failed, partial.detail))
         assertNull("a partial load is retried next start", flaky.loadedFingerprint())
@@ -94,5 +97,19 @@ class CaelCorpusTest {
         val gone = dead.load(sample, 42617)
         assertEquals(1, gone.failed)
         assertTrue(gone.detail.contains("stopped answering"))
+    }
+
+    @Test
+    fun aChunkTheGatewaysContentScanRefusesIsLeftOutAndTheRestStillCounts() {
+        // The build drops what the pinned scanner refuses; a newer pin's rule can still refuse a
+        // chunk at load time. That is not a failure: the rest goes in and the marker is written,
+        // so the corpus is not retried at every start.
+        var n = 0
+        val strict = CaelCorpus(tmp.root) { _, _, _ -> if (++n == 2) scanned else ok }
+        val result = strict.load(sample, 42617)
+        assertEquals(Triple(2, 0, 1), Triple(result.loaded, result.failed, result.leftOut))
+        assertFalse(result.skipped)
+        assertTrue(result.detail, result.detail.contains("2 chunks, 1 left out by the gateway's content scan"))
+        assertEquals(CaelCorpus.fingerprint(sample), strict.loadedFingerprint())
     }
 }
