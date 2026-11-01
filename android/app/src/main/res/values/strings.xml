@@ -32,6 +32,17 @@
     <string name="action_shizuku">Ask Shizuku</string>
     <string name="action_logs">Logs</string>
 
+    <!-- The logs screen (design §2 "Logs"): the app's own logs, secrets blanked, and a bug report to share. -->
+    <string name="logs_title">Logs</string>
+    <string name="logs_back">‹ Back</string>
+    <string name="logs_refresh">Refresh</string>
+    <string name="logs_share_short">Share</string>
+    <string name="logs_share">Share a bug report</string>
+    <string name="logs_empty">%1$s has nothing yet.</string>
+    <string name="logs_footer">%1$s · %2$s · secrets blanked</string>
+    <string name="logs_report_subject">Caelza bug report</string>
+    <string name="logs_report_text">A Caelza bug report from this phone is attached: versions, states and the end of each log, with secrets blanked.</string>
+
     <string name="empty_title">Nothing is running yet</string>
     <string name="empty_body">Install the Runtime (one download from the project\'s releases), then start it. The dashboard appears here once the gateway answers.</string>
     <string name="waiting_body">Waiting for the gateway on 127.0.0.1:42617…</string>

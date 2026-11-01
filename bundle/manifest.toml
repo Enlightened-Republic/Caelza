@@ -169,6 +169,10 @@ cael_corpus = "android/app/src/main/assets/cael-corpus.jsonl"   # guide/corpus.j
 # gateway's admin token (.caelza/data/gateway-admin.token), pairs as "Caelza app (this phone)", keeps the token in
 # files/gateway-token, sends it on its own API calls and hands it to the dashboard before its scripts run.
 gateway_pairing = "android/app/src/main/java/tech/enlightenedrepublic/caelza/runtime/GatewayPairing.kt"
+# The logs in the app (android-app.md §2 "Logs"): a viewer for daemon.log, llama-server.log, install.log, probe.log and
+# the Body's audit log, secrets blanked, and Share: a bug report (versions, phone, states, the tails) through a FileProvider.
+logs_screen = "android/app/src/main/java/tech/enlightenedrepublic/caelza/logs/LogsActivity.kt"
+bug_report = "android/app/src/main/java/tech/enlightenedrepublic/caelza/logs/BugReport.kt"
 # M6 (fleet): a hub and its phones. Each phone serves its Body over HTTP; the hub's Body joins them
 # as devices and forwards every call naming one (caelza_body/fleet.py); groups fan a procedure out.
 fleet = "caelza_body/fleet.py"

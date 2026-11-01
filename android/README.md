@@ -18,6 +18,8 @@ android/
     ├── build.gradle.kts            applicationId tech.enlightenedrepublic.caelza; minSdk 28, targetSdk 28 (see below), compileSdk 36
     └── src/main/java/tech/enlightenedrepublic/caelza/
         ├── MainActivity.kt         the shell: status strip + the dashboard WebView over the gateway on loopback
+        ├── logs/LogsActivity.kt    the logs on the phone: one chip per log, the end of it, Refresh, Share (a bug report through a FileProvider)
+        ├── logs/BugReport.kt       the sources, tails at a line boundary, secrets blanked, the report's text
         ├── RuntimeService.kt       `caelza daemon` as a foreground service with the supervisor's ladder
         ├── BootReceiver.kt         start the Runtime again after a reboot
         ├── runtime/RuntimeStore.kt  runtime/<version>/caelza, current, last-good, the config and the web dist
