@@ -17,11 +17,19 @@ import java.security.MessageDigest
  */
 class CaelCorpus(
     private val configDir: File,
-    private val post: (url: String, body: String, token: String?) -> Int = ::httpPost,
+    private val post: (url: String, body: String, token: String?) -> Reply = ::httpPost,
 ) {
     data class Chunk(val key: String, val content: String)
 
-    data class Result(val loaded: Int, val failed: Int, val skipped: Boolean, val detail: String)
+    /** A post's answer: the status and the body (-1 and the error when nothing answered). */
+    data class Reply(val code: Int, val body: String)
+
+    /**
+     * What a load did: `loaded` chunks stored, `leftOut` refused by the gateway's content
+     * scan (a newer pin's rule; the rest goes in and the marker is written), `failed` for
+     * anything else, `skipped` when this corpus was in already.
+     */
+    data class Result(val loaded: Int, val failed: Int, val skipped: Boolean, val detail: String, val leftOut: Int = 0)
 
     private val marker: File get() = File(configDir, MARKER)
 
@@ -39,6 +47,7 @@ class CaelCorpus(
         val chunks = parse(jsonl)
         var loaded = 0
         var failed = 0
+        var leftOut = 0
         var detail = ""
         for (chunk in chunks) {
             val body = JSONObject()
@@ -47,13 +56,18 @@ class CaelCorpus(
                 .put("category", CATEGORY)
                 .put("agent", AGENT)
                 .toString()
-            val code = try {
+            val reply = try {
                 post(url(port), body, token)
-            } catch (_: Exception) {
-                -1
+            } catch (e: Exception) {
+                Reply(-1, e.message ?: e.toString())
             }
+            val code = reply.code
             if (code in 200..299) {
                 loaded++
+                continue
+            }
+            if (code == 500 && reply.body.contains(SCAN_BLOCKED)) {
+                leftOut++
                 continue
             }
             failed++
@@ -68,9 +82,9 @@ class CaelCorpus(
         if (failed == 0) {
             marker.parentFile?.mkdirs()
             marker.writeText(fingerprint + "\n")
-            detail = "corpus $fingerprint loaded: $loaded chunks"
+            detail = "corpus $fingerprint loaded: $loaded chunks" + if (leftOut > 0) ", $leftOut left out by the gateway's content scan" else ""
         }
-        return Result(loaded, failed, false, detail)
+        return Result(loaded, failed, false, detail, leftOut)
     }
 
     companion object {
@@ -78,6 +92,8 @@ class CaelCorpus(
         const val MARKER = "cael-corpus.loaded"
         const val AGENT = "cael"
         const val CATEGORY = "core"
+        /** What the gateway answers when its memory write scanner refuses a chunk (scripts/cael_corpus.py SCAN_BLOCKED). */
+        const val SCAN_BLOCKED = "blocked by content scan"
 
         fun url(port: Int): String = "http://127.0.0.1:$port/api/memory"
 
@@ -92,7 +108,7 @@ class CaelCorpus(
             MessageDigest.getInstance("SHA-256").digest(jsonl.toByteArray(Charsets.UTF_8))
                 .joinToString("") { "%02x".format(it) }.substring(0, 16)
 
-        fun httpPost(url: String, body: String, token: String?): Int {
+        fun httpPost(url: String, body: String, token: String?): Reply {
             val conn = URL(url).openConnection() as HttpURLConnection
             try {
                 conn.connectTimeout = 5_000
@@ -102,7 +118,9 @@ class CaelCorpus(
                 conn.setRequestProperty("Content-Type", "application/json")
                 if (token != null) conn.setRequestProperty("Authorization", "Bearer $token")
                 conn.outputStream.use { it.write(body.toByteArray(Charsets.UTF_8)) }
-                return conn.responseCode
+                val code = conn.responseCode
+                val stream = if (code in 200..299) conn.inputStream else conn.errorStream
+                return Reply(code, stream?.bufferedReader()?.use { it.readText() } ?: "")
             } finally {
                 conn.disconnect()
             }

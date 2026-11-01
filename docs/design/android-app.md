@@ -253,7 +253,15 @@ answers (`guide/CaelCorpus.kt`: one upsert per chunk through `POST
 the config dir so each corpus version goes in once; a gateway that does not
 know Cael yet, because the first run was skipped, is tried again next start).
 The Runtime's per-turn recall (FTS5 under the sqlite backend) puts the
-matching passages in his context; Cael keeps no tools.
+matching passages in his context; Cael keeps no tools. Proven against the
+real binary: `tests/test_cael_corpus_e2e.py` (set `CAELZA_BIN`) starts a
+gateway with Cael on a fake provider, loads the corpus through the real
+`/api/memory`, and checks that one turn with him carries the FAQ chunk that
+answers the question. That run also found the Runtime's memory write scanner
+refusing four chunks (a URL and the word "token" on one line read as
+exfiltration), so the build now carries the scanner's rules at the default
+`threat_scan = "on"` and leaves such chunks out; a stricter gateway's refusals
+at load time count as left out, not failed, in both loaders.
 
 **The launcher icon** (shipped after M7d). The brand mark as an adaptive icon:
 `brand/make_assets.py --android android/app` renders the mark alone onto the

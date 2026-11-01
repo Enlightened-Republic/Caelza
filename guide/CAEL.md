@@ -99,7 +99,15 @@ installer writes in step.
   what an older corpus left), and the Android app loads the bundled copy once
   its gateway answers. Recall is the Runtime's own: FTS5 keyword search under
   the sqlite backend, `brain_query` under the Mind. The facts he must not get
-  wrong stay in `cael.system.md` as well.
+  wrong stay in `cael.system.md` as well. The whole path is proven against
+  the real binary by `tests/test_cael_corpus_e2e.py` (`CAELZA_BIN=…`): a
+  gateway, Cael on a fake provider, the corpus through the real API, one turn,
+  and the FAQ chunk that answers "What is an API key?" in front of the model.
+  The Runtime's memory write scanner refuses a chunk that reads as
+  exfiltration (a URL and "token" on one line), so the build carries its
+  rules at the default `memory.policy.threat_scan = "on"` and leaves such
+  chunks out (four at this pin, named in the build output); both loaders
+  count a stricter gateway's refusals as left out rather than failed.
 - Dashboard: Cael appears in the agent picker now. "Ask Cael" on every page and
   "Explain this screen" (page context as the first turn) are UI phase 1 in the
   vision doc.

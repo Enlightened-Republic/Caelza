@@ -22,8 +22,12 @@ Android app loads the same file from its assets once the gateway answers.
 Sources: this repo's README, guide/FAQ.md, mind/README.md, body/README.md,
 and the owner-facing pages of the Runtime's book from the staged tree
 (runtime/.build/src/docs/book/src, so the text is the rebranded one;
-`./runtime/build.sh --no-build` stages it). Nothing here needs the gateway
-except `load`.
+`./runtime/build.sh --no-build` stages it). A chunk the Runtime's memory write
+scanner would refuse (a URL and "token" on one line reads as exfiltration to
+it) is left out at build time; `load` also skips what a gateway refuses that
+way. Nothing here needs the gateway except `load`;
+tests/test_cael_corpus_e2e.py runs the whole path against a real binary
+(CAELZA_BIN) and a fake provider, and checks the recalled chunks reach Cael.
 """
 from __future__ import annotations
 
@@ -85,6 +89,32 @@ BOOK_PAGES = (
     "sop/index.md",
     "sop/how-it-works.md",
 )
+
+#: The Runtime's memory write scanner (crates/caelza-memory/src/threat.rs), ported
+#: rule for rule: a chunk that matches is refused by `POST /api/memory` ("memory
+#: write blocked by content scan"), so `build` leaves such chunks out and says so,
+#: and `tests/test_cael_corpus.py` compares these patterns with the staged Rust.
+#: Docs pages legitimately put a URL and the word "token" on one line; the
+#: scanner cannot tell that from an exfiltration instruction, and losing a few
+#: chunks is better than a corpus the gateway will not take.
+#: Each rule is (kind, scope, pattern): `on` rules run at the default
+#: `memory.policy.threat_scan = "on"`, `strict` ones only when a config asks for
+#: strict. The build filters for the default; a strict gateway refuses a few more
+#: at load time, and the loaders count those as left out rather than failed.
+THREAT_PATTERNS = (
+    ("exfil_curl", "on", r"(?i)\bcurl\b[^\n]*(?:\$[A-Z_]*(?:KEY|TOKEN|SECRET|PASSWORD|CREDENTIAL|API)[A-Z_]*)"),
+    ("exfil_wget", "on", r"(?i)\bwget\b[^\n]*(?:\$[A-Z_]*(?:KEY|TOKEN|SECRET|PASSWORD|CREDENTIAL|API)[A-Z_]*)"),
+    ("read_secrets", "on", r"(?i)\b(?:cat|less|more|tail|head)\b[^\n]*(?:\.env|\.netrc|\.pgpass|\.npmrc|id_rsa|id_ed25519)"),
+    ("send_to_url", "on", r"(?i)https?://[^\s'\"]+[^\n]*(?:api[_-]?key|secret|token|password|credential)"),
+    ("ssh_backdoor", "strict", r"(?i)authorized_keys"),
+    ("ssh_access", "strict", r"(?i)(?:\$HOME|~|/home/[^/\s]+|/root)/\.ssh"),
+    ("agent_config_mod", "on", r"(?i)\b(?:write|append|modify|edit|overwrite|replace)\b.{0,80}\b(?:AGENTS\.md|CLAUDE\.md)\b"),
+    ("hardcoded_secret", "on", r"(?i)\b(?:api[_-]?key|secret|token|password|credential)\s*[:=]\s*['\"][A-Za-z0-9_./+=-]{16,}['\"]"),
+    ("private_key", "on", r"-----BEGIN [A-Z ]*PRIVATE KEY-----"),
+)
+THREATS = tuple((kind, scope, re.compile(pattern)) for kind, scope, pattern in THREAT_PATTERNS)
+SCAN_SCOPE = "on"
+SCAN_BLOCKED = "blocked by content scan"
 
 MACRO = re.compile(r"\{\{#(\w+)\s*([^}]*)\}\}")
 INCLUDE = re.compile(r"\{\{#include\s+([^}\s]+)\s*\}\}")
@@ -209,9 +239,18 @@ def pack(blocks: list[str], limit: int) -> list[str]:
     return pieces
 
 
-def chunk_page(text: str, root: str, slug: str, source: str, *, limit: int = CHUNK_CHARS) -> list[dict]:
+def findings(content: str, scope: str = SCAN_SCOPE) -> list[str]:
+    """The scanner's kinds that match `content` under `scope` ("on", the default, or
+    "strict", which adds the strict-only rules); empty when the gateway will store it."""
+    active = {"on"} if scope == "on" else {"on", "strict"}
+    return [kind for kind, rule_scope, rx in THREATS if rule_scope in active and rx.search(content)]
+
+
+def chunk_page(text: str, root: str, slug: str, source: str, *, limit: int = CHUNK_CHARS,
+               left_out: list[dict] | None = None) -> list[dict]:
     """One page into records: `{key, title, source, content}`, the content opened by
-    its breadcrumb line `[root › H1 › H2]`."""
+    its breadcrumb line `[root › H1 › H2]`. A chunk the write scanner would refuse
+    is left out (and listed in `left_out` when given); the keys stay dense."""
     records: list[dict] = []
     for path, body in sections(clean(text)):
         # The page's own H1 stands in for the root when it already names it
@@ -228,20 +267,28 @@ def chunk_page(text: str, root: str, slug: str, source: str, *, limit: int = CHU
                 records[-1]["content"] += f"\n\n{content}"
                 continue
             records.append({"key": "", "title": title, "source": source, "content": content})
-    for i, rec in enumerate(records, 1):
+    kept: list[dict] = []
+    for rec in records:
+        hits = findings(rec["content"])
+        if hits:
+            if left_out is not None:
+                left_out.append({"title": rec["title"], "source": source, "kinds": hits})
+            continue
+        kept.append(rec)
+    for i, rec in enumerate(kept, 1):
         rec["key"] = f"{KEY_PREFIX}{slug}#{i}"
-    return records
+    return kept
 
 
 # --- build ---------------------------------------------------------------------
 
-def build(book: Path = STAGED_BOOK, repo: Path = REPO) -> list[dict]:
+def build(book: Path = STAGED_BOOK, repo: Path = REPO, left_out: list[dict] | None = None) -> list[dict]:
     records: list[dict] = []
     for rel, root, slug in REPO_SOURCES:
         page = repo / rel
         if not page.is_file():
             raise CorpusError(f"{rel} is missing")
-        records += chunk_page(page.read_text(encoding="utf-8"), root, slug, rel)
+        records += chunk_page(page.read_text(encoding="utf-8"), root, slug, rel, left_out=left_out)
     if not book.is_dir():
         raise CorpusError(f"the Runtime's book is not staged at {book}: run ./runtime/build.sh --no-build first")
     for rel in BOOK_PAGES:
@@ -250,7 +297,7 @@ def build(book: Path = STAGED_BOOK, repo: Path = REPO) -> list[dict]:
             raise CorpusError(f"{rel} is not in the staged book (the pin moved? update BOOK_PAGES)")
         text = resolve_includes(page.read_text(encoding="utf-8"), page)
         slug = "book/" + rel[: -len(".md")]
-        records += chunk_page(text, BOOK_ROOT, slug, f"runtime docs/book/src/{rel}")
+        records += chunk_page(text, BOOK_ROOT, slug, f"runtime docs/book/src/{rel}", left_out=left_out)
     keys = [r["key"] for r in records]
     if len(set(keys)) != len(keys):
         raise CorpusError("duplicate keys in the corpus")
@@ -315,19 +362,26 @@ def load(records: list[dict], gateway: Gateway, *, agent: str = AGENT, prune: bo
     say(f"{stats(records)} -> {gateway.base}/api/memory agent={agent} category={CATEGORY}" + (" (dry run)" if dry_run else ""))
     if dry_run:
         return 0
-    failed = 0
+    failed = skipped = 0
     for rec in records:
         body = {"key": rec["key"], "content": rec["content"], "category": CATEGORY, "agent": agent}
         try:
             gateway.call("POST", "/api/memory", body)
         except urllib.error.HTTPError as e:
-            failed += 1
             detail = e.read()[:200].decode("utf-8", "replace")
+            if SCAN_BLOCKED in detail:
+                # The gateway's write scanner (a newer pin than the one `build` was checked
+                # against): the chunk stays out, the rest goes in.
+                skipped += 1
+                say(f"  {rec['key']}: left out by the gateway's content scan")
+                continue
+            failed += 1
             say(f"  {rec['key']}: HTTP {e.code} {detail}")
             if e.code in (401, 403):
                 say("  the gateway wants the paired token: --token, CAELZA_TOKEN, or --config-dir with gateway.paired_tokens")
                 break
-    say(f"loaded {len(records) - failed} of {len(records)} chunks" + (f", {failed} failed" if failed else ""))
+    say(f"loaded {len(records) - failed - skipped} of {len(records)} chunks"
+        + (f", {skipped} left out by the content scan" if skipped else "") + (f", {failed} failed" if failed else ""))
     if prune and not failed:
         have = gateway.call("GET", f"/api/memory?agent={urllib.parse.quote(agent)}&category={CATEGORY}")
         entries = have.get("entries", []) if isinstance(have, dict) else have
@@ -360,17 +414,21 @@ def main(argv: list[str] | None = None) -> int:
     a = ap.parse_args(argv)
     try:
         if a.command == "build":
-            records = build(a.book)
+            left_out: list[dict] = []
+            records = build(a.book, left_out=left_out)
             text = dumps(records)
+            note = f"; {len(left_out)} left out by the write scanner ({', '.join(sorted({k for d in left_out for k in d['kinds']}))})" if left_out else ""
             if a.check:
                 current = a.out.read_text(encoding="utf-8") if a.out.is_file() else ""
                 if current != text:
-                    print(f"{a.out} is stale: run `python3 scripts/cael_corpus.py build` and commit the result ({stats(records)})")
+                    print(f"{a.out} is stale: run `python3 scripts/cael_corpus.py build` and commit the result ({stats(records)}{note})")
                     return 1
-                print(f"{a.out} is current: {stats(records)}")
+                print(f"{a.out} is current: {stats(records)}{note}")
                 return 0
             a.out.write_text(text, encoding="utf-8")
-            print(f"{a.out}: {stats(records)}")
+            print(f"{a.out}: {stats(records)}{note}")
+            for d in left_out:
+                print(f"  left out: {d['title']} ({d['source']}): {', '.join(d['kinds'])}")
             return 0
         records = loads(a.corpus.read_text(encoding="utf-8"))
         token = a.token or default_token(a.config_dir)
