@@ -24,9 +24,10 @@ from __future__ import annotations
 import json
 from dataclasses import dataclass, field
 from pathlib import Path
-from typing import Callable
+from typing import TYPE_CHECKING, Callable
 
-from PIL import Image
+if TYPE_CHECKING:
+    from PIL import Image
 
 W, H = 40, 44
 FRAMES = ("closed", "open", "blink")
@@ -80,9 +81,16 @@ LAYER_ORDER = [layer for layer, _ in LAYERS]
 SLOTS = ("skin", "hair", "outfit", "accent", "eyes")
 
 
+def _image():
+    """Pillow, imported when something is drawn: the catalog, the defaults and the maths need none of it."""
+    from PIL import Image
+
+    return Image
+
+
 class Canvas:
     def __init__(self) -> None:
-        self.im = Image.new("RGBA", (W, H), (0, 0, 0, 0))
+        self.im = _image().new("RGBA", (W, H), (0, 0, 0, 0))
         self.px = self.im.load()
 
     def p(self, x: int, y: int, c: str | tuple[int, int, int]) -> None:
@@ -637,7 +645,7 @@ def recolor(c: Canvas, colors: dict[str, str]) -> None:
                 px[x, y] = (*table[(p[0], p[1], p[2])], p[3])
 
 
-def compose(parts: dict[str, str], frame: str = "closed", colors: dict[str, str] | None = None) -> Image.Image:
+def compose(parts: dict[str, str], frame: str = "closed", colors: dict[str, str] | None = None) -> "Image.Image":
     """The character: parts by layer, one frame, recoloured when colours are given."""
     if frame not in FRAMES:
         raise ValueError(f"unknown frame {frame!r}")
@@ -661,7 +669,7 @@ def compose(parts: dict[str, str], frame: str = "closed", colors: dict[str, str]
     return out.im
 
 
-def render_part(pid: str, frame: str = "closed") -> Image.Image:
+def render_part(pid: str, frame: str = "closed") -> "Image.Image":
     """One part alone, in the key palette: what the exporter writes."""
     c = Canvas()
     PARTS[pid].draw(c, frame)

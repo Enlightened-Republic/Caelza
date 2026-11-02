@@ -39,6 +39,8 @@ jobs:
         run: python3 -c "import xml.dom.minidom as m; [m.parse(f) for f in ('brand/logo.svg','brand/logo-with-c.svg')]"
       - name: The app's launcher icon is in step with the generator
         run: python3 brand/make_assets.py --android android/app --check
+      - name: The looks' exported parts and sheets are in step with looks/parts.py and the catalog
+        run: python3 scripts/looks.py check
       - uses: actions/upload-artifact@v4
         with:
           name: brand-out

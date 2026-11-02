@@ -17,6 +17,8 @@ import sys
 import tomllib
 from pathlib import Path
 
+import pytest
+
 REPO_ROOT = Path(__file__).resolve().parents[1]
 CATALOG = REPO_ROOT / "looks" / "catalog.json"
 OVERLAY = REPO_ROOT / "runtime" / "overlay" / "web" / "src"
@@ -32,13 +34,16 @@ MANIFEST = tomllib.loads((REPO_ROOT / "bundle" / "manifest.toml").read_text())
 
 sys.path.insert(0, str(REPO_ROOT / "looks"))
 sys.path.insert(0, str(REPO_ROOT / "scripts"))
-import parts as lib  # noqa: E402
-import looks as cli  # noqa: E402
+import parts as lib  # noqa: E402  (imports without Pillow; drawing needs it)
 
 catalog = lib.load_catalog(CATALOG)
 
 
 def test_the_catalog_the_parts_and_the_exports_agree():
+    """Needs Pillow (the brand CI job has it and runs `scripts/looks.py check` too)."""
+    pytest.importorskip("PIL")
+    import looks as cli
+
     assert cli.check(catalog) == []
     assert [p["id"] for p in catalog["packs"]] == ["starter", "cosmic", "arcade"]
     assert sum(1 for p in catalog["parts"] if p["pack"] == "starter") >= 25
@@ -48,6 +53,7 @@ def test_the_catalog_the_parts_and_the_exports_agree():
 
 
 def test_every_part_renders_in_every_frame_and_only_faces_change_between_frames():
+    pytest.importorskip("PIL")
     for pid, part in lib.PARTS.items():
         frames = {f: lib.render_part(pid, f).tobytes() for f in lib.FRAMES}
         if part.layer == "face":
@@ -62,6 +68,24 @@ def test_every_part_renders_in_every_frame_and_only_faces_change_between_frames(
     keys = {rgb for tones in lib.KEYS.values() for rgb in tones.values()}
     assert not (pixels & keys), "every key colour was swapped"
     assert lib.ramp("#22e6ff")["m"] in pixels, "Cael's cyan eyes"
+
+
+def test_the_catalog_lists_every_part_once_with_a_starter_for_every_layer():
+    """The Pillow-free half of `scripts/looks.py check`, so the Body job keeps the catalog honest."""
+    ids = [p["id"] for p in catalog["parts"]]
+    assert len(ids) == len(set(ids)) and set(ids) == set(lib.PARTS)
+    for p in catalog["parts"]:
+        lp = lib.PARTS[p["id"]]
+        assert (p["layer"], p["name"], p["pack"], tuple(p["slots"])) == (lp.layer, lp.name, lp.pack, lp.slots), p["id"]
+    assert catalog["layers"] == lib.LAYER_ORDER and catalog["frames"] == list(lib.FRAMES) and catalog["slots"] == list(lib.SLOTS)
+    for layer in lib.LAYER_ORDER:
+        assert any(p["layer"] == layer and p["pack"] == "starter" for p in catalog["parts"]), layer
+    assert catalog["cael"] == {"parts": lib.CAEL_LOOK["parts"], "colors": lib.CAEL_LOOK["colors"]}
+    for p in catalog["parts"]:
+        for path in ([f"{p['layer']}/{p['id'].split('.', 1)[1]}.{f}.png" for f in lib.FRAMES] if p["layer"] == "face" else [f"{p['layer']}/{p['id'].split('.', 1)[1]}.png"]):
+            assert (REPO_ROOT / "runtime" / "overlay" / "web" / "public" / "looks" / "parts" / path).is_file(), path
+    for pack in catalog["packs"]:
+        assert (REPO_ROOT / "runtime" / "overlay" / "web" / "public" / "looks" / "sheets" / f"{pack['id']}.png").is_file(), pack["id"]
 
 
 def test_the_dashboards_maths_is_parts_pys():
