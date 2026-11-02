@@ -1,0 +1,268 @@
+// The pixel character on screen (vision M8): one part per layer composed on
+// a 40 x 44 canvas from the exported PNGs, outlined and recoloured with the
+// maths in looks.logic.ts, drawn crisp at any size. It blinks, and it talks
+// while `talking` is true. `useAgentLook` is the per-agent look from the
+// Runtime (/api/looks/<alias>), the default until one is saved, shared
+// across every place the agent is drawn and refreshed when the customizer
+// saves.
+import { useEffect, useMemo, useRef, useState, type CSSProperties } from "react";
+
+import { getLook } from "@/lib/api";
+import { basePath } from "@/lib/basePath";
+import catalogJson from "./catalog.json";
+import {
+  GRID,
+  LAYERS,
+  STAGES,
+  defaultLook,
+  finishPixels,
+  normalizeLook,
+  partUrl,
+  recolorTable,
+  type Catalog,
+  type Frame,
+  type Look as LookData,
+} from "./looks.logic";
+
+export const catalog = catalogJson as unknown as Catalog;
+
+// ---- images ------------------------------------------------------------------
+
+const images = new Map<string, Promise<HTMLImageElement>>();
+
+function loadImage(url: string): Promise<HTMLImageElement> {
+  let p = images.get(url);
+  if (!p) {
+    p = new Promise((resolve, reject) => {
+      const img = new Image();
+      img.onload = () => resolve(img);
+      img.onerror = () => reject(new Error(`could not load ${url}`));
+      img.src = url;
+    });
+    images.set(url, p);
+  }
+  return p;
+}
+
+/** The composed character for one frame, ready to draw. */
+async function compose(look: LookData, frame: Frame): Promise<ImageData> {
+  const { width, height } = GRID;
+  const sil = new Uint8Array(width * height);
+  const out = document.createElement("canvas");
+  out.width = width;
+  out.height = height;
+  const ctx = out.getContext("2d", { willReadFrequently: true });
+  if (!ctx) throw new Error("no 2d context");
+  const silCanvas = document.createElement("canvas");
+  silCanvas.width = width;
+  silCanvas.height = height;
+  const sctx = silCanvas.getContext("2d", { willReadFrequently: true })!;
+  const detCanvas = document.createElement("canvas");
+  detCanvas.width = width;
+  detCanvas.height = height;
+  const dctx = detCanvas.getContext("2d", { willReadFrequently: true })!;
+  const loaded = await Promise.all(LAYERS.map((layer) => loadImage(partUrl(basePath, look.parts[layer], frame)).catch(() => null)));
+  LAYERS.forEach((layer, i) => {
+    const img = loaded[i];
+    if (!img) return;
+    const target = STAGES[layer] === "backdrop" ? ctx : STAGES[layer] === "silhouette" ? sctx : dctx;
+    target.drawImage(img, 0, 0);
+  });
+  const silData = sctx.getImageData(0, 0, width, height).data;
+  for (let i = 0; i < width * height; i++) sil[i] = silData[i * 4 + 3]! > 0 ? 1 : 0;
+  ctx.drawImage(silCanvas, 0, 0);
+  ctx.drawImage(detCanvas, 0, 0);
+  const data = ctx.getImageData(0, 0, width, height);
+  finishPixels(data.data, sil, width, height, recolorTable(look.colors));
+  return data;
+}
+
+// ---- the component ---------------------------------------------------------------
+
+export interface LookProps {
+  look: LookData;
+  /** Height in CSS pixels; the width follows the 40 : 44 grid. */
+  size?: number;
+  /** The mouth moves while true (the agent is answering). */
+  talking?: boolean;
+  /** A fixed frame, no blinking (thumbnails). */
+  frame?: Frame;
+  className?: string;
+  title?: string;
+  style?: CSSProperties;
+}
+
+export function Look({ look, size = 64, talking = false, frame, className, title, style }: LookProps) {
+  const ref = useRef<HTMLCanvasElement>(null);
+  const frames = useRef<Map<Frame, ImageData>>(new Map());
+  const [shown, setShown] = useState<Frame>(frame ?? "closed");
+  const [mouth, setMouth] = useState<"closed" | "open">("closed");
+  const [blinking, setBlinking] = useState(false);
+  const key = useMemo(() => JSON.stringify(look), [look]);
+
+  // Which frame to show: a fixed one, else the blink over the mouth.
+  useEffect(() => {
+    if (frame) setShown(frame);
+    else setShown(blinking ? "blink" : mouth);
+  }, [frame, blinking, mouth]);
+
+  // Talking: the mouth alternates while it lasts, then closes. The timers are
+  // the globals, not window's: a node test renders this with a stub window.
+  useEffect(() => {
+    if (frame || !talking) {
+      setMouth("closed");
+      return;
+    }
+    const id = setInterval(() => setMouth((m) => (m === "open" ? "closed" : "open")), 160);
+    return () => clearInterval(id);
+  }, [talking, frame]);
+
+  // Blinking: every 2.5 to 5 seconds, for 120 ms.
+  useEffect(() => {
+    if (frame) return;
+    let open: ReturnType<typeof setTimeout> | null = null;
+    let close: ReturnType<typeof setTimeout> | null = null;
+    const schedule = () => {
+      close = setTimeout(() => {
+        setBlinking(true);
+        open = setTimeout(() => {
+          setBlinking(false);
+          schedule();
+        }, 120);
+      }, 2500 + Math.random() * 2500);
+    };
+    schedule();
+    return () => {
+      if (close !== null) clearTimeout(close);
+      if (open !== null) clearTimeout(open);
+    };
+  }, [frame]);
+
+  // Compose on demand, cache per frame for this look.
+  useEffect(() => {
+    frames.current = new Map();
+  }, [key]);
+
+  useEffect(() => {
+    if (typeof document === "undefined") return;
+    let cancelled = false;
+    const draw = (data: ImageData) => {
+      const canvas = ref.current;
+      if (!canvas || cancelled) return;
+      canvas.getContext("2d")?.putImageData(data, 0, 0);
+    };
+    const cached = frames.current.get(shown);
+    if (cached) {
+      draw(cached);
+      return;
+    }
+    void compose(look, shown)
+      .then((data) => {
+        if (cancelled) return;
+        frames.current.set(shown, data);
+        draw(data);
+      })
+      .catch(() => {
+        /* a part that failed to load leaves the canvas as it was */
+      });
+    return () => {
+      cancelled = true;
+    };
+  }, [key, shown, look]);
+
+  const width = Math.round((size * GRID.width) / GRID.height);
+  return (
+    <canvas
+      ref={ref}
+      width={GRID.width}
+      height={GRID.height}
+      className={`cz-look${className ? ` ${className}` : ""}`}
+      style={{ width, height: size, ...style }}
+      role="img"
+      aria-label={title ?? "the agent's look"}
+      title={title}
+    />
+  );
+}
+
+// ---- the per-agent look -------------------------------------------------------------
+
+const looks = new Map<string, LookData>();
+const pending = new Map<string, Promise<LookData>>();
+const EVENT = "caelza-look-changed";
+
+/** Remember a look for an agent and tell every `useAgentLook` of it. */
+/** The window when it is a real one (a node test renders with a stub). */
+function realWindow(): Window | null {
+  return typeof window !== "undefined" && typeof window.addEventListener === "function" ? window : null;
+}
+
+function announce(alias: string): void {
+  realWindow()?.dispatchEvent(new CustomEvent(EVENT, { detail: alias }));
+}
+
+export function rememberLook(alias: string, look: LookData): void {
+  looks.set(alias, look);
+  announce(alias);
+}
+
+export function forgetLook(alias: string): void {
+  looks.delete(alias);
+  pending.delete(alias);
+  announce(alias);
+}
+
+async function fetchLook(alias: string): Promise<LookData> {
+  try {
+    const r = await getLook(alias);
+    return normalizeLook(r.look, alias, catalog);
+  } catch {
+    return defaultLook(alias, catalog);
+  }
+}
+
+/** The agent's look: the default at once, the saved one as soon as the Runtime answers. */
+export function useAgentLook(alias: string): LookData {
+  const [look, setLook] = useState<LookData>(() => looks.get(alias) ?? defaultLook(alias, catalog));
+  useEffect(() => {
+    let cancelled = false;
+    const known = looks.get(alias);
+    if (known) setLook(known);
+    else {
+      let p = pending.get(alias);
+      if (!p) {
+        p = fetchLook(alias).then((l) => {
+          looks.set(alias, l);
+          pending.delete(alias);
+          return l;
+        });
+        pending.set(alias, p);
+      }
+      void p.then((l) => {
+        if (!cancelled) setLook(l);
+      });
+    }
+    const onChange = (e: Event) => {
+      if ((e as CustomEvent<string>).detail !== alias) return;
+      const next = looks.get(alias);
+      if (next) setLook(next);
+      else void fetchLook(alias).then((l) => {
+        looks.set(alias, l);
+        if (!cancelled) setLook(l);
+      });
+    };
+    const w = realWindow();
+    w?.addEventListener(EVENT, onChange);
+    return () => {
+      cancelled = true;
+      w?.removeEventListener(EVENT, onChange);
+    };
+  }, [alias]);
+  return look;
+}
+
+/** The agent drawn wherever it appears: the list, the chat header, the empty chat. */
+export function AgentLook({ alias, size = 32, talking = false, className }: { alias: string; size?: number; talking?: boolean; className?: string }) {
+  const look = useAgentLook(alias);
+  return <Look look={look} size={size} talking={talking} className={className} title={alias} />;
+}

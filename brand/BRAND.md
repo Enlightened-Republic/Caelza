@@ -141,6 +141,10 @@ gradient (the one glowing element), the primary button filled cyan → violet,
 Space with the two nebula glows behind the cards. The Republic gradient still
 appears only in the parent's own moments.
 
+The agents' pixel characters (`looks/`) use the palette above for their
+colour swatches and `#0d0820` for every outline; a pack's new pieces should
+keep to it, with one accent that repeats.
+
 ## Type
 
 - **Orbitron 900** for the wordmark only.
