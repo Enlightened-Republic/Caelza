@@ -1,0 +1,91 @@
+{
+  "_": "The pack catalog behind the Looks and the Shop (vision M8). A look is one part per layer (looks/parts.py draws them; scripts/looks.py export writes the PNGs the dashboard composes) and one colour per slot. Packs are what the Shop sells: `free` packs join the wardrobe with one tap, a priced pack will take an unlock code (`unlock`) once the gateway can verify one; `soon` packs are announced and empty. Add a pack by drawing its parts in parts.py, listing them here, running `python3 scripts/looks.py export`, and `check` keeps everything in step.",
+  "version": 1,
+  "updated": "2026-11-02",
+  "canvas": { "width": 40, "height": 44 },
+  "layers": ["backdrop", "body", "outfit", "hair", "hat", "face", "accessory"],
+  "frames": ["closed", "open", "blink"],
+  "slots": ["skin", "hair", "outfit", "accent", "eyes"],
+  "colors": {
+    "skin": ["#e0a98a", "#c98a6a", "#a86a4a", "#7a4a30", "#4d2f21", "#f2d6c4", "#b9c6d6", "#8c93a8", "#c4b4e8", "#9fe8d8"],
+    "hair": ["#7b6bff", "#22e6ff", "#ff2d78", "#ffe600", "#2b1b4a", "#8a5a3a", "#e8e4f0", "#39ff14", "#b44fff", "#ff7a1a"],
+    "outfit": ["#1a1250", "#120e22", "#b44fff", "#22e6ff", "#ff2d78", "#39ff14", "#ffe600", "#e8e4f0", "#3b2f5a", "#0a8fb0"],
+    "accent": ["#22e6ff", "#ff2d78", "#ffe600", "#b44fff", "#39ff14", "#e8e4f0", "#ff7a1a", "#7b6bff"],
+    "eyes": ["#22e6ff", "#b44fff", "#ff2d78", "#39ff14", "#ffe600", "#130c2e", "#8a5a3a", "#0a8fb0"]
+  },
+  "packs": [
+    {
+      "id": "starter",
+      "name": "Starter",
+      "blurb": "Every agent's first wardrobe: two bodies, five faces, five hairstyles, four outfits, three hats, four accessories and three backdrops. Always in the wardrobe.",
+      "price": "free",
+      "status": "available"
+    },
+    {
+      "id": "cosmic",
+      "name": "Cosmic",
+      "blurb": "Cael's own: the constellation hoodie with Caelum on the chest, galaxy and swirl eyes, nebula hair, the crown, an antenna, the orb body and a nebula backdrop.",
+      "price": "free",
+      "status": "available"
+    },
+    {
+      "id": "arcade",
+      "name": "Arcade",
+      "blurb": "Backwards caps, bomber jackets, shades and a CRT backdrop. Drawing in progress.",
+      "price": "free",
+      "status": "soon"
+    }
+  ],
+  "parts": [
+    { "id": "backdrop.none", "layer": "backdrop", "name": "Plain", "pack": "starter", "slots": [] },
+    { "id": "backdrop.space", "layer": "backdrop", "name": "Space", "pack": "starter", "slots": [] },
+    { "id": "backdrop.grid", "layer": "backdrop", "name": "Grid", "pack": "starter", "slots": [] },
+    { "id": "backdrop.sunset", "layer": "backdrop", "name": "Sunset", "pack": "starter", "slots": [] },
+    { "id": "backdrop.nebula", "layer": "backdrop", "name": "Nebula", "pack": "cosmic", "slots": [] },
+    { "id": "body.sprout", "layer": "body", "name": "Sprout", "pack": "starter", "slots": ["skin"] },
+    { "id": "body.bot", "layer": "body", "name": "Bot", "pack": "starter", "slots": ["skin"] },
+    { "id": "body.orb", "layer": "body", "name": "Orb", "pack": "cosmic", "slots": ["skin"] },
+    { "id": "outfit.hoodie", "layer": "outfit", "name": "Hoodie", "pack": "starter", "slots": ["outfit", "accent"] },
+    { "id": "outfit.tee", "layer": "outfit", "name": "Tee", "pack": "starter", "slots": ["outfit", "accent", "skin"] },
+    { "id": "outfit.jacket", "layer": "outfit", "name": "Jacket", "pack": "starter", "slots": ["outfit", "accent"] },
+    { "id": "outfit.cloak", "layer": "outfit", "name": "Cloak", "pack": "starter", "slots": ["outfit", "accent"] },
+    { "id": "outfit.constellation", "layer": "outfit", "name": "Constellation hoodie", "pack": "cosmic", "slots": ["outfit", "accent"] },
+    { "id": "hair.none", "layer": "hair", "name": "None", "pack": "starter", "slots": [] },
+    { "id": "hair.swoop", "layer": "hair", "name": "Swoop", "pack": "starter", "slots": ["hair"] },
+    { "id": "hair.bob", "layer": "hair", "name": "Bob", "pack": "starter", "slots": ["hair"] },
+    { "id": "hair.buns", "layer": "hair", "name": "Buns", "pack": "starter", "slots": ["hair", "accent"] },
+    { "id": "hair.spikes", "layer": "hair", "name": "Spikes", "pack": "starter", "slots": ["hair"] },
+    { "id": "hair.long", "layer": "hair", "name": "Long", "pack": "starter", "slots": ["hair"] },
+    { "id": "hair.nebula", "layer": "hair", "name": "Nebula", "pack": "cosmic", "slots": ["hair"] },
+    { "id": "hat.none", "layer": "hat", "name": "None", "pack": "starter", "slots": [] },
+    { "id": "hat.beanie", "layer": "hat", "name": "Beanie", "pack": "starter", "slots": ["accent"] },
+    { "id": "hat.cap", "layer": "hat", "name": "Cap", "pack": "starter", "slots": ["accent"] },
+    { "id": "hat.halo", "layer": "hat", "name": "Halo", "pack": "starter", "slots": ["accent"] },
+    { "id": "hat.crown", "layer": "hat", "name": "Crown", "pack": "cosmic", "slots": ["accent"] },
+    { "id": "face.round", "layer": "face", "name": "Round", "pack": "starter", "slots": ["eyes"] },
+    { "id": "face.half", "layer": "face", "name": "Half-lidded", "pack": "starter", "slots": ["eyes"] },
+    { "id": "face.star", "layer": "face", "name": "Starry", "pack": "starter", "slots": ["eyes"] },
+    { "id": "face.happy", "layer": "face", "name": "Happy", "pack": "starter", "slots": [] },
+    { "id": "face.dot", "layer": "face", "name": "Dot", "pack": "starter", "slots": ["eyes"] },
+    { "id": "face.galaxy", "layer": "face", "name": "Galaxy", "pack": "cosmic", "slots": ["eyes"] },
+    { "id": "face.swirl", "layer": "face", "name": "Swirl", "pack": "cosmic", "slots": ["eyes"] },
+    { "id": "accessory.none", "layer": "accessory", "name": "None", "pack": "starter", "slots": [] },
+    { "id": "accessory.glasses", "layer": "accessory", "name": "Glasses", "pack": "starter", "slots": ["accent"] },
+    { "id": "accessory.visor", "layer": "accessory", "name": "Visor", "pack": "starter", "slots": ["accent"] },
+    { "id": "accessory.headphones", "layer": "accessory", "name": "Headphones", "pack": "starter", "slots": ["accent"] },
+    { "id": "accessory.blush", "layer": "accessory", "name": "Blush", "pack": "starter", "slots": [] },
+    { "id": "accessory.antenna", "layer": "accessory", "name": "Antenna", "pack": "cosmic", "slots": ["accent"] }
+  ],
+  "cael": {
+    "parts": {
+      "backdrop": "backdrop.space",
+      "body": "body.sprout",
+      "outfit": "outfit.constellation",
+      "hair": "hair.swoop",
+      "hat": "hat.none",
+      "face": "face.galaxy",
+      "accessory": "accessory.none"
+    },
+    "colors": { "skin": "#e0a98a", "hair": "#7b6bff", "outfit": "#1a1250", "accent": "#22e6ff", "eyes": "#22e6ff" }
+  }
+}

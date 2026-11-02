@@ -170,6 +170,160 @@ main .surface-panel {
   border-image: linear-gradient(90deg, rgba(34, 230, 255, 0.45), rgba(123, 107, 255, 0.35), rgba(180, 79, 255, 0.25), transparent 85%) 1;
 }
 
+/* ---- The looks and the shop (vision M8) ---------------------------------------
+   Pixel characters drawn crisp at any size, the customizer's cells and
+   swatches, the shop's pack cards. */
+
+.cz-look {
+  image-rendering: pixelated;
+  image-rendering: crisp-edges;
+  display: block;
+}
+.cz-look-gallery {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(140px, 1fr));
+  gap: 12px;
+}
+.cz-look-agent {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 6px;
+  padding: 16px 12px;
+  text-decoration: none;
+}
+.cz-look-preview {
+  display: flex;
+  align-items: center;
+  gap: 16px;
+  padding: 16px;
+  flex-wrap: wrap;
+}
+.cz-chip-scroll {
+  overflow-x: auto;
+  scrollbar-width: none;
+  padding-bottom: 2px;
+}
+.cz-chip-scroll::-webkit-scrollbar {
+  display: none;
+}
+.cz-chip.cz-chip-auto {
+  flex: 0 0 auto;
+  padding: 0 14px;
+}
+.cz-look-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(84px, 1fr));
+  gap: 8px;
+}
+.cz-look-cell {
+  position: relative;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 4px;
+  padding: 8px 4px 6px;
+  border-radius: 12px;
+  border: 1px solid var(--pc-border);
+  background: var(--pc-bg-surface);
+  color: var(--pc-text-secondary);
+  cursor: pointer;
+  min-height: 2.25rem;
+}
+.cz-look-cell:hover {
+  border-color: var(--pc-border-strong);
+}
+.cz-look-cell.is-selected {
+  border-color: rgba(34, 230, 255, 0.6);
+  background: rgba(34, 230, 255, 0.07);
+  color: var(--pc-text-primary);
+}
+.cz-look-cell.is-locked {
+  opacity: 0.45;
+  cursor: not-allowed;
+}
+.cz-look-cell-name {
+  font-size: 11px;
+  line-height: 1.2;
+  text-align: center;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  max-width: 100%;
+}
+.cz-look-lock {
+  position: absolute;
+  top: 6px;
+  right: 6px;
+  color: #ffe600;
+}
+.cz-swatch-row {
+  display: flex;
+  align-items: flex-start;
+  gap: 10px;
+}
+.cz-swatch {
+  width: 28px;
+  height: 28px;
+  border-radius: 8px;
+  border: 2px solid rgba(255, 255, 255, 0.12);
+  cursor: pointer;
+  padding: 0;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  overflow: hidden;
+}
+.cz-swatch.is-on {
+  border-color: #fff;
+  box-shadow: 0 0 0 2px rgba(34, 230, 255, 0.6);
+}
+.cz-swatch-custom {
+  background: conic-gradient(#ff2d78, #ffe600, #39ff14, #22e6ff, #b44fff, #ff2d78);
+}
+.cz-swatch-custom input {
+  opacity: 0;
+  width: 100%;
+  height: 100%;
+  cursor: pointer;
+}
+.cz-pack {
+  display: grid;
+  grid-template-columns: 1fr;
+  gap: 12px;
+  padding: 14px;
+}
+@media (min-width: 640px) {
+  .cz-pack {
+    grid-template-columns: 220px 1fr;
+  }
+}
+.cz-pack-sheet img {
+  width: 100%;
+  max-height: 180px;
+  object-fit: cover;
+  object-position: left top;
+  border-radius: 10px;
+  border: 1px solid var(--pc-border);
+}
+.cz-pack-soon {
+  height: 120px;
+  border-radius: 10px;
+  border: 1px dashed var(--pc-border-strong);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  color: var(--pc-text-muted);
+}
+.cz-pack-body {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+}
+.cz-pack-body p {
+  margin: 0;
+}
+
 /* ---- The simplified setup (/setup, vision M4 phase 4a) ----------------------
    Cael's screens in our colours: the space backdrop with the nebula glows, the
    title in the mark's gradient, Cael's bubble, 52 px buttons, the scroll

@@ -1,0 +1,318 @@
+Caelza: the looks and the shop (vision M8), every agent's pixel character.
+
+An agent was a bot icon. Now it has a character: one piece per layer
+(backdrop, body, outfit, hair, hat, face, accessory) in the owner's colours,
+drawn as code in looks/parts.py, composed and recoloured in the browser
+(web/src/looks/Look.tsx over the exported PNGs under web/public/looks), kept
+on the Runtime per agent so every device shows the same. The customizer
+(/looks/:alias), the gallery (/looks) and the shop of packs (/shop) are
+overlay pages; the gateway's api_looks.rs is an overlay module. These hunks
+register the module and its routes (/api/looks/wardrobe, /api/looks/{alias}),
+route the pages, put Looks and Shop in the sidebar's Chat group and the
+title maps, add the API client functions, draw the look in the agent card
+and the chat (the header's talks while the agent answers), add the strings
+(English; the other locales fall back) and list the logic test beside the
+others. Applied after 0010 and the overlay copy.
+
+--- a/crates/caelza-gateway/src/lib.rs
++++ b/crates/caelza-gateway/src/lib.rs
+@@ -13,6 +13,7 @@
+ pub mod api_browse;
+ pub mod api_config;
+ pub mod api_logs;
++pub mod api_looks;
+ pub mod api_mind;
+ pub mod api_oidc;
+ pub mod api_pairing;
+@@ -2370,6 +2371,18 @@
+             "/api/bodies/pair",
+             post(api_bodies::handle_bodies_pair).delete(api_bodies::handle_bodies_unpair),
+         )
++        // The looks (the agents' pixel characters) and the wardrobe (the packs
++        // the owner added), kept on the Runtime so every device sees the same.
++        .route(
++            "/api/looks/wardrobe",
++            get(api_looks::handle_wardrobe_get).put(api_looks::handle_wardrobe_put),
++        )
++        .route(
++            "/api/looks/{alias}",
++            get(api_looks::handle_look_get)
++                .put(api_looks::handle_look_put)
++                .delete(api_looks::handle_look_delete),
++        )
+         .route("/api/cost", get(api::handle_api_cost))
+         .route("/api/cli-tools", get(api::handle_api_cli_tools))
+         .route("/api/channels", get(api::handle_api_channels))
+--- a/web/src/router/router.tsx
++++ b/web/src/router/router.tsx
+@@ -15,6 +15,7 @@
+   Home,
+   Integrations,
+   Logs,
++  Looks,
+   Memory,
+   Pairing,
+   Plugins,
+@@ -23,6 +24,7 @@
+   RunDetail,
+   Runs,
+   Setup,
++  Shop,
+   Skills,
+   SopEditor,
+   SopView,
+@@ -58,6 +60,10 @@
+         <Route path="/agents" element={<AgentsList />} />
+         <Route path="/agent/:alias" element={<AgentChat />} />
+         <Route path="/agent/:alias/workspace" element={<AgentWorkspaceExplorer />} />
++        {/* The looks (every agent's pixel character) and the shop of packs. */}
++        <Route path="/looks" element={<Looks />} />
++        <Route path="/looks/:alias" element={<Looks />} />
++        <Route path="/shop" element={<Shop />} />
+         <Route path="/tools" element={<Tools />} />
+         <Route path="/cron" element={<Cron />} />
+         <Route path="/skills" element={<Skills />} />
+--- a/web/src/router/lazyPages.tsx
++++ b/web/src/router/lazyPages.tsx
+@@ -28,3 +28,5 @@
+ export const Home = lazy(() => import('../pages/Home'));
+ export const Procedures = lazy(() => import('../pages/Procedures'));
+ export const Setup = lazy(() => import('../pages/setup/Setup'));
++export const Looks = lazy(() => import('../pages/Looks'));
++export const Shop = lazy(() => import('../pages/Shop'));
+--- a/web/src/components/layout/Sidebar.tsx
++++ b/web/src/components/layout/Sidebar.tsx
+@@ -19,6 +19,8 @@
+   Puzzle,
+   Rocket,
+   Settings,
++  Shirt,
++  ShoppingBag,
+   Smartphone,
+   Sparkles,
+   Stethoscope,
+@@ -66,7 +68,12 @@
+   },
+   {
+     headingKey: 'nav.group.chat',
+-    items: [{ to: '/agents', icon: MessageSquare, labelKey: 'nav.agents' }],
++    items: [
++      { to: '/agents', icon: MessageSquare, labelKey: 'nav.agents' },
++      // The agents' pixel characters and the packs that dress them (vision M8).
++      { to: '/looks', icon: Shirt, labelKey: 'nav.looks' },
++      { to: '/shop', icon: ShoppingBag, labelKey: 'nav.shop' },
++    ],
+   },
+   {
+     headingKey: 'nav.group.configure',
+--- a/web/src/components/layout/Header.tsx
++++ b/web/src/components/layout/Header.tsx
+@@ -24,6 +24,8 @@
+   procedures: 'nav.procedures',
+   agent: 'nav.agent',
+   agents: 'nav.agents',
++  looks: 'nav.looks',
++  shop: 'nav.shop',
+   tools: 'nav.tools',
+   skills: 'nav.skills',
+   cron: 'nav.cron',
+--- a/web/src/components/layout/Layout.tsx
++++ b/web/src/components/layout/Layout.tsx
+@@ -15,6 +15,8 @@
+   bodies: 'nav.bodies',
+   procedures: 'nav.procedures',
+   agents: 'nav.agents',
++  looks: 'nav.looks',
++  shop: 'nav.shop',
+   config: 'nav.config',
+   setup: 'nav.config',
+   tools: 'nav.tools',
+--- a/web/src/components/AgentCard.tsx
++++ b/web/src/components/AgentCard.tsx
+@@ -1,5 +1,4 @@
+ import {
+-  Bot,
+   Brain,
+   ChevronRight,
+   DollarSign,
+@@ -12,6 +11,7 @@
+ import { Badge } from '@/components/ui';
+ import { formatUsd } from '@/lib/format';
+ import { t } from '@/lib/i18n';
++import { AgentLook } from '@/looks/Look';
+ 
+ export interface AgentCardProps {
+   agent: AgentSummary;
+@@ -80,8 +80,9 @@
+         .join(' ')}
+     >
+       {/* Identity */}
+-      <div className="h-8 w-8 rounded-[var(--radius-md)] flex-shrink-0 flex items-center justify-center bg-pc-accent/10">
+-        <Bot className="h-4 w-4 text-pc-accent" />
++      {/* The agent's look (vision M8): its pixel character, blinking. */}
++      <div className="h-9 w-9 rounded-[var(--radius-md)] flex-shrink-0 flex items-center justify-center bg-pc-accent/10 overflow-hidden">
++        <AgentLook alias={agent.alias} size={34} />
+       </div>
+       <div className="min-w-0 flex-1">
+         <div className="flex items-center gap-2 min-w-0">
+--- a/web/src/pages/AgentChat.tsx
++++ b/web/src/pages/AgentChat.tsx
+@@ -22,6 +22,7 @@
+ import ApprovalBanner from '@/components/ApprovalBanner';
+ import { resolveContextBarState } from '@/lib/contextBar';
+ import SessionPicker from '@/components/SessionPicker';
++import { AgentLook } from '@/looks/Look';
+ 
+ const DRAFT_KEY_PREFIX = 'agent-chat';
+ 
+@@ -559,7 +560,8 @@
+       {/* Header with model selector */}
+       <div className="flex items-center justify-between flex-wrap gap-y-2 px-4 py-2 border-b border-pc-border bg-pc-surface">
+         <div className="flex items-center gap-2">
+-          <Bot className="h-4 w-4 text-pc-accent" />
++          {/* The agent's look: it talks while the agent is answering (vision M8). */}
++          <AgentLook alias={agentAlias} size={28} talking={typing} />
+           <span className="text-sm font-medium text-pc-text">{agentAlias}</span>
+           <Link
+             to={`/agent/${encodeURIComponent(agentAlias)}/workspace`}
+@@ -662,8 +664,8 @@
+       >
+         {messages.length === 0 && (
+           <div className="flex flex-col items-center justify-center h-full text-center animate-fade-in text-pc-text-muted">
+-            <div className="h-14 w-14 rounded-[var(--radius-lg)] flex items-center justify-center mb-4 bg-pc-accent/10">
+-              <Bot className="h-7 w-7 text-pc-accent" />
++            <div className="h-16 w-16 rounded-[var(--radius-lg)] flex items-center justify-center mb-4 bg-pc-accent/10 overflow-hidden">
++              <AgentLook alias={agentAlias} size={60} />
+             </div>
+             {/* Until the transcript lands, an empty list means "still loading",
+                 not "empty conversation" — saying the latter misreports a
+--- a/web/src/lib/api.ts
++++ b/web/src/lib/api.ts
+@@ -15,6 +15,7 @@
+   TuiEntry,
+ } from "../types/api";
+ import type { components } from "./api-generated";
++import type { Look, Wardrobe } from "@/looks/looks.logic";
+ import { clearToken, getToken, setToken } from "./auth";
+ import { apiOrigin, basePath } from "./basePath";
+ 
+@@ -2383,3 +2384,39 @@
+     { method: "POST", body: file },
+   );
+ }
++
++// ── Looks (Caelza, vision M8): the agents' pixel characters and the wardrobe ──
++
++export interface LookResponse {
++  alias: string;
++  /** null until a look was saved: the dashboard deals the default. */
++  look: Look | null;
++}
++
++export function getLook(alias: string): Promise<LookResponse> {
++  return apiFetch<LookResponse>(`/api/looks/${encodeURIComponent(alias)}`);
++}
++
++export function putLook(alias: string, look: Look): Promise<LookResponse> {
++  return apiFetch<LookResponse>(`/api/looks/${encodeURIComponent(alias)}`, {
++    method: "PUT",
++    headers: { "Content-Type": "application/json" },
++    body: JSON.stringify(look),
++  });
++}
++
++export function deleteLook(alias: string): Promise<LookResponse> {
++  return apiFetch<LookResponse>(`/api/looks/${encodeURIComponent(alias)}`, { method: "DELETE" });
++}
++
++export function getWardrobe(): Promise<Wardrobe> {
++  return apiFetch<Wardrobe>("/api/looks/wardrobe");
++}
++
++export function putWardrobe(wardrobe: Wardrobe): Promise<Wardrobe> {
++  return apiFetch<Wardrobe>("/api/looks/wardrobe", {
++    method: "PUT",
++    headers: { "Content-Type": "application/json" },
++    body: JSON.stringify(wardrobe),
++  });
++}
+--- a/web/src/lib/i18n.ts
++++ b/web/src/lib/i18n.ts
+@@ -1227,6 +1227,8 @@
+     'nav.dashboard': 'Dashboard',
+     'nav.agent': 'Agent',
+     'nav.agents': 'Agents',
++    'nav.looks': 'Looks',
++    'nav.shop': 'Shop',
+     'nav.tools': 'Tools',
+     'nav.sops': 'SOPs',
+     'nav.runs': 'Runs',
+@@ -1466,6 +1468,57 @@
+     'nav.bodies': 'Bodies',
+     'nav.home': 'Home',
+     'nav.setup': 'Set up',
++    'looks.back': "All looks",
++    'looks.blinks': "It blinks on its own; in chat it talks while the agent answers.",
++    'looks.colors': "Colours",
++    'looks.custom_color': "Any colour",
++    'looks.customize_help': "Pick a piece per layer, a colour per slot, then save. Every device shows the same character.",
++    'looks.description': "Every agent's pixel character. Tap one to dress it; packs in the Shop add pieces.",
++    'looks.dress': "Dress",
++    'looks.gallery_empty': "No agents yet. Set one up and it gets a face.",
++    'looks.layer_accessory': "Accessory",
++    'looks.layer_backdrop': "Backdrop",
++    'looks.layer_body': "Body",
++    'looks.layer_face': "Face",
++    'looks.layer_hair': "Hair",
++    'looks.layer_hat': "Hat",
++    'looks.layer_outfit': "Outfit",
++    'looks.layers': "Layers",
++    'looks.load_failed': "Couldn't load the saved look; showing the default.",
++    'looks.locked_error': "This look wears pieces from a pack that is not in your wardrobe. Add the pack in the",
++    'looks.locked_hint': "Dimmed pieces come with packs in the",
++    'looks.locked_title': "In the pack",
++    'looks.preview_stop': "Stop talking",
++    'looks.preview_talk': "Make it talk",
++    'looks.reset': "Back to the default",
++    'looks.reset_done': "Back to the default look.",
++    'looks.save': "Save look",
++    'looks.saved': "Saved. Everywhere this agent appears now wears it.",
++    'looks.saving': "Saving\u2026",
++    'looks.shop_link': "Get more pieces",
++    'looks.slot_accent': "Accent",
++    'looks.slot_eyes': "Eyes",
++    'looks.slot_hair': "Hair",
++    'looks.slot_outfit': "Outfit",
++    'looks.slot_skin': "Skin",
++    'looks.title': "Looks",
++    'looks.undo': "Undo",
++    'looks.wearing': "Wearing:",
++    'shop.add': "Add to wardrobe",
++    'shop.adding': "Adding\u2026",
++    'shop.always_yours': "Always yours",
++    'shop.code_label': "Unlock code",
++    'shop.codes_soon': "codes arrive with the first priced pack",
++    'shop.description': "Packs of pieces for your agents' looks. Add a pack and its pieces appear in every agent's customizer.",
++    'shop.dress_link': "Dress an agent",
++    'shop.failed': "That did not work:",
++    'shop.free': "Free",
++    'shop.in_wardrobe': "In your wardrobe",
++    'shop.pieces': "pieces",
++    'shop.remove': "Remove from wardrobe",
++    'shop.soon': "Coming soon",
++    'shop.title': "Shop",
++    'shop.updated': "New packs arrive with releases. This catalog was updated",
+     'nav.procedures': 'Procedures',
+     'nav.config': 'Config',
+     'nav.cost': 'Cost Tracker',
+--- a/web/package.json
++++ b/web/package.json
+@@ -14,7 +14,7 @@
+     "typecheck": "npm run check:generated && tsc -b",
+     "build": "npm run check:generated && tsc -b && vite build",
+     "dev": "vite",
+-    "test": "node --experimental-strip-types --test src/pages/quickstart/runtime-selection.test.ts src/pages/quickstart/doors.logic.test.ts src/pages/setup/setup.logic.test.ts src/pages/quickstart/channel-fields.test.ts src/pages/acp-console/thought-stream.test.ts src/lib/contextBar.test.ts src/components/sections/secretMap.logic.test.ts src/pages/integrations.logic.test.ts src/lib/historyTrimNotice.test.ts src/components/runLogPresentation.test.ts src/pages/pluginCatalog.test.ts && npm run test:sops && npm run test:sop-editor && jiti src/pages/quickstart/channel-form.test.ts",
++    "test": "node --experimental-strip-types --test src/pages/quickstart/runtime-selection.test.ts src/pages/quickstart/doors.logic.test.ts src/pages/setup/setup.logic.test.ts src/looks/looks.logic.test.ts src/pages/quickstart/channel-fields.test.ts src/pages/acp-console/thought-stream.test.ts src/lib/contextBar.test.ts src/components/sections/secretMap.logic.test.ts src/pages/integrations.logic.test.ts src/lib/historyTrimNotice.test.ts src/components/runLogPresentation.test.ts src/pages/pluginCatalog.test.ts && npm run test:sops && npm run test:sop-editor && jiti src/pages/quickstart/channel-form.test.ts",
+     "test:sops": "node --experimental-strip-types --test src/hooks/useRunOverlay.logic.test.ts src/pages/runs.logic.test.ts",
+     "test:sop-editor": "node --experimental-strip-types --test src/pages/sopSavePlan.test.ts",
+     "test:permissions": "jiti src/components/ToolPermissionGrid.logic.test.ts && jiti src/pages/Tools.logic.test.ts && jiti src/lib/toolCatalog.logic.test.ts && jiti src/components/ToolCatalogWarningPanel.test.ts && jiti src/lib/validationWarnings.test.ts && jiti src/components/UpgradeDialog.logic.test.ts && npm run test:navigation",

@@ -211,7 +211,8 @@ def test_runtime_update_needs_a_reason_starts_detached_and_refuses_a_second(body
     (home / rt.UPDATE_PID).write_text("not a pid\n")
     assert rt.update_running() is None
     out = call("runtime_update", reason="the latest, by hand")
-    assert out["tag"] == "latest" and spawned[1][0][-2:] == ["--home", str(home)]
+    updates = [a for a, _ in spawned if "caelza_body.mcp_server" in a]
+    assert out["tag"] == "latest" and len(updates) == 2 and updates[1][-2:] == ["--home", str(home)]
 
 
 # --- the Runtime's own validator, with the channel configured -------------------

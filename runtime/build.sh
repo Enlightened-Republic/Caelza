@@ -151,6 +151,10 @@ apply_overlay() {
   log "copying bundle/models.json beside the setup page"
   mkdir -p "$WORK/web/src/pages/setup"
   cp "$ROOT/bundle/models.json" "$WORK/web/src/pages/setup/models.json"
+  # The pack catalog the looks' renderer and the shop read (looks/catalog.json is the one source).
+  log "copying looks/catalog.json beside the Look renderer"
+  mkdir -p "$WORK/web/src/looks"
+  cp "$ROOT/looks/catalog.json" "$WORK/web/src/looks/catalog.json"
 }
 
 apply_assets() {

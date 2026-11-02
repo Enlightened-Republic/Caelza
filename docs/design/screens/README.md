@@ -19,7 +19,7 @@ cyan → violet, Space with the nebula glows behind every page.
 | `procedures.png` | Procedures: waiting, running, the library with the four phone playbooks (M5), finished |
 | `procedures-run.png` | the Run dialog for `phone-debloat`: which phone, what to leave alone, where the gate is |
 | `dashboard.png` | the upstream dashboard at `/dashboard`, its tab bar scrolling |
-| `agent-chat.png` | the chat with its toolbar wrapped onto two rows |
+| `agent-chat.png` | the chat with its toolbar wrapped onto two rows, the agent's look in the header (it talks while the agent answers) and the empty state |
 | `tools.png` | Tools, its controls wrapped and the CLI table scrolling inside its card |
 | `runs.png` | SOP Runs with its page padding and a header title |
 | `drawer.png` | the mobile menu: Home, Bodies, Memory, Procedures first |
@@ -30,6 +30,10 @@ cyan → violet, Space with the nebula glows behind every page.
 | `setup-model.png` | the model wheel: Cael's picks tagged on top (best pick, fast and cheap, strongest), the live catalog below |
 | `setup-key.png` | the key box with where to get one, the show/hide eye, the chosen provider and model |
 | `setup-local.png` | the local door: this phone or a computer, the RAM wheel, the ladder's pick and the honest notes |
+| `looks.png` | Looks (M8): every agent as its pixel character, Cael's fixed and main's dealt from its name |
+| `looks-dress.png` | the customizer: the preview that blinks and talks, a tab per layer, the pieces, the colour rows |
+| `shop.png` | the Shop: the packs with their sheets, Starter always yours, Cosmic one tap away, Arcade coming soon |
+| `agents.png` | the agents list with each agent's look in its row |
 
 The two quickstart shots were taken over the vite dev server with the daemon's
 answers canned (Playwright routes for `/api/quickstart/*`, `/api/status`, the

@@ -76,6 +76,18 @@ model_catalog_check = "scripts/model_catalog.py"
 # mark gradient, the primary action filled cyan -> violet, Space with the nebula glows behind every page (the glow
 # colours are theme variables from runtime/lib/dashboard_theme.py). CSS in the brand stylesheet; the patch has the four hunks.
 brand_pass_patch = "runtime/patches/0010-brand-pass.patch"
+# M8: the looks and the shop. Every agent has a pixel character (one piece per layer in the owner's colours),
+# drawn as code in looks/parts.py in a key palette, exported by scripts/looks.py to the dashboard's public files,
+# composed and recoloured by web/src/looks/Look.tsx, kept per agent on the Runtime (api_looks.rs:
+# /api/looks/{alias}, /api/looks/wardrobe). The Shop sells the packs of looks/catalog.json: free ones join the
+# wardrobe with a tap; a priced pack takes an unlock code once the gateway can verify one.
+looks_catalog = "looks/catalog.json"
+looks_parts = "looks/parts.py"
+looks_export = "scripts/looks.py"                        # export | check | render | lineup
+looks_renderer = "runtime/overlay/web/src/looks/Look.tsx"
+looks_pages = ["runtime/overlay/web/src/pages/Looks.tsx", "runtime/overlay/web/src/pages/Shop.tsx"]
+looks_api = "runtime/overlay/crates/caelza-gateway/src/api_looks.rs"
+looks_patch = "runtime/patches/0011-looks-and-shop.patch"
 # M5: the Procedures library runs a procedure by hand; a phone playbook's Run asks which phone and sends it as the trigger payload.
 procedures_run = "runtime/overlay/web/src/pages/Procedures.tsx"   # RunDialog over POST /api/sops/{name}/run (upstream's endpoint); the agent uses sop_execute
 
