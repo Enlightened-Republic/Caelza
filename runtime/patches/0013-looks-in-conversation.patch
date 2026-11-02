@@ -1,0 +1,111 @@
+--- a/web/package.json
++++ b/web/package.json
+@@ -14,7 +14,7 @@
+     "typecheck": "npm run check:generated && tsc -b",
+     "build": "npm run check:generated && tsc -b && vite build",
+     "dev": "vite",
+-    "test": "node --experimental-strip-types --test src/pages/quickstart/runtime-selection.test.ts src/pages/quickstart/doors.logic.test.ts src/pages/setup/setup.logic.test.ts src/looks/looks.logic.test.ts src/guide/guide.logic.test.ts src/pages/quickstart/channel-fields.test.ts src/pages/acp-console/thought-stream.test.ts src/lib/contextBar.test.ts src/components/sections/secretMap.logic.test.ts src/pages/integrations.logic.test.ts src/lib/historyTrimNotice.test.ts src/components/runLogPresentation.test.ts src/pages/pluginCatalog.test.ts && npm run test:sops && npm run test:sop-editor && jiti src/pages/quickstart/channel-form.test.ts",
++    "test": "node --experimental-strip-types --test src/pages/quickstart/runtime-selection.test.ts src/pages/quickstart/doors.logic.test.ts src/pages/setup/setup.logic.test.ts src/looks/looks.logic.test.ts src/guide/guide.logic.test.ts src/pages/home.logic.test.ts src/pages/bodies.logic.test.ts src/pages/mind.logic.test.ts src/pages/quickstart/channel-fields.test.ts src/pages/acp-console/thought-stream.test.ts src/lib/contextBar.test.ts src/components/sections/secretMap.logic.test.ts src/pages/integrations.logic.test.ts src/lib/historyTrimNotice.test.ts src/components/runLogPresentation.test.ts src/pages/pluginCatalog.test.ts && npm run test:sops && npm run test:sop-editor && jiti src/pages/quickstart/channel-form.test.ts",
+     "test:sops": "node --experimental-strip-types --test src/hooks/useRunOverlay.logic.test.ts src/pages/runs.logic.test.ts",
+     "test:sop-editor": "node --experimental-strip-types --test src/pages/sopSavePlan.test.ts",
+     "test:permissions": "jiti src/components/ToolPermissionGrid.logic.test.ts && jiti src/pages/Tools.logic.test.ts && jiti src/lib/toolCatalog.logic.test.ts && jiti src/components/ToolCatalogWarningPanel.test.ts && jiti src/lib/validationWarnings.test.ts && jiti src/components/UpgradeDialog.logic.test.ts && npm run test:navigation",
+--- a/web/src/components/ChatTabBar.tsx
++++ b/web/src/components/ChatTabBar.tsx
+@@ -1,8 +1,9 @@
+ import { useEffect, useRef, useState } from 'react';
+-import { Plus, X, Columns2, Square, Bot, Loader2 } from 'lucide-react';
++import { Plus, X, Columns2, Square, Loader2 } from 'lucide-react';
+ import { t } from '@/lib/i18n';
+ import { Button } from '@/components/ui';
+ import { getMapKeys } from '@/lib/api';
++import { AgentLook } from '@/looks/Look';
+ 
+ /** Per-alias indicator state surfaced in the tab bar. */
+ export interface TabIndicator {
+@@ -153,7 +154,8 @@
+               ].join(' ')}
+             >
+               <StatusDot streaming={ind?.streaming} unread={ind?.unread} active={active} />
+-              <Bot className="h-3.5 w-3.5 shrink-0" aria-hidden />
++              {/* The agent's look on its tab (vision M8), still: the dot says what moves. */}
++              <AgentLook alias={tab.alias} size={18} frame="closed" decorative className="shrink-0" />
+               <span className="max-w-[160px] truncate">{tab.label}</span>
+               <span
+                 role="button"
+@@ -224,7 +226,7 @@
+                     onClick={() => { onOpen(alias); setPickerOpen(false); }}
+                     className="flex w-full items-center gap-2 px-3 py-2 text-left text-xs text-pc-text transition-colors hover:bg-[var(--pc-hover)] focus-visible:outline-none focus-visible:bg-[var(--pc-hover)]"
+                   >
+-                    <Bot className="h-3.5 w-3.5 text-pc-accent shrink-0" aria-hidden />
++                    <AgentLook alias={alias} size={18} frame="closed" decorative className="shrink-0" />
+                     <span className="truncate">{alias}</span>
+                     {/* Say what picking this will do, so choosing an agent that
+                         is already open does not look like a no-op. */}
+--- a/web/src/pages/AgentChat.tsx
++++ b/web/src/pages/AgentChat.tsx
+@@ -1,6 +1,6 @@
+ import { memo, useState, useEffect, useRef, useCallback } from 'react';
+ import { Link, Navigate, useParams } from 'react-router-dom';
+-import { Send, Square, Bot, User, AlertCircle, Copy, Check, X, Trash2, Minimize2, Maximize2, ChevronDown, Wrench, BarChart2, FolderOpen, ImagePlus, Loader2 } from 'lucide-react';
++import { Send, Square, User, AlertCircle, Copy, Check, X, Trash2, Minimize2, Maximize2, ChevronDown, Wrench, BarChart2, FolderOpen, ImagePlus, Loader2 } from 'lucide-react';
+ import ReactMarkdown, { type Components } from 'react-markdown';
+ import remarkGfm from 'remark-gfm';
+ import { useAgent, type ChatMessage } from '@/contexts/AgentContext';
+@@ -689,6 +689,7 @@
+               key={msg.id}
+               msg={msg}
+               idx={idx}
++              agentAlias={agentAlias}
+               compact={compact}
+               isCopied={copiedId === msg.id}
+               onCopy={handleCopy}
+@@ -698,8 +699,9 @@
+ 
+         {typing && (
+           <div className="flex items-start gap-3 animate-fade-in">
+-            <div className="flex-shrink-0 w-8 h-8 rounded-[var(--radius-md)] flex items-center justify-center border border-pc-border bg-pc-elevated">
+-              <Bot className="h-4 w-4 text-pc-accent" />
++            <div className="flex-shrink-0 w-8 h-8 rounded-[var(--radius-md)] flex items-center justify-center border border-pc-border bg-pc-elevated overflow-hidden">
++              {/* The agent's look talks while its answer streams in (vision M8). */}
++              <AgentLook alias={agentAlias} size={28} talking decorative />
+             </div>
+             {streamingContent || streamingThinking ? (
+               <div className="rounded-[var(--radius-lg)] px-4 py-3 border border-pc-border bg-pc-elevated text-pc-text max-w-[75%]">
+@@ -876,6 +878,8 @@
+ interface MessageItemProps {
+   msg: ChatMessage;
+   idx: number;
++  /** Whose bubble this is: the agent's look stands beside what it said. */
++  agentAlias: string;
+   compact: boolean;
+   isCopied: boolean;
+   onCopy: (id: string, content: string) => void;
+@@ -885,6 +889,7 @@
+ const MessageItem = memo(function MessageItem({
+   msg,
+   idx,
++  agentAlias,
+   compact,
+   isCopied,
+   onCopy,
+@@ -905,7 +910,7 @@
+     >
+       {!compact && (
+         <div
+-          className={`flex-shrink-0 w-8 h-8 rounded-[var(--radius-md)] flex items-center justify-center border ${
++          className={`flex-shrink-0 w-8 h-8 rounded-[var(--radius-md)] flex items-center justify-center border overflow-hidden ${
+             msg.notice
+               ? 'bg-status-warning/10 border-status-warning/30'
+               : msg.role === 'user'
+@@ -918,7 +923,10 @@
+           ) : msg.role === 'user' ? (
+             <User className="h-4 w-4 text-pc-accent" />
+           ) : (
+-            <Bot className="h-4 w-4 text-pc-accent" />
++            /* The agent's look beside what it said, held still: the transcript
++               does not fidget; the live turn above the composer is the one
++               that moves (vision M8). */
++            <AgentLook alias={agentAlias} size={28} frame="closed" decorative />
+           )}
+         </div>
+       )}

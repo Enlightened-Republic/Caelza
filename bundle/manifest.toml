@@ -88,6 +88,10 @@ looks_renderer = "runtime/overlay/web/src/looks/Look.tsx"
 looks_pages = ["runtime/overlay/web/src/pages/Looks.tsx", "runtime/overlay/web/src/pages/Shop.tsx"]
 looks_api = "runtime/overlay/crates/caelza-gateway/src/api_looks.rs"
 looks_patch = "runtime/patches/0011-looks-and-shop.patch"
+# The look where the owner talks to the agent (M8d): beside each of its bubbles and on its chat tab, held still (the
+# live turn's look talks); on Home as the agents' tiles and beside the conversations that moved. The patch carries
+# the chat and the tab bar; Home.tsx, home.logic.ts and Look.tsx in the overlay carry the rest.
+conversation_patch = "runtime/patches/0013-looks-in-conversation.patch"
 # Cael in the top bar of every page (vision §3.4): "explain this screen" in his words with no model needed, and a
 # question answered by the `cael` agent over the gateway's chat socket in one guide conversation the browser keeps.
 guide_button = "runtime/overlay/web/src/guide/CaelButton.tsx"   # + guide.logic.ts and its node test

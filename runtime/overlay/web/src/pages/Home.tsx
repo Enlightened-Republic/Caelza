@@ -19,15 +19,17 @@ import {
 
 import ApprovalQueue from '@/components/ApprovalQueue';
 import { Badge, Button, Card, PageHeader, StatCard } from '@/components/ui';
-import { getSessions, getStatus } from '@/lib/api';
+import { getMapKeys, getSessions, getStatus } from '@/lib/api';
 import { getBodiesStatus, getBodyDevices, type BodiesStatus, type BodyDevice } from '@/lib/bodies';
 import { formatRelative } from '@/lib/format';
 import { t } from '@/lib/i18n';
 import { getMindDigest, getMindStatus, type MindDigest, type MindStatus } from '@/lib/mind';
 import { listRuns, runStatusBadge, type SopRunSummary } from '@/lib/sops';
+import { AgentLook } from '@/looks/Look';
 import type { Session, StatusResponse } from '@/types/api';
 import { usePolling } from '@/hooks/usePolling';
 import {
+  agentTiles,
   bodyTile,
   commitmentTone,
   dueLabel,
@@ -39,6 +41,7 @@ import {
   sleepLine,
   sopEngineOff,
   SOP_OFF_TEXT,
+  type AgentTile as AgentTileData,
   type Tile,
 } from './home.logic';
 
@@ -67,18 +70,20 @@ export default function Home() {
   const [devices, setDevices] = useState<BodyDevice[] | null>(null);
   const [runs, setRuns] = useState<Loaded<SopRunSummary[]>>(EMPTY);
   const [sessions, setSessions] = useState<Loaded<Session[]>>(EMPTY);
+  const [agents, setAgents] = useState<Loaded<string[]>>(EMPTY);
   const [reload, setReload] = useState(0);
   const refresh = useCallback(() => setReload((n) => n + 1), []);
 
   usePolling(
     async (isStale) => {
-      const [s, m, b, r, se] = await Promise.allSettled([getStatus(), getMindStatus(), getBodiesStatus(), listRuns(), getSessions()]);
+      const [s, m, b, r, se, ag] = await Promise.allSettled([getStatus(), getMindStatus(), getBodiesStatus(), listRuns(), getSessions(), getMapKeys('agents')]);
       if (isStale()) return;
       setRuntime(settle(s));
       setMind(settle(m));
       setBodies(settle(b));
       setRuns(settle(r));
       setSessions(settle(se));
+      setAgents(ag.status === 'fulfilled' ? { data: ag.value.keys, error: null } : { data: null, error: errorText(ag.reason) });
       const mindStatus = m.status === 'fulfilled' ? m.value : null;
       const bodyStatus = b.status === 'fulfilled' ? b.value : null;
       const wantDigest = !!(mindStatus?.enabled && mindStatus.healthy && mindStatus.has_token);
@@ -111,6 +116,7 @@ export default function Home() {
   const reviewPending = (privateBrain?.reviews?.pending ?? 0) + (privateBrain?.quarantine?.held ?? 0);
   const waitingCount = buckets.waiting.length + reviewPending;
   const recent = recentSessions(sessions.data ?? []);
+  const crew = agentTiles(agents.data ?? [], sessions.data ?? []);
 
   return (
     <div className="space-y-6 p-6">
@@ -131,6 +137,40 @@ export default function Home() {
           </Link>
         ))}
       </div>
+
+      {/* The agents, each with its look (vision M8): the ones you talked to last come first; a tap opens the chat. */}
+      <Card>
+        <div className="mb-1 flex items-center justify-between gap-2">
+          <div className="cz-eyebrow">Your agents</div>
+          <Link to="/looks" className="text-xs text-pc-accent hover:underline">
+            Change their looks
+          </Link>
+        </div>
+        <p className="mb-3 text-xs text-pc-text-faint">Tap one to talk to it.</p>
+        {agents.error ? (
+          <p className="text-xs text-status-error">The agents could not be read: {agents.error}</p>
+        ) : agents.data === null ? (
+          <p className="text-sm text-pc-text-muted">…</p>
+        ) : crew.tiles.length === 0 ? (
+          <p className="text-sm text-pc-text-muted">
+            No agent yet.{' '}
+            <Link to="/setup" className="text-pc-accent hover:underline">
+              Set one up
+            </Link>
+          </p>
+        ) : (
+          <div className="grid grid-cols-2 gap-2 sm:grid-cols-3 lg:grid-cols-4" data-testid="home-agents">
+            {crew.tiles.map((tile) => (
+              <AgentTile key={tile.alias} tile={tile} />
+            ))}
+            {crew.more > 0 && (
+              <Link to="/agents" className="flex items-center justify-center rounded-[var(--radius-md)] border border-dashed border-pc-border p-3 text-sm text-pc-text-secondary hover:border-pc-accent/50">
+                and {crew.more} more
+              </Link>
+            )}
+          </div>
+        )}
+      </Card>
 
       <Card>
         <div className="mb-1 flex items-center justify-between">
@@ -173,6 +213,21 @@ export default function Home() {
         </div>
       </Card>
     </div>
+  );
+}
+
+/** One agent on Home: its look (alive, like in the agents list), its name, when you last talked. */
+function AgentTile({ tile }: { tile: AgentTileData }) {
+  return (
+    <Link to={tile.to} title={tile.detail} className="flex items-center gap-3 rounded-[var(--radius-md)] border border-pc-border bg-pc-elevated p-3 text-sm hover:border-pc-accent/50">
+      <span className="flex h-11 w-11 shrink-0 items-center justify-center overflow-hidden rounded-[var(--radius-md)] bg-pc-accent/10">
+        <AgentLook alias={tile.alias} size={40} decorative />
+      </span>
+      <span className="min-w-0">
+        <span className="block truncate font-medium text-pc-text">{tile.alias}</span>
+        <span className="block text-xs text-pc-text-faint">{tile.line}</span>
+      </span>
+    </Link>
   );
 }
 
@@ -304,6 +359,7 @@ function Digest({
           <ul className="mt-2 space-y-1.5">
             {sessions.map((s) => (
               <li key={s.session_key} className="flex flex-wrap items-center gap-2 text-sm">
+                {s.agent_alias && <AgentLook alias={s.agent_alias} size={18} frame="closed" decorative className="shrink-0" />}
                 <Link to="/dashboard?tab=sessions" className="text-pc-text hover:underline">
                   {sessionLabel(s)}
                 </Link>

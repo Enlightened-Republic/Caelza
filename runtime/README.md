@@ -40,7 +40,9 @@ runtime/
 │                      the shop (the gateway's api_looks module and routes, the Looks and Shop pages routed and in
 │                      the sidebar, the look drawn in the agent card and the chat, the API client, the strings); 0012
 │                      Cael in the top bar ("explain this screen" and a question to the guide on every page: the
-│                      button in the header, one paragraph and one next step per screen, the logic test)
+│                      button in the header, one paragraph and one next step per screen, the logic test); 0013 the
+│                      look in the conversation (beside each of the agent's bubbles and on its chat tab, held still;
+│                      the live turn's look talks; the Home, Bodies and Mind logic tests in the web test list)
 ├── tools/phone-shots/ Playwright over every dashboard route at 390 × 844: screenshots, sideways scroll, elements past
 │                      the edge, controls under 32 px; a mock proxy for the Mind and Body routes
 ├── lib/rename.pl      the replacement engine

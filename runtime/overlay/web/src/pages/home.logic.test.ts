@@ -1,6 +1,8 @@
 import assert from 'node:assert/strict';
 import test from 'node:test';
 import {
+  agentTiles,
+  agoLabel,
   bodyTile,
   commitmentTone,
   deviceOptionLabel,
@@ -32,6 +34,41 @@ test('a disabled SOP engine is a state, not an error', () => {
 });
 
 const NOW = Date.parse('2026-10-21T12:00:00Z');
+
+test('how long ago, in words', () => {
+  assert.equal(agoLabel('2026-10-21T11:59:30Z', NOW), 'just now');
+  assert.equal(agoLabel('2026-10-21T11:15:00Z', NOW), '45 min ago');
+  assert.equal(agoLabel('2026-10-21T06:00:00Z', NOW), '6 h ago');
+  assert.equal(agoLabel('2026-10-18T12:00:00Z', NOW), '3 d ago');
+  assert.equal(agoLabel('2026-10-21T13:00:00Z', NOW), 'just now', 'a clock ahead of ours is not the future');
+  assert.equal(agoLabel('not a time', NOW), null);
+  assert.equal(agoLabel(null, NOW), null);
+});
+
+test('the agents on Home: the recently talked-to first, the rest in config order, the overflow counted', () => {
+  const sessions = [
+    { session_id: '1', session_key: 'gw_1', last_activity: '2026-10-21T10:00:00Z', message_count: 4, agent_alias: 'main', channel_id: null },
+    { session_id: '2', session_key: 'gw_2', last_activity: '2026-10-21T11:30:00Z', message_count: 2, agent_alias: 'cael', channel_id: null },
+    { session_id: '3', session_key: 'gw_3', last_activity: '2026-10-20T09:00:00Z', message_count: 7, agent_alias: 'main', channel_id: 'telegram.home' },
+    { session_id: '4', session_key: 'gw_4', last_activity: '2026-10-21T11:00:00Z', message_count: 1, agent_alias: null, channel_id: null },
+  ];
+  const { tiles, more } = agentTiles(['coder', 'main', 'cael', 'main', ' '], sessions, NOW);
+  assert.deepEqual(tiles.map((tile) => tile.alias), ['cael', 'main', 'coder']);
+  assert.equal(tiles[0]?.line, '30 min ago');
+  assert.equal(tiles[0]?.detail, 'talked 30 min ago · 2 messages');
+  assert.equal(tiles[1]?.line, '2 h ago');
+  assert.equal(tiles[1]?.detail, 'talked 2 h ago · 11 messages', 'every conversation counts, the latest dates it');
+  assert.equal(tiles[1]?.to, '/agent/main');
+  assert.equal(tiles[2]?.line, 'no chat yet');
+  assert.equal(tiles[2]?.detail, 'no conversation yet');
+  assert.equal(tiles[2]?.lastActivity, null);
+  assert.equal(more, 0);
+  const many = agentTiles(['a', 'b', 'c'], [], NOW, 2);
+  assert.deepEqual(many.tiles.map((tile) => tile.alias), ['a', 'b']);
+  assert.equal(many.more, 1);
+  assert.deepEqual(agentTiles([], sessions, NOW), { tiles: [], more: 0 });
+  assert.equal(agentTiles(['a b'], [], NOW).tiles[0]?.to, '/agent/a%20b');
+});
 
 test('the Runtime tile reads health first', () => {
   assert.equal(formatUptime(59), '0m');
