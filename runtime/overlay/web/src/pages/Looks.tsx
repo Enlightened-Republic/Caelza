@@ -6,13 +6,13 @@
 // Phone-first: one column at 390 px, 56 px cells, 36 px controls.
 import { useEffect, useMemo, useState } from "react";
 import { Link, useParams } from "react-router-dom";
-import { ArrowLeft, Lock, RotateCcw, Save, ShoppingBag, Undo2, Volume2, VolumeX } from "lucide-react";
+import { ArrowLeft, Download, Lock, RotateCcw, Save, ShoppingBag, Undo2, Volume2, VolumeX } from "lucide-react";
 
 import { Button, PageHeader } from "@/components/ui";
 import { loadAgentSummaries, type AgentSummary } from "@/lib/agents";
 import { deleteLook, getLook, getWardrobe, putLook } from "@/lib/api";
 import { t } from "@/lib/i18n";
-import { AgentLook, Look, catalog, rememberLook, forgetLook } from "@/looks/Look";
+import { AgentLook, Look, avatarPng, catalog, rememberLook, forgetLook, saveBlob } from "@/looks/Look";
 import {
   LAYERS,
   defaultLook,
@@ -98,6 +98,7 @@ function Customizer({ alias }: { alias: string }) {
   const [layer, setLayer] = useState<Layer>("hair");
   const [talk, setTalk] = useState(false);
   const [busy, setBusy] = useState(false);
+  const [exporting, setExporting] = useState(false);
   const [note, setNote] = useState<{ tone: "ok" | "error"; text: string } | null>(null);
 
   useEffect(() => {
@@ -160,6 +161,21 @@ function Customizer({ alias }: { alias: string }) {
     }
   };
 
+  // The look on screen (saved or not) as a 512 px PNG, into the downloads.
+  const exportAvatar = async () => {
+    if (exporting) return;
+    setExporting(true);
+    setNote(null);
+    try {
+      saveBlob(await avatarPng(look), `${alias}-avatar.png`);
+      setNote({ tone: "ok", text: t("looks.avatar_saved") });
+    } catch (e) {
+      setNote({ tone: "error", text: e instanceof Error ? e.message : String(e) });
+    } finally {
+      setExporting(false);
+    }
+  };
+
   const reset = async () => {
     if (busy) return;
     setBusy(true);
@@ -210,6 +226,13 @@ function Customizer({ alias }: { alias: string }) {
           </Button>
           <div className="text-xs" style={MUTED}>
             {t("looks.blinks")}
+          </div>
+          <Button variant="ghost" size="sm" disabled={exporting} onClick={() => void exportAvatar()}>
+            <Download className="h-4 w-4" />
+            {exporting ? t("looks.avatar_saving") : t("looks.avatar")}
+          </Button>
+          <div className="text-xs" style={MUTED}>
+            {t("looks.avatar_hint")}
           </div>
           {locked.length ? (
             <div className="text-xs" style={{ color: "var(--color-status-warning, #ffe600)" }}>

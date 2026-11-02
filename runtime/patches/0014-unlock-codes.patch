@@ -25,7 +25,18 @@
 +}
 --- a/web/src/lib/i18n.ts
 +++ b/web/src/lib/i18n.ts
-@@ -1565,12 +1565,16 @@
+@@ -1531,6 +1531,10 @@
+     'guide.timeout': "That took too long. Try again, or check the Runtime's logs.",
+     'guide.title': "Cael says",
+     'looks.back': "All looks",
++    'looks.avatar': "Save as avatar",
++    'looks.avatar_hint': "A 512 px PNG, for Telegram, Discord or anywhere a profile picture goes.",
++    'looks.avatar_saved': "Saved to your downloads: a 512 px PNG of this look.",
++    'looks.avatar_saving': "Drawing\u2026",
+     'looks.blinks': "It blinks on its own; in chat it talks while the agent answers.",
+     'looks.colors': "Colours",
+     'looks.custom_color': "Any colour",
+@@ -1565,12 +1569,16 @@
      'looks.slot_skin': "Skin",
      'looks.title': "Looks",
      'looks.undo': "Undo",
@@ -43,7 +54,7 @@
      'shop.description': "Packs of pieces for your agents' looks. Add a pack and its pieces appear in every agent's customizer.",
      'shop.dress_link': "Dress an agent",
      'shop.failed': "That did not work:",
-@@ -1578,8 +1582,12 @@
+@@ -1578,8 +1586,12 @@
      'shop.in_wardrobe': "In your wardrobe",
      'shop.pieces': "pieces",
      'shop.remove': "Remove from wardrobe",

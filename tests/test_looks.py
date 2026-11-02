@@ -160,6 +160,51 @@ def test_every_string_the_pages_use_is_in_the_patch():
     assert "+    'nav.looks': 'Looks'," in PATCH and "+    'nav.shop': 'Shop'," in PATCH
 
 
+def test_the_avatar_is_the_frame_at_the_largest_whole_scale_the_edges_continued():
+    """The Python avatar and the dashboard's share one geometry; the CLI writes the file."""
+    assert lib.avatar_geometry(512) == {"size": 512, "scale": 11, "ox": 36, "oy": 14}
+    assert lib.avatar_geometry(100, 2, 3) == {"size": 100, "scale": 33, "ox": 17, "oy": 0}
+    assert "assert.deepEqual(avatarGeometry(AVATAR_SIZE), { size: 512, scale: 11, ox: 36, oy: 14 });" in LOGIC_TEST
+    assert "assert.deepEqual(avatarGeometry(100, 2, 3), { size: 100, scale: 33, ox: 17, oy: 0 });" in LOGIC_TEST
+    bare = lib.default_look("main", catalog)
+    bare["parts"]["backdrop"] = "backdrop.none"
+    assert lib.avatar_look(bare)["parts"]["backdrop"] == "backdrop.space"
+    assert lib.avatar_look(lib.CAEL_LOOK)["parts"]["backdrop"] == "backdrop.space"
+    pytest.importorskip("PIL")
+    look = lib.default_look("cael", catalog)
+    frame = lib.compose(look["parts"], "closed", look["colors"]).load()
+    im = lib.avatar(look, 512)
+    assert im.size == (512, 512)
+    px = im.load()
+    assert px[0, 0] == frame[0, 0] and px[511, 511] == frame[39, 43], "the corners continue the frame's corners"
+    assert px[36, 14] == frame[0, 0] and px[36 + 11 * 20 + 5, 14 + 11 * 20 + 5] == frame[20, 20], "scale 11 from (36, 14)"
+    assert px[256, 511] == frame[20, 43], "below the frame, its last row goes on (the torso)"
+    assert all(px[x, 0][3] == 255 for x in range(512)), "Space behind: no transparent margin"
+    # The dashboard's export and the button.
+    assert "export async function avatarPng(look: LookData, size = AVATAR_SIZE): Promise<Blob>" in LOOK_TSX
+    assert "sampleAvatar(data.data, GRID.width, GRID.height, g)" in LOOK_TSX and 'throw new Error("a piece of the look did not load; try again");' in LOOK_TSX
+    assert "export function saveBlob(blob: Blob, filename: string): void" in LOOK_TSX
+    assert "saveBlob(await avatarPng(look), `${alias}-avatar.png`);" in LOOKS_PAGE
+
+
+def test_the_avatar_cli_writes_the_file_for_a_saved_look(tmp_path):
+    pytest.importorskip("PIL")
+    from PIL import Image
+
+    saved = tmp_path / "look.json"
+    look = lib.default_look("main", catalog)
+    look["parts"]["backdrop"] = "backdrop.none"
+    look["colors"]["hair"] = "#ff2d78"
+    saved.write_text(json.dumps(look))
+    out = tmp_path / "main-avatar.png"
+    r = subprocess.run([sys.executable, "-I", str(REPO_ROOT / "scripts" / "looks.py"), "avatar", "main", str(out), "--look", str(saved), "--size", "128"], capture_output=True, text=True)
+    assert r.returncode == 0 and r.stdout.strip() == f"wrote {out} (128 x 128)", r.stderr
+    im = Image.open(out)
+    assert im.size == (128, 128)
+    assert im.getpixel((0, 0)) == (*lib.FIXED["space"], 255), "no backdrop saved: Space behind the avatar"
+    assert any(im.getpixel((x, y))[:3] == (255, 45, 120) for x in range(0, 128, 2) for y in range(0, 64, 2)), "the saved hair colour is in it"
+
+
 def test_the_renderer_composes_the_same_way():
     assert 'import catalogJson from "./catalog.json";' in LOOK_TSX
     assert "finishPixels(data.data, sil, width, height, recolorTable(look.colors), det)" in LOOK_TSX, "the detail mask: the outline goes over the backdrop and under the face"

@@ -5,6 +5,8 @@
     python3 scripts/looks.py check             # the catalog agrees with looks/parts.py and the exported PNGs are current
     python3 scripts/looks.py render <alias> out.png [--frame open] [--scale 8]
     python3 scripts/looks.py lineup out.png    # Cael and a few dealt defaults, side by side
+    python3 scripts/looks.py avatar <alias> out.png [--look ~/.caelza/agents/<alias>/look.json] [--size 512]
+                                               # the look as a square profile picture, what the customizer's "Save as avatar" downloads
 
 Every part is drawn once in looks/parts.py in the key palette; `export`
 writes one PNG per part (three for a face: closed, open, blink) at 1x, which
@@ -15,6 +17,7 @@ from __future__ import annotations
 
 import argparse
 import io
+import json
 import re
 import sys
 from pathlib import Path
@@ -205,8 +208,18 @@ def main(argv: list[str] | None = None) -> int:
     lu = sub.add_parser("lineup")
     lu.add_argument("out", type=Path)
     lu.add_argument("--aliases", default="cael,main,niba,atlas,pixel,juno")
+    av = sub.add_parser("avatar", help="the look as a square profile picture (the default dealt from the alias, or a saved look.json)")
+    av.add_argument("alias")
+    av.add_argument("out", type=Path)
+    av.add_argument("--look", type=Path, default=None, help="a saved look.json (~/.caelza/agents/<alias>/look.json)")
+    av.add_argument("--size", type=int, default=lib.AVATAR_SIZE)
     args = ap.parse_args(argv)
     catalog = lib.load_catalog(CATALOG)
+    if args.cmd == "avatar":
+        look = json.loads(args.look.read_text(encoding="utf-8")) if args.look else lib.default_look(args.alias, catalog)
+        lib.avatar(look, args.size).save(args.out)
+        print(f"wrote {args.out} ({args.size} x {args.size})")
+        return 0
     if args.cmd == "export":
         n = export(catalog)
         print(f"exported: {n} file(s) written, {len(lib.PARTS)} parts, {len(catalog['packs'])} sheets")

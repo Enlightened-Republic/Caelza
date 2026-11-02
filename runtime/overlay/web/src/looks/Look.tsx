@@ -13,14 +13,18 @@ import { getLook } from "@/lib/api";
 import { basePath } from "@/lib/basePath";
 import catalogJson from "./catalog.json";
 import {
+  AVATAR_SIZE,
   GRID,
   LAYERS,
   STAGES,
+  avatarGeometry,
+  avatarLook,
   defaultLook,
   finishPixels,
   normalizeLook,
   partUrl,
   recolorTable,
+  sampleAvatar,
   type Catalog,
   type Frame,
   type Look as LookData,
@@ -118,6 +122,38 @@ function composedFrame(key: string, look: LookData, frame: Frame): Promise<Compo
     composed.set(id, p);
   }
   return p;
+}
+
+// ---- the avatar ------------------------------------------------------------------
+
+/** The look as a square PNG for a profile picture (vision M8): the closed
+ *  frame at the largest whole scale that fits, Space behind it when it has
+ *  no backdrop; `scripts/looks.py avatar` writes the same file. */
+export async function avatarPng(look: LookData, size = AVATAR_SIZE): Promise<Blob> {
+  const { data, complete } = await compose(avatarLook(look), "closed");
+  if (!complete) throw new Error("a piece of the look did not load; try again");
+  const g = avatarGeometry(size);
+  const canvas = document.createElement("canvas");
+  canvas.width = size;
+  canvas.height = size;
+  const ctx = canvas.getContext("2d");
+  if (!ctx) throw new Error("no 2d context");
+  ctx.putImageData(new ImageData(sampleAvatar(data.data, GRID.width, GRID.height, g), size, size), 0, 0);
+  return new Promise((resolve, reject) => {
+    canvas.toBlob((blob) => (blob ? resolve(blob) : reject(new Error("could not encode the avatar"))), "image/png");
+  });
+}
+
+/** Hand a file to the browser's downloads, named. */
+export function saveBlob(blob: Blob, filename: string): void {
+  const url = URL.createObjectURL(blob);
+  const a = document.createElement("a");
+  a.href = url;
+  a.download = filename;
+  document.body.appendChild(a);
+  a.click();
+  a.remove();
+  setTimeout(() => URL.revokeObjectURL(url), 10_000);
 }
 
 // ---- the component ---------------------------------------------------------------

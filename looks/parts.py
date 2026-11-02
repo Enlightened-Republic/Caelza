@@ -809,3 +809,38 @@ def default_look(alias: str, catalog: dict) -> dict:
 
 def load_catalog(path: Path) -> dict:
     return json.loads(path.read_text(encoding="utf-8"))
+
+
+# ---------------------------------------------------------------------------
+# The avatar: the look as a square profile picture (looks.logic.ts, the same maths)
+
+AVATAR_SIZE = 512
+
+
+def avatar_geometry(size: int, width: int = W, height: int = H) -> dict[str, int]:
+    """Where the frame sits on the square: the largest whole scale that fits, centred."""
+    scale = max(1, size // max(width, height))
+    return {"size": size, "scale": scale, "ox": (size - width * scale) // 2, "oy": (size - height * scale) // 2}
+
+
+def avatar_look(look: dict) -> dict:
+    """The look an avatar shows: the same, with Space behind it when it has no backdrop."""
+    if look["parts"].get("backdrop") == "backdrop.none":
+        return {**look, "parts": {**look["parts"], "backdrop": "backdrop.space"}}
+    return look
+
+
+def avatar(look: dict, size: int = AVATAR_SIZE) -> "Image.Image":
+    """The closed frame on a size x size square: nearest neighbour at the scale, the edges continued (clamped)."""
+    shown = avatar_look(look)
+    im = compose(shown["parts"], "closed", shown["colors"])
+    g = avatar_geometry(size)
+    out = _image().new("RGBA", (size, size), (0, 0, 0, 0))
+    src = im.load()
+    dst = out.load()
+    for yy in range(size):
+        y = min(H - 1, max(0, (yy - g["oy"]) // g["scale"]))
+        for xx in range(size):
+            x = min(W - 1, max(0, (xx - g["ox"]) // g["scale"]))
+            dst[xx, yy] = src[x, y]
+    return out
