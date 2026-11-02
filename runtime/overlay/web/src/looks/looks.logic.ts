@@ -332,3 +332,46 @@ export function lookEquals(a: Look, b: Look): boolean {
 export function priceLabel(pack: CatalogPack): string {
   return pack.price === "free" ? "Free" : `$${pack.price.usd.toFixed(2)}`;
 }
+
+// ---- the avatar ------------------------------------------------------------------
+// The look as a square profile picture (parts.py `avatar`, the same maths):
+// the closed frame at the largest whole scale that fits the square, centred,
+// the margins filled by clamped sampling so the frame's edge continues (the
+// backdrop's bands and lines, the torso) instead of a border.
+
+export const AVATAR_SIZE = 512;
+
+export interface AvatarGeometry {
+  size: number;
+  scale: number;
+  ox: number;
+  oy: number;
+}
+
+export function avatarGeometry(size: number, width: number = GRID.width, height: number = GRID.height): AvatarGeometry {
+  const scale = Math.max(1, Math.floor(size / Math.max(width, height)));
+  return { size, scale, ox: Math.floor((size - width * scale) / 2), oy: Math.floor((size - height * scale) / 2) };
+}
+
+/** The square's RGBA from the frame's: nearest neighbour at the scale, clamped at the edges. */
+export function sampleAvatar(frame: Uint8ClampedArray, width: number, height: number, g: AvatarGeometry): Uint8ClampedArray {
+  const out = new Uint8ClampedArray(g.size * g.size * 4);
+  for (let Y = 0; Y < g.size; Y++) {
+    const y = Math.min(height - 1, Math.max(0, Math.floor((Y - g.oy) / g.scale)));
+    for (let X = 0; X < g.size; X++) {
+      const x = Math.min(width - 1, Math.max(0, Math.floor((X - g.ox) / g.scale)));
+      const s = (y * width + x) * 4;
+      const d = (Y * g.size + X) * 4;
+      out[d] = frame[s]!;
+      out[d + 1] = frame[s + 1]!;
+      out[d + 2] = frame[s + 2]!;
+      out[d + 3] = frame[s + 3]!;
+    }
+  }
+  return out;
+}
+
+/** The look an avatar shows: the same, with Space behind it when it has no backdrop (a profile picture wants one). */
+export function avatarLook(look: Look): Look {
+  return look.parts.backdrop === "backdrop.none" ? { ...look, parts: { ...look.parts, backdrop: "backdrop.space" } } : look;
+}

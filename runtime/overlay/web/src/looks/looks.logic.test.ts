@@ -3,12 +3,15 @@ import { existsSync, readFileSync } from "node:fs";
 import test from "node:test";
 
 import {
+  AVATAR_SIZE,
   FRAMES,
   KEYS,
   LAYERS,
   OUTLINE,
   SLOTS,
   STARTER,
+  avatarGeometry,
+  avatarLook,
   defaultLook,
   finishPixels,
   fnv1a,
@@ -23,6 +26,7 @@ import {
   priceLabel,
   ramp,
   recolorTable,
+  sampleAvatar,
   sheetUrl,
   slotsInUse,
   unlocked,
@@ -157,6 +161,42 @@ test("an unlock code's shape: the pack, eight characters, the signature", () => 
   for (const bad of ["", "ARCADE", "ARCADE-TEST2345", "ARCADE-TEST2345-short", `ARCADE-TEST0345-${code.slice(16)}`, `${code}x`, `ARC_ADE-TEST2345-${code.slice(16)}`.replace("_", "."), `COSMIC-TEST2345-${code.slice(16)}x`]) {
     assert.equal(parseUnlockCode(bad), null, bad);
   }
+});
+
+test("the avatar: the frame at the largest whole scale that fits, centred, the edges continued (parts.py agrees)", () => {
+  assert.deepEqual(avatarGeometry(AVATAR_SIZE), { size: 512, scale: 11, ox: 36, oy: 14 });
+  assert.deepEqual(avatarGeometry(100, 2, 3), { size: 100, scale: 33, ox: 17, oy: 0 });
+  assert.deepEqual(avatarGeometry(1, 40, 44), { size: 1, scale: 1, ox: -20, oy: -22 }, "a square smaller than the frame still samples its middle (floored, as Python's //)");
+  // A 2 x 3 frame of distinct colours on a 10 x 10 square: scale 3, margins 2 (x) and 0 (y) + 1 row below.
+  const frame = new Uint8ClampedArray(2 * 3 * 4);
+  const colours = [
+    [1, 0, 0, 255],
+    [0, 1, 0, 255],
+    [0, 0, 1, 255],
+    [9, 9, 0, 255],
+    [9, 0, 9, 255],
+    [0, 9, 9, 255],
+  ];
+  colours.forEach((c, i) => frame.set(c, i * 4));
+  const g = avatarGeometry(10, 2, 3);
+  assert.deepEqual(g, { size: 10, scale: 3, ox: 2, oy: 0 });
+  const out = sampleAvatar(frame, 2, 3, g);
+  const px = (X: number, Y: number) => Array.from(out.slice((Y * 10 + X) * 4, (Y * 10 + X) * 4 + 4));
+  assert.deepEqual(px(0, 0), colours[0], "the left margin continues the frame's left column");
+  assert.deepEqual(px(2, 0), colours[0]);
+  assert.deepEqual(px(4, 0), colours[0], "scale 3: columns 2..4 are the frame's first column");
+  assert.deepEqual(px(5, 0), colours[1]);
+  assert.deepEqual(px(9, 0), colours[1], "the right margin continues the right column");
+  assert.deepEqual(px(3, 3), colours[2], "row 2 of the frame at rows 3..5");
+  assert.deepEqual(px(6, 8), colours[5]);
+  assert.deepEqual(px(6, 9), colours[5], "the row below the frame continues its last row");
+  assert.equal(out.length, 10 * 10 * 4);
+  const bare = defaultLook("main", catalog);
+  bare.parts.backdrop = "backdrop.none";
+  assert.equal(avatarLook(bare).parts.backdrop, "backdrop.space", "no backdrop: Space behind the avatar");
+  assert.equal(avatarLook(defaultLook("cael", catalog)).parts.backdrop, "backdrop.space");
+  const grid = { ...bare, parts: { ...bare.parts, backdrop: "backdrop.grid" } };
+  assert.equal(avatarLook(grid).parts.backdrop, "backdrop.grid", "a backdrop stays");
 });
 
 test("a saved look is validated, and a broken one made whole", () => {

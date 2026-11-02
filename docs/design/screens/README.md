@@ -31,7 +31,7 @@ cyan → violet, Space with the nebula glows behind every page.
 | `setup-key.png` | the key box with where to get one, the show/hide eye, the chosen provider and model |
 | `setup-local.png` | the local door: this phone or a computer, the RAM wheel, the ladder's pick and the honest notes |
 | `looks.png` | Looks (M8): every agent as its pixel character, Cael's fixed and main's dealt from its name |
-| `looks-dress.png` | the customizer: the preview that blinks and talks, a tab per layer, the pieces, the colour rows |
+| `looks-dress.png` | the customizer: the preview that blinks and talks, "Save as avatar" (M8g), a tab per layer, the pieces, the colour rows |
 | `shop.png` | the Shop: the packs with their sheets, Starter always yours, Cosmic one tap away, Arcade for sale with its unlock-code slot (M8e) |
 | `agents.png` | the agents list with each agent's look in its row |
 | `cael-explain.png` | Cael's panel from the top bar on Bodies: what the screen is, the next step, a question answered in his words, as markdown once whole (M8f) |
