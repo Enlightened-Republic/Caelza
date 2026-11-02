@@ -174,6 +174,71 @@ export function sessionLabel(session: SessionSlice): string {
   return `${who}${where}`;
 }
 
+/** `just now`, `45 min ago`, `6 h ago`, `3 d ago`; null for a time that does not read. */
+export function agoLabel(iso: string | null | undefined, now = Date.now()): string | null {
+  if (!iso) return null;
+  const at = Date.parse(iso);
+  if (Number.isNaN(at)) return null;
+  const diff = Math.max(0, now - at);
+  if (diff < 60 * 1000) return 'just now';
+  if (diff < 3600 * 1000) return `${Math.round(diff / 60000)} min ago`;
+  if (diff < DAY_MS * 2) return `${Math.round(diff / (3600 * 1000))} h ago`;
+  return `${Math.round(diff / DAY_MS)} d ago`;
+}
+
+/** One agent on Home: its look is drawn beside this, the tile opens its chat. */
+export interface AgentTile {
+  alias: string;
+  to: string;
+  /** Short enough for half a phone's width: `3 h ago`, or `no chat yet`. */
+  line: string;
+  /** The whole of it, for the tile's tooltip: `talked 3 h ago · 12 messages`, or `no conversation yet`. */
+  detail: string;
+  lastActivity: string | null;
+}
+
+/** The agents on Home (vision M8): the ones talked to most recently first,
+ *  then the rest in config order; blanks and repeats dropped; at most `limit`
+ *  shown, the overflow counted for an "and N more" link. */
+export function agentTiles(aliases: string[], sessions: SessionSlice[], now = Date.now(), limit = 8): { tiles: AgentTile[]; more: number } {
+  const latest = new Map<string, { at: string; messages: number }>();
+  for (const s of sessions) {
+    if (!s.agent_alias) continue;
+    const cur = latest.get(s.agent_alias);
+    latest.set(s.agent_alias, {
+      at: cur && cur.at.localeCompare(s.last_activity) >= 0 ? cur.at : s.last_activity,
+      messages: (cur?.messages ?? 0) + s.message_count,
+    });
+  }
+  const seen = new Set<string>();
+  const ordered = aliases
+    .map((a) => a.trim())
+    .filter((a) => {
+      if (!a || seen.has(a)) return false;
+      seen.add(a);
+      return true;
+    })
+    .map((alias, i) => ({ alias, i, last: latest.get(alias) ?? null }))
+    .sort((a, b) => {
+      if (a.last && b.last) return b.last.at.localeCompare(a.last.at) || a.i - b.i;
+      if (a.last) return -1;
+      if (b.last) return 1;
+      return a.i - b.i;
+    });
+  const tiles = ordered.slice(0, limit).map(({ alias, last }) => {
+    const ago = last ? agoLabel(last.at, now) : null;
+    const talked = last && ago;
+    return {
+      alias,
+      to: `/agent/${encodeURIComponent(alias)}`,
+      line: talked ? ago : 'no chat yet',
+      detail: talked ? `talked ${ago} · ${last.messages} message${last.messages === 1 ? '' : 's'}` : 'no conversation yet',
+      lastActivity: last?.at ?? null,
+    };
+  });
+  return { tiles, more: Math.max(0, ordered.length - limit) };
+}
+
 /** `overdue by 2 h`, `due in 3 d`, `due today`; null without a due date. */
 export function dueLabel(dueAt: number | null | undefined, now = Date.now()): string | null {
   if (dueAt === null || dueAt === undefined) return null;

@@ -1,10 +1,12 @@
 // The pixel character on screen (vision M8): one part per layer composed on
 // a 40 x 44 canvas from the exported PNGs, outlined and recoloured with the
 // maths in looks.logic.ts, drawn crisp at any size. It blinks, and it talks
-// while `talking` is true. `useAgentLook` is the per-agent look from the
+// while `talking` is true; with a fixed `frame` it holds still (a thumbnail,
+// a bubble in the transcript). `useAgentLook` is the per-agent look from the
 // Runtime (/api/looks/<alias>), the default until one is saved, shared
 // across every place the agent is drawn and refreshed when the customizer
-// saves.
+// saves. Composed frames are cached once per look and frame for the whole
+// page, so forty bubbles of one agent cost one composition.
 import { useEffect, useMemo, useRef, useState, type CSSProperties } from "react";
 
 import { getLook } from "@/lib/api";
@@ -77,6 +79,23 @@ async function compose(look: LookData, frame: Frame): Promise<ImageData> {
   return data;
 }
 
+/** Composed frames for the page, by look and frame. The customizer makes a new
+ *  key per tweak, so the cache is emptied when it grows past a few hundred. */
+const composed = new Map<string, Promise<ImageData>>();
+const COMPOSED_LIMIT = 240;
+
+function composedFrame(key: string, look: LookData, frame: Frame): Promise<ImageData> {
+  const id = `${key}\n${frame}`;
+  let p = composed.get(id);
+  if (!p) {
+    if (composed.size >= COMPOSED_LIMIT) composed.clear();
+    p = compose(look, frame);
+    p.catch(() => composed.delete(id));
+    composed.set(id, p);
+  }
+  return p;
+}
+
 // ---- the component ---------------------------------------------------------------
 
 export interface LookProps {
@@ -85,16 +104,17 @@ export interface LookProps {
   size?: number;
   /** The mouth moves while true (the agent is answering). */
   talking?: boolean;
-  /** A fixed frame, no blinking (thumbnails). */
+  /** A fixed frame, no blinking (thumbnails, the bubbles of a transcript). */
   frame?: Frame;
+  /** Hidden from assistive tech: the text beside it already names the agent. */
+  decorative?: boolean;
   className?: string;
   title?: string;
   style?: CSSProperties;
 }
 
-export function Look({ look, size = 64, talking = false, frame, className, title, style }: LookProps) {
+export function Look({ look, size = 64, talking = false, frame, decorative = false, className, title, style }: LookProps) {
   const ref = useRef<HTMLCanvasElement>(null);
-  const frames = useRef<Map<Frame, ImageData>>(new Map());
   const [shown, setShown] = useState<Frame>(frame ?? "closed");
   const [mouth, setMouth] = useState<"closed" | "open">("closed");
   const [blinking, setBlinking] = useState(false);
@@ -138,29 +158,15 @@ export function Look({ look, size = 64, talking = false, frame, className, title
     };
   }, [frame]);
 
-  // Compose on demand, cache per frame for this look.
-  useEffect(() => {
-    frames.current = new Map();
-  }, [key]);
-
+  // Compose on demand; the frame is shared with every other Look of this look.
   useEffect(() => {
     if (typeof document === "undefined") return;
     let cancelled = false;
-    const draw = (data: ImageData) => {
-      const canvas = ref.current;
-      if (!canvas || cancelled) return;
-      canvas.getContext("2d")?.putImageData(data, 0, 0);
-    };
-    const cached = frames.current.get(shown);
-    if (cached) {
-      draw(cached);
-      return;
-    }
-    void compose(look, shown)
+    void composedFrame(key, look, shown)
       .then((data) => {
-        if (cancelled) return;
-        frames.current.set(shown, data);
-        draw(data);
+        const canvas = ref.current;
+        if (!canvas || cancelled) return;
+        canvas.getContext("2d")?.putImageData(data, 0, 0);
       })
       .catch(() => {
         /* a part that failed to load leaves the canvas as it was */
@@ -171,6 +177,7 @@ export function Look({ look, size = 64, talking = false, frame, className, title
   }, [key, shown, look]);
 
   const width = Math.round((size * GRID.width) / GRID.height);
+  const a11y = decorative ? { "aria-hidden": true as const } : { role: "img", "aria-label": title ?? "the agent's look", title };
   return (
     <canvas
       ref={ref}
@@ -178,9 +185,7 @@ export function Look({ look, size = 64, talking = false, frame, className, title
       height={GRID.height}
       className={`cz-look${className ? ` ${className}` : ""}`}
       style={{ width, height: size, ...style }}
-      role="img"
-      aria-label={title ?? "the agent's look"}
-      title={title}
+      {...a11y}
     />
   );
 }
@@ -261,8 +266,24 @@ export function useAgentLook(alias: string): LookData {
   return look;
 }
 
-/** The agent drawn wherever it appears: the list, the chat header, the empty chat. */
-export function AgentLook({ alias, size = 32, talking = false, className }: { alias: string; size?: number; talking?: boolean; className?: string }) {
+/** The agent drawn wherever it appears: the list, the chat header and tabs,
+ *  the bubbles, the Home tiles. `frame` holds it still; `decorative` hides it
+ *  from assistive tech where the agent's name is already beside it. */
+export function AgentLook({
+  alias,
+  size = 32,
+  talking = false,
+  frame,
+  decorative = false,
+  className,
+}: {
+  alias: string;
+  size?: number;
+  talking?: boolean;
+  frame?: Frame;
+  decorative?: boolean;
+  className?: string;
+}) {
   const look = useAgentLook(alias);
-  return <Look look={look} size={size} talking={talking} className={className} title={alias} />;
+  return <Look look={look} size={size} talking={talking} frame={frame} decorative={decorative} className={className} title={decorative ? undefined : alias} />;
 }

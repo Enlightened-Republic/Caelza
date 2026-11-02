@@ -13,13 +13,13 @@ cyan → violet, Space with the nebula glows behind every page.
 
 | file | what it shows |
 |---|---|
-| `home.png` | Home: the Runtime / Mind / Body tiles, waiting on you, the digest |
+| `home.png` | Home: the Runtime / Mind / Body tiles, your agents with their looks (M8d: the one you talked to last first, a tap opens its chat), waiting on you, the digest with the look beside each conversation that moved |
 | `bodies.png` | Bodies: this phone and the paired phones, senses, capture, packages |
 | `memory.png` | Memory: the brains, status, recall, the review queue |
 | `procedures.png` | Procedures: waiting, running, the library with the four phone playbooks (M5), finished |
 | `procedures-run.png` | the Run dialog for `phone-debloat`: which phone, what to leave alone, where the gate is |
 | `dashboard.png` | the upstream dashboard at `/dashboard`, its tab bar scrolling |
-| `agent-chat.png` | the chat with its toolbar wrapped onto two rows, the agent's look in the header (it talks while the agent answers) and the empty state |
+| `agent-chat.png` | the chat: the agent's look in the header and on its tab, beside each of its bubbles (held still) and talking beside the answer as it streams in (M8d); the toolbar wrapped onto two rows |
 | `tools.png` | Tools, its controls wrapped and the CLI table scrolling inside its card |
 | `runs.png` | SOP Runs with its page padding and a header title |
 | `drawer.png` | the mobile menu: Home, Bodies, Memory, Procedures first |
