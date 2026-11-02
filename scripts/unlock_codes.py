@@ -206,7 +206,9 @@ def parse(code: str) -> tuple[str, str, bytes] | None:
         signature = base64.urlsafe_b64decode(sig_text + "==")
     except (ValueError, base64.binascii.Error):  # type: ignore[attr-defined]
         return None
-    if len(signature) != 64:
+    # Canonical only, as the Runtime reads it (padding bits set in the last
+    # character decode here but are refused there): the two must agree.
+    if len(signature) != 64 or base64.urlsafe_b64encode(signature).rstrip(b"=").decode("ascii") != sig_text:
         return None
     return pack, code_id, signature
 

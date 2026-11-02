@@ -66,6 +66,19 @@ def test_the_panel_asks_cael_over_the_chat_socket_in_one_guide_conversation():
     assert 'case "chunk":' in LOGIC and 'case "done":' in LOGIC and 'case "error":' in LOGIC and 'case "chunk_reset":' in LOGIC
 
 
+def test_a_top_bar_re_render_does_not_drop_a_streaming_answer():
+    # The closer is made once, the teardown effect runs once, Escape reads the latest closer through a ref.
+    assert "const close = useCallback(() => setOpen(false), []);" in BUTTON
+    assert "<GuidePanel onClose={close} />" in BUTTON
+    teardown = BUTTON.split("const onKey = (e: KeyboardEvent) => {")[1].split("}, [")[1].split("]")[0]
+    assert teardown.strip() == "", "the socket and the timer go only with the panel"
+    assert 'if (e.key === "Escape") closeRef.current();' in BUTTON
+    # Focus lands in the ask box once Cael is there (it mounts disabled, so autoFocus would not take).
+    assert "if (agents !== null && caelReady(agents)) askBox.current?.focus();" in BUTTON
+    ask_box = BUTTON.split("ref={askBox}")[1].split("/>")[0]
+    assert "autoFocus" not in ask_box and 'disabled={busy || ready === null}' in ask_box
+
+
 def test_the_answer_is_markdown_once_it_is_whole():
     assert 'import ReactMarkdown, { type Components } from "react-markdown";' in BUTTON and 'import remarkGfm from "remark-gfm";' in BUTTON
     assert 'className={`cz-guide-a${reply?.done && reply.text ? " chat-markdown" : ""}`}' in BUTTON, "the chat's markdown styles, once whole"

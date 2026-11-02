@@ -162,7 +162,8 @@ def test_every_string_the_pages_use_is_in_the_patch():
 
 def test_the_renderer_composes_the_same_way():
     assert 'import catalogJson from "./catalog.json";' in LOOK_TSX
-    assert "finishPixels(data.data, sil, width, height, recolorTable(look.colors))" in LOOK_TSX
+    assert "finishPixels(data.data, sil, width, height, recolorTable(look.colors), det)" in LOOK_TSX, "the detail mask: the outline goes over the backdrop and under the face"
+    assert "the outline goes over an opaque backdrop" in LOGIC_TEST
     assert "160" in LOOK_TSX and "2500 + Math.random() * 2500" in LOOK_TSX, "the mouth at 160 ms, a blink every 2.5 to 5 s"
     assert "export function useAgentLook" in LOOK_TSX and "export function AgentLook" in LOOK_TSX
 

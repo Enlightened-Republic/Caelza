@@ -5,7 +5,7 @@
 // from the `cael` agent over the gateway's chat socket in one guide
 // conversation the browser keeps. Without Cael set up, the panel still
 // explains the screen and points at the setup.
-import { useEffect, useRef, useState } from "react";
+import { useCallback, useEffect, useRef, useState } from "react";
 import { createPortal } from "react-dom";
 import { Link, useLocation } from "react-router-dom";
 import { Send, X } from "lucide-react";
@@ -69,6 +69,9 @@ const markdownComponents: Components = {
 
 export function CaelButton() {
   const [open, setOpen] = useState(false);
+  // One closer for the panel's life: a new one per top-bar render would re-run
+  // the panel's effects and drop a streaming answer.
+  const close = useCallback(() => setOpen(false), []);
   return (
     <>
       <button
@@ -83,7 +86,7 @@ export function CaelButton() {
       </button>
       {/* Into the body: the top bar's backdrop blur would otherwise be the
           containing block of this fixed panel and clip it to 56 px. */}
-      {open && typeof document !== "undefined" ? createPortal(<GuidePanel onClose={() => setOpen(false)} />, document.body) : null}
+      {open && typeof document !== "undefined" ? createPortal(<GuidePanel onClose={close} />, document.body) : null}
     </>
   );
 }
@@ -102,6 +105,11 @@ function GuidePanel({ onClose }: { onClose: () => void }) {
   const client = useRef<WebSocketClient | null>(null);
   const timer = useRef<ReturnType<typeof setTimeout> | null>(null);
   const panel = useRef<HTMLDivElement>(null);
+  const askBox = useRef<HTMLInputElement>(null);
+  // The latest closer, read by the Escape listener: the listener itself is
+  // bound once, so a re-rendered parent never re-binds or tears anything down.
+  const closeRef = useRef(onClose);
+  closeRef.current = onClose;
 
   useEffect(() => {
     let cancelled = false;
@@ -117,20 +125,27 @@ function GuidePanel({ onClose }: { onClose: () => void }) {
     };
   }, []);
 
-  // Escape closes; the socket and the timer go with the panel.
+  // Escape closes; the socket and the timer go with the panel, and only with
+  // it (the effect runs once: a mid-answer re-render must not disconnect).
   useEffect(() => {
     const onKey = (e: KeyboardEvent) => {
-      if (e.key === "Escape") onClose();
+      if (e.key === "Escape") closeRef.current();
     };
     document.addEventListener("keydown", onKey);
-    panel.current?.focus();
     return () => {
       document.removeEventListener("keydown", onKey);
       client.current?.disconnect();
       client.current = null;
       if (timer.current) clearTimeout(timer.current);
     };
-  }, [onClose]);
+  }, []);
+
+  // Focus: the ask box once Cael is known to be there (it mounts disabled, so
+  // autoFocus would not take), the panel itself until then.
+  useEffect(() => {
+    if (agents !== null && caelReady(agents)) askBox.current?.focus();
+    else panel.current?.focus();
+  }, [agents]);
 
   const finish = () => {
     setBusy(false);
@@ -270,6 +285,7 @@ function GuidePanel({ onClose }: { onClose: () => void }) {
             }}
           >
             <input
+              ref={askBox}
               className="cz-input"
               value={text}
               onChange={(e) => setText(e.target.value)}
@@ -277,7 +293,6 @@ function GuidePanel({ onClose }: { onClose: () => void }) {
               aria-label={t("guide.ask_placeholder")}
               disabled={busy || ready === null}
               maxLength={2000}
-              autoFocus
             />
             <button type="submit" className="cz-btn cz-btn-primary cz-guide-send" disabled={busy || ready !== true || !questionOk(text)} aria-label={t("guide.send")}>
               <Send className="h-4 w-4" aria-hidden="true" />

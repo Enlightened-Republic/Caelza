@@ -123,15 +123,28 @@ export function recolorTable(colors: Partial<Record<Slot, string>>): Map<number,
 
 /**
  * The renderer's pixel pass, in place: the silhouette's outline (one pixel on
- * transparent neighbours of the silhouette, the detail layers excluded), then
- * every key colour swapped for its tone. `sil` marks which pixels belong to
- * the silhouette stage; `data` is the RGBA of the composed character.
+ * the silhouette's 4-neighbours outside it, over the backdrop and under the
+ * detail layers, as parts.py outlines the silhouette canvas alone and pastes
+ * it), then every key colour swapped for its tone. `sil` marks the pixels of
+ * the silhouette stage, `det` those of the detail stage (face, accessory);
+ * without `det`, any opaque pixel outside the silhouette counts as detail,
+ * which is right only when there is no backdrop. `data` is the RGBA of the
+ * composed character.
  */
-export function finishPixels(data: Uint8ClampedArray, sil: Uint8Array, width: number, height: number, table: Map<number, [number, number, number]>): void {
+export function finishPixels(
+  data: Uint8ClampedArray,
+  sil: Uint8Array,
+  width: number,
+  height: number,
+  table: Map<number, [number, number, number]>,
+  det?: Uint8Array,
+): void {
   const n = width * height;
   const outlinePts: number[] = [];
   for (let i = 0; i < n; i++) {
-    if (data[i * 4 + 3] !== 0) continue;
+    if (sil[i]) continue;
+    const covered = det ? det[i] !== 0 : data[i * 4 + 3] !== 0;
+    if (covered) continue;
     const x = i % width;
     const y = (i - x) / width;
     if (

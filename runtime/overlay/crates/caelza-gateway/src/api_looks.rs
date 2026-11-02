@@ -32,6 +32,13 @@ use caelza_config::schema::Config;
 use rustls::pki_types::alg_id;
 use serde_json::{Map, Value, json};
 use std::path::PathBuf;
+use std::sync::atomic::{AtomicU64, Ordering};
+
+/// The wardrobe's read-modify-write (PUT and unlock) under one lock: two
+/// devices saving at once would otherwise lose the later one's unlock.
+static WARDROBE_LOCK: parking_lot::Mutex<()> = parking_lot::Mutex::new(());
+/// A temp file per write: two writers of one file must not share a name.
+static WRITE_SEQ: AtomicU64 = AtomicU64::new(0);
 
 pub const LOOK_FILE: &str = "look.json";
 pub const WARDROBE_FILE: &str = "wardrobe.json";
@@ -88,16 +95,20 @@ fn read_json(path: &PathBuf) -> Result<Option<Value>, String> {
     }
 }
 
-/// Write whole or not at all: a sibling temp file, then a rename.
+/// Write whole or not at all: a sibling temp file of its own, then a rename.
 fn write_json(path: &PathBuf, value: &Value) -> Result<(), String> {
     let parent = path
         .parent()
         .ok_or_else(|| format!("{} has no parent", path.display()))?;
     std::fs::create_dir_all(parent).map_err(|e| format!("creating {}: {e}", parent.display()))?;
-    let tmp = path.with_extension("json.tmp");
+    let seq = WRITE_SEQ.fetch_add(1, Ordering::Relaxed);
+    let tmp = path.with_extension(format!("json.{}.{seq}.tmp", std::process::id()));
     let text = serde_json::to_string_pretty(value).map_err(|e| e.to_string())?;
     std::fs::write(&tmp, text.as_bytes()).map_err(|e| format!("writing {}: {e}", tmp.display()))?;
-    std::fs::rename(&tmp, path).map_err(|e| format!("renaming into {}: {e}", path.display()))
+    std::fs::rename(&tmp, path).map_err(|e| {
+        let _ = std::fs::remove_file(&tmp);
+        format!("renaming into {}: {e}", path.display())
+    })
 }
 
 fn is_hex_color(s: &str) -> bool {
@@ -276,12 +287,18 @@ fn empty_wardrobe() -> Value {
     json!({"version": 1, "packs": [], "unlocks": {}})
 }
 
-/// The stored wardrobe, whole; a missing or broken file reads as empty.
-fn stored_wardrobe(config: &Config) -> Result<Value, String> {
-    match read_json(&wardrobe_path(config))? {
-        Some(raw) => Ok(validate_wardrobe(&raw).unwrap_or_else(|_| empty_wardrobe())),
+/// The stored wardrobe, whole: a missing file reads as empty; a file that is
+/// there but not a wardrobe is an error, never silently emptied (a save on
+/// top of it would throw the recorded unlocks away).
+fn read_wardrobe_file(path: &PathBuf) -> Result<Value, String> {
+    match read_json(path)? {
+        Some(raw) => validate_wardrobe(&raw).map_err(|e| format!("{} is not a wardrobe ({e}); fix or remove it", path.display())),
         None => Ok(empty_wardrobe()),
     }
+}
+
+fn stored_wardrobe(config: &Config) -> Result<Value, String> {
+    read_wardrobe_file(&wardrobe_path(config))
 }
 
 fn known_agent(config: &Config, alias: &str) -> bool {
@@ -384,6 +401,7 @@ pub async fn handle_wardrobe_put(
         Err(e) => return error_response(StatusCode::BAD_REQUEST, e),
     };
     let config = state.config.read().clone();
+    let _guard = WARDROBE_LOCK.lock();
     match stored_wardrobe(&config) {
         Ok(stored) => wardrobe["unlocks"] = stored["unlocks"].clone(),
         Err(e) => return error_response(StatusCode::INTERNAL_SERVER_ERROR, e),
@@ -411,6 +429,7 @@ pub async fn handle_wardrobe_unlock(
         Err(e) => return error_response(StatusCode::BAD_REQUEST, e),
     };
     let config = state.config.read().clone();
+    let _guard = WARDROBE_LOCK.lock();
     let current = match stored_wardrobe(&config) {
         Ok(w) => w,
         Err(e) => return error_response(StatusCode::INTERNAL_SERVER_ERROR, e),
@@ -533,6 +552,42 @@ mod tests {
         assert_eq!(read_json(&path).expect("missing is none"), None);
         write_json(&path, &good_look()).expect("written");
         assert_eq!(read_json(&path).expect("read").unwrap()["parts"]["body"], "body.sprout");
-        assert!(!path.with_extension("json.tmp").exists(), "the temp file was renamed away");
+        let left: Vec<_> = std::fs::read_dir(path.parent().unwrap()).unwrap().map(|e| e.unwrap().file_name()).collect();
+        assert_eq!(left, vec![std::ffi::OsString::from(LOOK_FILE)], "the temp file was renamed away");
+    }
+
+    #[test]
+    fn two_writers_of_one_file_never_share_a_temp_name() {
+        let dir = tempfile::tempdir().expect("tempdir");
+        let path = dir.path().join("looks").join(WARDROBE_FILE);
+        let threads: Vec<_> = (0..8)
+            .map(|i| {
+                let path = path.clone();
+                std::thread::spawn(move || {
+                    for _ in 0..25 {
+                        write_json(&path, &json!({"version": 1, "packs": [format!("p{i}")], "unlocks": {}})).expect("every write lands");
+                    }
+                })
+            })
+            .collect();
+        for t in threads {
+            t.join().unwrap();
+        }
+        let w = read_wardrobe_file(&path).expect("a whole wardrobe at the end");
+        assert_eq!(w["packs"].as_array().unwrap().len(), 1);
+        let left: Vec<_> = std::fs::read_dir(path.parent().unwrap()).unwrap().map(|e| e.unwrap().file_name()).collect();
+        assert_eq!(left, vec![std::ffi::OsString::from(WARDROBE_FILE)], "no temp file left behind");
+    }
+
+    #[test]
+    fn a_wardrobe_file_that_is_not_one_is_an_error_not_an_empty_wardrobe() {
+        let dir = tempfile::tempdir().expect("tempdir");
+        let path = dir.path().join("looks").join(WARDROBE_FILE);
+        assert_eq!(read_wardrobe_file(&path).expect("missing is empty"), empty_wardrobe());
+        write_json(&path, &json!({"version": 1, "packs": ["arcade"], "unlocks": {"arcade": "TEST2345"}})).unwrap();
+        assert_eq!(read_wardrobe_file(&path).expect("read")["unlocks"]["arcade"], "TEST2345");
+        write_json(&path, &json!({"version": 1, "packs": ["arcade"], "unlocks": {"arcade": "lowercase"}})).unwrap();
+        let err = read_wardrobe_file(&path).unwrap_err();
+        assert!(err.contains("is not a wardrobe") && err.contains("not a code id"), "{err}");
     }
 }

@@ -21,6 +21,7 @@ import {
   sleepLine,
   sopEngineOff,
   sopOffText,
+  spanLabel,
   SOP_ENGINE_NOT_RUNNING_TEXT,
   SOP_OFF_TEXT,
 } from './home.logic.ts';
@@ -43,6 +44,14 @@ test('how long ago, in words', () => {
   assert.equal(agoLabel('2026-10-21T13:00:00Z', NOW), 'just now', 'a clock ahead of ours is not the future');
   assert.equal(agoLabel('not a time', NOW), null);
   assert.equal(agoLabel(null, NOW), null);
+  // The unit edges: the rounding never says 60 min or 48 h.
+  assert.equal(agoLabel(new Date(NOW - 3599999).toISOString(), NOW), '1 h ago');
+  assert.equal(agoLabel(new Date(NOW - 47.8 * 3600e3).toISOString(), NOW), '2 d ago');
+  assert.equal(agoLabel(new Date(NOW - 47.4 * 3600e3).toISOString(), NOW), '47 h ago');
+  assert.equal(spanLabel(3599999), '1 h');
+  assert.equal(spanLabel(29999), '1 min');
+  assert.equal(dueLabel(NOW + 3599999, NOW), 'due in 1 h');
+  assert.equal(dueLabel(NOW - 47.9 * 3600e3, NOW), 'overdue by 2 d');
 });
 
 test('the agents on Home: the recently talked-to first, the rest in config order, the overflow counted', () => {

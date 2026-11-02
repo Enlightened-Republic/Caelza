@@ -174,6 +174,18 @@ export function sessionLabel(session: SessionSlice): string {
   return `${who}${where}`;
 }
 
+/** A span in the largest unit that reads well: minutes under an hour, hours
+ *  under two days, else days; rounded, and promoted when the rounding lands
+ *  on the next unit (59.9 min is `1 h`, not `60 min`). */
+export function spanLabel(ms: number): string {
+  const abs = Math.abs(ms);
+  const minutes = Math.max(1, Math.round(abs / 60000));
+  if (minutes < 60) return `${minutes} min`;
+  const hours = Math.round(abs / (3600 * 1000));
+  if (hours < 48) return `${hours} h`;
+  return `${Math.round(abs / DAY_MS)} d`;
+}
+
 /** `just now`, `45 min ago`, `6 h ago`, `3 d ago`; null for a time that does not read. */
 export function agoLabel(iso: string | null | undefined, now = Date.now()): string | null {
   if (!iso) return null;
@@ -181,9 +193,7 @@ export function agoLabel(iso: string | null | undefined, now = Date.now()): stri
   if (Number.isNaN(at)) return null;
   const diff = Math.max(0, now - at);
   if (diff < 60 * 1000) return 'just now';
-  if (diff < 3600 * 1000) return `${Math.round(diff / 60000)} min ago`;
-  if (diff < DAY_MS * 2) return `${Math.round(diff / (3600 * 1000))} h ago`;
-  return `${Math.round(diff / DAY_MS)} d ago`;
+  return `${spanLabel(diff)} ago`;
 }
 
 /** One agent on Home: its look is drawn beside this, the tile opens its chat. */
@@ -243,15 +253,9 @@ export function agentTiles(aliases: string[], sessions: SessionSlice[], now = Da
 export function dueLabel(dueAt: number | null | undefined, now = Date.now()): string | null {
   if (dueAt === null || dueAt === undefined) return null;
   const diff = dueAt - now;
-  const span = (ms: number): string => {
-    const abs = Math.abs(ms);
-    if (abs < 3600 * 1000) return `${Math.max(1, Math.round(abs / 60000))} min`;
-    if (abs < DAY_MS * 2) return `${Math.round(abs / (3600 * 1000))} h`;
-    return `${Math.round(abs / DAY_MS)} d`;
-  };
-  if (diff < -60 * 1000) return `overdue by ${span(diff)}`;
+  if (diff < -60 * 1000) return `overdue by ${spanLabel(diff)}`;
   if (diff < 60 * 1000) return 'due now';
-  return `due in ${span(diff)}`;
+  return `due in ${spanLabel(diff)}`;
 }
 
 export function commitmentTone(c: Pick<MindDigestCommitment, 'overdue' | 'blocked'>): Tone {

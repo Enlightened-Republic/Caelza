@@ -25,7 +25,13 @@
 +}
 --- a/web/src/lib/i18n.ts
 +++ b/web/src/lib/i18n.ts
-@@ -1570,7 +1570,10 @@
+@@ -1565,12 +1565,16 @@
+     'looks.slot_skin': "Skin",
+     'looks.title': "Looks",
+     'looks.undo': "Undo",
++    'looks.wardrobe_failed': "Couldn't read the wardrobe; every piece is open until it loads.",
+     'looks.wearing': "Wearing:",
+     'shop.add': "Add to wardrobe",
      'shop.adding': "Adding\u2026",
      'shop.always_yours': "Always yours",
      'shop.code_label': "Unlock code",
@@ -37,8 +43,11 @@
      'shop.description': "Packs of pieces for your agents' looks. Add a pack and its pieces appear in every agent's customizer.",
      'shop.dress_link': "Dress an agent",
      'shop.failed': "That did not work:",
-@@ -1580,6 +1583,9 @@
+@@ -1578,8 +1582,12 @@
+     'shop.in_wardrobe': "In your wardrobe",
+     'shop.pieces': "pieces",
      'shop.remove': "Remove from wardrobe",
++    'shop.retry': "Try again",
      'shop.soon': "Coming soon",
      'shop.title': "Shop",
 +    'shop.unlock': "Unlock",

@@ -94,6 +94,7 @@ function Customizer({ alias }: { alias: string }) {
   const [saved, setSaved] = useState<LookData>(() => defaultLook(alias, catalog));
   const [look, setLook] = useState<LookData>(() => defaultLook(alias, catalog));
   const [wardrobe, setWardrobe] = useState<Wardrobe | null>(null);
+  const [wardrobeUnknown, setWardrobeUnknown] = useState(false);
   const [layer, setLayer] = useState<Layer>("hair");
   const [talk, setTalk] = useState(false);
   const [busy, setBusy] = useState(false);
@@ -116,15 +117,23 @@ function Customizer({ alias }: { alias: string }) {
       .then((w) => {
         if (!cancelled) setWardrobe(w);
       })
-      .catch(() => {
-        if (!cancelled) setWardrobe({ version: 1, packs: [] });
+      .catch((e: unknown) => {
+        // Unknown, not empty: locking every piece and refusing to save a look
+        // that is fine would be wrong; the note says the wardrobe did not load.
+        if (!cancelled) {
+          setWardrobeUnknown(true);
+          setNote({ tone: "error", text: `${t("looks.wardrobe_failed")} ${e instanceof Error ? e.message : String(e)}` });
+        }
       });
     return () => {
       cancelled = true;
     };
   }, [alias]);
 
-  const owned = useMemo(() => ownedPacks(catalog, wardrobe), [wardrobe]);
+  const owned = useMemo(
+    () => (wardrobeUnknown && wardrobe === null ? new Set(catalog.packs.filter((p) => p.status === "available").map((p) => p.id)) : ownedPacks(catalog, wardrobe)),
+    [wardrobe, wardrobeUnknown],
+  );
   const dirty = !lookEquals(look, saved);
   const locked = lockedParts(look, catalog, owned);
   const parts = useMemo(() => catalog.parts.filter((p) => p.layer === layer), [layer]);
