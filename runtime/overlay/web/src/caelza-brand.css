@@ -170,6 +170,136 @@ main .surface-panel {
   border-image: linear-gradient(90deg, rgba(34, 230, 255, 0.45), rgba(123, 107, 255, 0.35), rgba(180, 79, 255, 0.25), transparent 85%) 1;
 }
 
+/* ---- Cael in the top bar: "explain this screen" (vision §3.4) ----------------
+   His look as the button, a sheet from the bottom on a phone and a panel at
+   the top right on a desktop. */
+
+.cz-cael-btn {
+  height: 36px;
+  width: 36px;
+  border-radius: 10px;
+  border: 1px solid transparent;
+  background: transparent;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  cursor: pointer;
+  padding: 0;
+}
+.cz-cael-btn:hover {
+  background: var(--pc-hover);
+  border-color: var(--pc-border);
+}
+.cz-cael-btn:focus-visible {
+  outline: 2px solid rgba(34, 230, 255, 0.7);
+  outline-offset: 2px;
+}
+.cz-guide-backdrop {
+  position: fixed;
+  inset: 0;
+  z-index: 200;
+  background: rgba(5, 3, 16, 0.6);
+  backdrop-filter: blur(4px);
+  display: flex;
+  align-items: flex-end;
+  justify-content: center;
+}
+.cz-guide-panel {
+  width: 100%;
+  max-width: 560px;
+  max-height: 88vh;
+  overflow-y: auto;
+  background: var(--pc-bg-surface);
+  border: 1px solid var(--pc-border);
+  border-bottom: none;
+  border-radius: 18px 18px 0 0;
+  padding: 16px 16px 20px;
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+  box-shadow: 0 -10px 40px rgba(0, 0, 0, 0.4);
+}
+.cz-guide-panel:focus {
+  outline: none;
+}
+@media (min-width: 640px) {
+  .cz-guide-backdrop {
+    align-items: flex-start;
+    justify-content: flex-end;
+    padding: 64px 16px 16px;
+  }
+  .cz-guide-panel {
+    border-radius: 18px;
+    border-bottom: 1px solid var(--pc-border);
+    max-height: calc(100vh - 80px);
+  }
+}
+.cz-guide-head {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+}
+/* The head's close button sits in the row (the setup's .cz-icon-btn floats over an input). */
+.cz-guide-head .cz-guide-close {
+  position: static;
+  width: 36px;
+  height: 36px;
+  flex: 0 0 auto;
+}
+.cz-guide-bubble {
+  padding: 12px 14px;
+}
+.cz-guide-thread {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+}
+.cz-guide-q {
+  align-self: flex-end;
+  max-width: 85%;
+  padding: 8px 12px;
+  border-radius: 14px 14px 4px 14px;
+  background: rgba(34, 230, 255, 0.12);
+  color: var(--pc-text-primary);
+  font-size: 14px;
+}
+.cz-guide-a {
+  align-self: flex-start;
+  max-width: 95%;
+  padding: 10px 14px;
+  border-radius: 14px 14px 14px 4px;
+  background: var(--pc-bg-elevated);
+  color: var(--pc-text-primary);
+  font-size: 15px;
+  line-height: 1.5;
+  white-space: pre-wrap;
+  word-break: break-word;
+}
+.cz-guide-err {
+  margin-top: 6px;
+  font-size: 13px;
+  color: #ff2d78;
+}
+.cz-guide-ask {
+  display: flex;
+  gap: 8px;
+}
+.cz-guide-ask .cz-input {
+  flex: 1 1 auto;
+  min-width: 0;
+  height: 44px;
+  font-family: var(--pc-font-ui);
+}
+/* The send button keeps to its label (the setup's .cz-btn is full width). */
+.cz-guide-ask .cz-btn.cz-guide-send {
+  width: auto;
+  flex: 0 0 auto;
+  height: 44px;
+  padding: 0 16px;
+  border-radius: 12px;
+  font-size: 14px;
+}
+
 /* ---- The looks and the shop (vision M8) ---------------------------------------
    Pixel characters drawn crisp at any size, the customizer's cells and
    swatches, the shop's pack cards. */
