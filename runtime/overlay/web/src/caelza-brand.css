@@ -275,6 +275,11 @@ main .surface-panel {
   white-space: pre-wrap;
   word-break: break-word;
 }
+/* Whole, the answer is markdown (the chat's .chat-markdown rules): the
+   source's line breaks are its paragraphs now, not blank lines. */
+.cz-guide-a.chat-markdown {
+  white-space: normal;
+}
 .cz-guide-err {
   margin-top: 6px;
   font-size: 13px;
