@@ -21,7 +21,8 @@ runtime/
 │                      reached for the dashboard); web/ brand CSS, the lockup component, PWA manifest + service worker,
 │                      the Home, Bodies, Memory and Procedures pages, the shared ApprovalQueue, the simplified
 │                      setup (pages/setup: Cael's screens, the scroll wheel, the logic over bundle/models.json), the
-│                      looks (src/looks: the pixel renderer; pages/Looks, pages/Shop; public/looks: the exported parts)
+│                      looks (src/looks: the pixel renderer; pages/Looks, pages/Shop; public/looks: the exported parts), Cael's
+│                      explain-this-screen panel (src/guide)
 ├── patches/           *.patch applied after the rename: 0001 xanima memory backend (config schema, backend registry,
 │                      factory, dashboard picker); 0002 UI phase 1 (fonts default, lockup, attribution, accent labels,
 │                      PWA hooks, Service-Worker-Allowed in the gateway); 0003 the Memory page (routes, router, sidebar);
@@ -37,7 +38,9 @@ runtime/
 │                      the brand pass (the mark and the wordmark in the top bar, page titles in the mark gradient, the
 │                      primary button cyan → violet, Space with the glows behind every page); 0011 the looks and
 │                      the shop (the gateway's api_looks module and routes, the Looks and Shop pages routed and in
-│                      the sidebar, the look drawn in the agent card and the chat, the API client, the strings)
+│                      the sidebar, the look drawn in the agent card and the chat, the API client, the strings); 0012
+│                      Cael in the top bar ("explain this screen" and a question to the guide on every page: the
+│                      button in the header, one paragraph and one next step per screen, the logic test)
 ├── tools/phone-shots/ Playwright over every dashboard route at 390 × 844: screenshots, sideways scroll, elements past
 │                      the edge, controls under 32 px; a mock proxy for the Mind and Body routes
 ├── lib/rename.pl      the replacement engine

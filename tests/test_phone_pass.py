@@ -80,7 +80,7 @@ def test_the_measuring_tool_and_the_reference_screens_are_in_the_repo():
     expected = {"home", "bodies", "memory", "procedures", "procedures-run", "dashboard", "agent-chat", "tools", "runs", "drawer",
                 "quickstart-doors", "quickstart-local-door",
                 "setup-doors", "setup-provider", "setup-model", "setup-key", "setup-local",
-                "looks", "looks-dress", "shop", "agents"}
+                "looks", "looks-dress", "shop", "agents", "cael-explain"}
     assert {p.stem for p in SCREENS.glob("*.png")} == expected
     for png in SCREENS.glob("*.png"):
         assert png.read_bytes()[:8] == b"\x89PNG\r\n\x1a\n", png.name

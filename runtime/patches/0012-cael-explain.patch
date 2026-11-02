@@ -1,0 +1,115 @@
+Caelza: Cael in the top bar, "explain this screen" on every page (vision §3.4).
+
+The vision's first-UI list has a one-tap "explain this screen" anywhere in
+the app, answered by the Guide. The button is Cael's look in the top bar
+(overlay web/src/guide/CaelButton.tsx); the panel says what the screen is
+and the next step in his words with no model needed, and below that the
+owner can ask him anything about it: the answer streams from the `cael`
+agent over the gateway's chat socket in one guide conversation the browser
+keeps. These hunks put the button in the top bar beside the settings gear,
+add the strings (English; the other locales fall back: one paragraph and
+one next step per screen, and the panel's own) and list the logic test
+beside the others. Applied after 0011 and the overlay copy.
+
+--- a/web/src/components/layout/Header.tsx
++++ b/web/src/components/layout/Header.tsx
+@@ -7,6 +7,7 @@
+ import { SettingsModal } from '@/components/SettingsModal';
+ import { Button } from '@/components/ui';
+ import { Mark, Wordmark } from '@/components/brand/CaelzaLockup';
++import { CaelButton } from '@/guide/CaelButton';
+ import { basePath } from '@/lib/basePath';
+ 
+ // Exact-path titles. The dashboard ('/') must stay exact so it doesn't
+@@ -147,6 +148,9 @@
+             <Search className="h-[20px] w-[20px] shrink-0" />
+           </Button>
+ 
++          {/* Cael, the guide: "explain this screen" and a question, on every page (vision §3.4). */}
++          <CaelButton />
++
+           {/* Settings */}
+           <Button
+             variant="ghost"
+--- a/web/src/lib/i18n.ts
++++ b/web/src/lib/i18n.ts
+@@ -1468,6 +1468,68 @@
+     'nav.bodies': 'Bodies',
+     'nav.home': 'Home',
+     'nav.setup': 'Set up',
++    'guide.ask_placeholder': "Ask Cael about this screen\u2026",
++    'guide.close': "Close",
++    'guide.closed': "The connection closed before Cael answered. Is the Runtime running?",
++    'guide.go': "Go",
++    'guide.next_acp': "The chat shows the same conversation in plain form.",
++    'guide.next_agent': "Give it a face it deserves in Looks.",
++    'guide.next_agents': "Dress yours: every agent has a pixel character.",
++    'guide.next_bodies': "A phone you want to clean up? The playbooks live under Procedures.",
++    'guide.next_canvas': "Most work happens in the agent's chat.",
++    'guide.next_config': "Most owners never need this page; the simple setup covers the usual.",
++    'guide.next_cron': "A job that needs your approval partway is better as a procedure.",
++    'guide.next_dashboard': "Back to Home for the short version.",
++    'guide.next_doctor': "Logs have the details behind a failed check.",
++    'guide.next_home': "Nothing waiting? Say hello to your agent.",
++    'guide.next_integrations': "Keys for providers themselves are under Config.",
++    'guide.next_logs': "Doctor runs the checks for you.",
++    'guide.next_looks': "Want more pieces? Packs are in the Shop.",
++    'guide.next_memory': "Ask your agent about something it should remember, then come back and look.",
++    'guide.next_other': "Home is a good place to start.",
++    'guide.next_pairing': "Home, once a device is in.",
++    'guide.next_plugins': "Skills are the lighter way to teach an agent something.",
++    'guide.next_procedures': "Want to see one written out? SOPs are the files behind them.",
++    'guide.next_quickstart': "Prefer fewer choices? The simple setup asks one at a time.",
++    'guide.next_runs': "Start another from Procedures.",
++    'guide.next_setup': "The full wizard is under Advanced setup if you want every knob.",
++    'guide.next_shop': "Back to the customizer to try them on.",
++    'guide.next_skills': "See which agent carries which under Agents.",
++    'guide.next_sops': "Run one from Procedures.",
++    'guide.next_tools': "The profiles themselves live in Config.",
++    'guide.not_set_up': "I'm not set up as an agent yet, so I can only explain; the setup takes a minute and then you can ask me anything.",
++    'guide.open': "Ask Cael",
++    'guide.screen_acp': "The ACP console is a low-level view of an agent's protocol stream: every message and tool call as it goes by. For debugging more than for everyday use.",
++    'guide.screen_agent': "This is a chat with one agent. Ask it for things; when it wants to do something risky it asks you first, and you approve or deny. The model menu swaps its brain; Files opens its workspace.",
++    'guide.screen_agents': "Agents are the characters you talk to. Each has a brain (a model), a risk profile that says what it may do, and a look. Tap one to see it; the chat bubble opens a conversation.",
++    'guide.screen_bodies': "Bodies are the phones. This phone is the Body the agent lives in; paired phones are reached over wireless debugging or their own Body. The senses show what a phone knows right now, and each capture asks the phone when you press it.",
++    'guide.screen_canvas': "Canvas is a shared drawing board an agent can draw on and you can see live. It is optional and a little experimental.",
++    'guide.screen_config': "Config is every setting the Runtime has, grouped. Providers hold your keys (encrypted on this device), agents their profiles, channels where messages come from. Edits are checked before they are saved.",
++    'guide.screen_cron': "Automations are jobs that run on a schedule without you asking: a check every morning, a summary every night. Each runs as an agent with its own limits.",
++    'guide.screen_dashboard': "This is the upstream dashboard: uptime, sessions, channels, health and cost, in tabs. Home is the friendlier view of the same Runtime.",
++    'guide.screen_doctor': "Doctor checks the Runtime over: the config, the providers, the connections. A red line names what to fix.",
++    'guide.screen_home': "This is Home: is the Runtime alive, is the Mind remembering, is the Body reachable, and what waits on you. The tiles are the three parts of Caelza; the lists under them are what happened while you were away.",
++    'guide.screen_integrations': "Integrations are the outside services an agent can reach, each with its own key or login. Add one here and the agent's tools can use it.",
++    'guide.screen_logs': "Logs are what the Runtime wrote as it worked. Useful when something went wrong; the lines near the end usually say why.",
++    'guide.screen_looks': "Looks is where you dress your agents. Pick a piece per layer and a colour per slot; it blinks, and it talks in the chat while the agent answers. Saved on the Runtime, so every device shows the same.",
++    'guide.screen_memory': "Memory is the Mind: what your agent remembers across sessions. Brains hold beliefs, the review queue is what it wants to keep but asks you about first, and recall lets you search what it knows. Forget is yours too.",
++    'guide.screen_other': "I don't know this screen by name, but I can still help: ask me what you are trying to do.",
++    'guide.screen_pairing': "Pairing is how a device proves it may talk to this Runtime: a code shown here, typed there once. Devices you no longer use can be unpaired.",
++    'guide.screen_plugins': "Plugins extend the Runtime with code from elsewhere. Each is listed with what it adds; enabling one is a change you make here on purpose.",
++    'guide.screen_procedures': "Procedures are step-by-step jobs the agent follows, with a gate before anything that changes a phone. Waiting on you is a run at a gate; the library holds the playbooks; Run asks which phone.",
++    'guide.screen_quickstart': "Quickstart is the full wizard: a provider, a risk profile, a runtime profile, memory, then the agent. It writes exactly what the simple setup writes, with every option shown.",
++    'guide.screen_runs': "Runs are what happened each time a procedure ran: which step, what the agent did, where it waited for you.",
++    'guide.screen_setup': "This is the simple setup: I ask one thing at a time. A brain for your agent, free and local or with a key you bring, then it's ready. Nothing here is a trick question.",
++    'guide.screen_shop': "The Shop holds packs of pieces for your agents' looks. Add a free pack and its pieces appear in every customizer; a priced pack will take an unlock code once that exists. Starter is always yours.",
++    'guide.screen_skills': "Skills are bundles of instructions an agent can load: a way of doing a job, written down. Each is a SKILL.md the agent reads when it needs it.",
++    'guide.screen_sops': "SOPs are the written procedures: steps, triggers, gates. Procedures runs them; this page is where they are edited and validated.",
++    'guide.screen_tools': "Tools are what an agent may do: read a file, run a command, use the phone. The grid says which agent may use which, and the risk profile adds its own limits on top.",
++    'guide.send': "Ask",
++    'guide.set_up': "Set Cael up",
++    'guide.thinking': "\u2026",
++    'guide.this_screen': "This screen:",
++    'guide.timeout': "That took too long. Try again, or check the Runtime's logs.",
++    'guide.title': "Cael says",
+     'looks.back': "All looks",
+     'looks.blinks': "It blinks on its own; in chat it talks while the agent answers.",
+     'looks.colors': "Colours",
+--- a/web/package.json
++++ b/web/package.json
+@@ -14,7 +14,7 @@
+     "typecheck": "npm run check:generated && tsc -b",
+     "build": "npm run check:generated && tsc -b && vite build",
+     "dev": "vite",
+-    "test": "node --experimental-strip-types --test src/pages/quickstart/runtime-selection.test.ts src/pages/quickstart/doors.logic.test.ts src/pages/setup/setup.logic.test.ts src/looks/looks.logic.test.ts src/pages/quickstart/channel-fields.test.ts src/pages/acp-console/thought-stream.test.ts src/lib/contextBar.test.ts src/components/sections/secretMap.logic.test.ts src/pages/integrations.logic.test.ts src/lib/historyTrimNotice.test.ts src/components/runLogPresentation.test.ts src/pages/pluginCatalog.test.ts && npm run test:sops && npm run test:sop-editor && jiti src/pages/quickstart/channel-form.test.ts",
++    "test": "node --experimental-strip-types --test src/pages/quickstart/runtime-selection.test.ts src/pages/quickstart/doors.logic.test.ts src/pages/setup/setup.logic.test.ts src/looks/looks.logic.test.ts src/guide/guide.logic.test.ts src/pages/quickstart/channel-fields.test.ts src/pages/acp-console/thought-stream.test.ts src/lib/contextBar.test.ts src/components/sections/secretMap.logic.test.ts src/pages/integrations.logic.test.ts src/lib/historyTrimNotice.test.ts src/components/runLogPresentation.test.ts src/pages/pluginCatalog.test.ts && npm run test:sops && npm run test:sop-editor && jiti src/pages/quickstart/channel-form.test.ts",
+     "test:sops": "node --experimental-strip-types --test src/hooks/useRunOverlay.logic.test.ts src/pages/runs.logic.test.ts",
+     "test:sop-editor": "node --experimental-strip-types --test src/pages/sopSavePlan.test.ts",
+     "test:permissions": "jiti src/components/ToolPermissionGrid.logic.test.ts && jiti src/pages/Tools.logic.test.ts && jiti src/lib/toolCatalog.logic.test.ts && jiti src/components/ToolCatalogWarningPanel.test.ts && jiti src/lib/validationWarnings.test.ts && jiti src/components/UpgradeDialog.logic.test.ts && npm run test:navigation",
