@@ -1,0 +1,49 @@
+--- a/crates/caelza-gateway/src/lib.rs
++++ b/crates/caelza-gateway/src/lib.rs
+@@ -2377,6 +2377,7 @@
+             "/api/looks/wardrobe",
+             get(api_looks::handle_wardrobe_get).put(api_looks::handle_wardrobe_put),
+         )
++        .route("/api/looks/wardrobe/unlock", post(api_looks::handle_wardrobe_unlock))
+         .route(
+             "/api/looks/{alias}",
+             get(api_looks::handle_look_get)
+--- a/web/src/lib/api.ts
++++ b/web/src/lib/api.ts
+@@ -2420,3 +2420,12 @@
+     body: JSON.stringify(wardrobe),
+   });
+ }
++
++/** A priced pack's unlock code to the Runtime, which checks it and answers with the wardrobe, the pack now in it. */
++export function unlockPack(code: string): Promise<Wardrobe> {
++  return apiFetch<Wardrobe>("/api/looks/wardrobe/unlock", {
++    method: "POST",
++    headers: { "Content-Type": "application/json" },
++    body: JSON.stringify({ code }),
++  });
++}
+--- a/web/src/lib/i18n.ts
++++ b/web/src/lib/i18n.ts
+@@ -1570,7 +1570,10 @@
+     'shop.adding': "Adding\u2026",
+     'shop.always_yours': "Always yours",
+     'shop.code_label': "Unlock code",
+-    'shop.codes_soon': "codes arrive with the first priced pack",
++    'shop.code_bad': "That is not an unlock code.",
++    'shop.code_hint': "Paste the code from your receipt.",
++    'shop.code_other_pack': "That code is for the {pack} pack.",
++    'shop.get_code': "Get a code",
+     'shop.description': "Packs of pieces for your agents' looks. Add a pack and its pieces appear in every agent's customizer.",
+     'shop.dress_link': "Dress an agent",
+     'shop.failed': "That did not work:",
+@@ -1580,6 +1583,9 @@
+     'shop.remove': "Remove from wardrobe",
+     'shop.soon': "Coming soon",
+     'shop.title': "Shop",
++    'shop.unlock': "Unlock",
++    'shop.unlocked': "Unlocked. The pack is in your wardrobe.",
++    'shop.unlocking': "Checking\u2026",
+     'shop.updated': "New packs arrive with releases. This catalog was updated",
+     'nav.procedures': 'Procedures',
+     'nav.config': 'Config',

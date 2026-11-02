@@ -12,17 +12,20 @@ import {
   defaultLook,
   finishPixels,
   fnv1a,
+  isPriced,
   lockedParts,
   lookEquals,
   normalizeLook,
   ownedPacks,
   packRgb,
+  parseUnlockCode,
   partUrl,
   priceLabel,
   ramp,
   recolorTable,
   sheetUrl,
   slotsInUse,
+  unlocked,
   validateLook,
   type Catalog,
 } from "./looks.logic.ts";
@@ -103,14 +106,32 @@ test("part and sheet URLs live under the dashboard's static prefix", () => {
   assert.equal(sheetUrl("", "cosmic"), "/_app/looks/sheets/cosmic.png");
 });
 
-test("the wardrobe: the starter always, available packs when added, never a soon pack", () => {
+test("the wardrobe: the starter always, available packs when added, a priced pack once a code opened it", () => {
   assert.deepEqual([...ownedPacks(catalog, null)], [STARTER]);
-  assert.deepEqual([...ownedPacks(catalog, { version: 1, packs: ["cosmic", "arcade", "nope"] })], [STARTER, "cosmic"]);
+  assert.deepEqual([...ownedPacks(catalog, { version: 1, packs: ["cosmic", "arcade", "nope"] })], [STARTER, "cosmic"], "arcade is priced: in the wardrobe but not opened");
+  assert.deepEqual([...ownedPacks(catalog, { version: 1, packs: ["cosmic", "arcade"], unlocks: { arcade: "TEST2345" } })], [STARTER, "cosmic", "arcade"]);
+  assert.ok(unlocked("arcade", { version: 1, packs: [], unlocks: { arcade: "TEST2345" } }), "opened before: back in without a code");
+  assert.ok(!unlocked("arcade", { version: 1, packs: ["arcade"] }));
+  const arcade = catalog.packs.find((p) => p.id === "arcade");
+  assert.ok(arcade && isPriced(arcade) && arcade.unlock === "code" && arcade.status === "available", "the Arcade pack is for sale");
+  assert.ok(catalog.parts.filter((p) => p.pack === "arcade").length >= 7);
+  assert.equal(catalog.unlock?.scheme, "ed25519-v1");
+  assert.match(catalog.unlock?.public_key ?? "", /^[0-9a-f]{64}$/);
   const cael = defaultLook("cael", catalog);
   assert.ok(lockedParts(cael, catalog, ownedPacks(catalog, null)).length > 0, "Cael's hoodie is cosmic");
   assert.deepEqual(lockedParts(cael, catalog, ownedPacks(catalog, { version: 1, packs: ["cosmic"] })), []);
   assert.equal(priceLabel({ id: "x", name: "x", blurb: "", price: "free", status: "available" }), "Free");
   assert.equal(priceLabel({ id: "x", name: "x", blurb: "", price: { usd: 2.5 }, status: "available" }), "$2.50");
+});
+
+test("an unlock code's shape: the pack, eight characters, the signature", () => {
+  const code = "ARCADE-TEST2345-Pnj8FQev4WFjpZzV5W7lLxPCuAfWQVi5tqaTVoXR4xsirpwYtC907gtdHruBANsm2J_goTsOL6fOd2qclwMRBg";
+  assert.deepEqual(parseUnlockCode(code), { pack: "arcade", id: "TEST2345" });
+  assert.deepEqual(parseUnlockCode(` arcade-test2345-${code.slice(16)} `), { pack: "arcade", id: "TEST2345" }, "case and spaces do not matter");
+  assert.deepEqual(parseUnlockCode(`ARCADE-TEST2345-${code.slice(16, 60)}\n${code.slice(60)}`), { pack: "arcade", id: "TEST2345" }, "a line break from a receipt is fine");
+  for (const bad of ["", "ARCADE", "ARCADE-TEST2345", "ARCADE-TEST2345-short", `ARCADE-TEST0345-${code.slice(16)}`, `${code}x`, `ARC_ADE-TEST2345-${code.slice(16)}`.replace("_", "."), `COSMIC-TEST2345-${code.slice(16)}x`]) {
+    assert.equal(parseUnlockCode(bad), null, bad);
+  }
 });
 
 test("a saved look is validated, and a broken one made whole", () => {

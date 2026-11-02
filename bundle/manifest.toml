@@ -92,6 +92,11 @@ looks_patch = "runtime/patches/0011-looks-and-shop.patch"
 # live turn's look talks); on Home as the agents' tiles and beside the conversations that moved. The patch carries
 # the chat and the tab bar; Home.tsx, home.logic.ts and Look.tsx in the overlay carry the rest.
 conversation_patch = "runtime/patches/0013-looks-in-conversation.patch"
+# The Arcade pack, the first priced one (M8e): it opens with a code the owner mints (Ed25519, plain Python) and the
+# gateway checks against the public key in api_looks.rs (the catalog's unlock.public_key is the same hex). The patch
+# carries the unlock route, the API client and the Shop's strings; the pieces, the catalog and the Shop are overlay.
+unlock_codes = "scripts/unlock_codes.py"                 # keygen | mint | verify | public-key
+unlock_patch = "runtime/patches/0014-unlock-codes.patch"
 # Cael in the top bar of every page (vision §3.4): "explain this screen" in his words with no model needed, and a
 # question answered by the `cael` agent over the gateway's chat socket in one guide conversation the browser keeps.
 guide_button = "runtime/overlay/web/src/guide/CaelButton.tsx"   # + guide.logic.ts and its node test

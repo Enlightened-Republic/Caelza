@@ -205,6 +205,24 @@ def _backdrop_nebula(c: Canvas, _f: str) -> None:
         c.p(x, y, "cyan")
 
 
+@part("backdrop.crt", "CRT", "arcade")
+def _backdrop_crt(c: Canvas, _f: str) -> None:
+    # A dark screen with scanlines, a row of invaders along the top, a shot and a coin.
+    c.fill("bg2")
+    for y in range(1, H, 3):
+        c.r(0, y, W, 1, "bg4")
+    for x in (1, 11, 22, 33):
+        c.p(x + 1, 1, "purple")
+        c.p(x + 3, 1, "purple")
+        c.r(x, 2, 5, 1, "purple")
+        for dx in (0, 2, 4):
+            c.p(x + dx, 3, "purple")
+    c.r(36, 24, 1, 3, "pink")
+    c.r(3, 27, 2, 4, "yl")
+    c.r(2, 28, 4, 2, "yl")
+    c.p(3, 28, "st")
+
+
 # ---- bodies -----------------------------------------------------------------
 
 def _torso(c: Canvas) -> None:
@@ -305,6 +323,20 @@ def _outfit_constellation(c: Canvas, _f: str) -> None:
     c.p(12, 40, "st")
 
 
+@part("outfit.bomber", "Bomber", "arcade", ("outfit", "accent"))
+def _outfit_bomber(c: Canvas, _f: str) -> None:
+    c.r(5, 33, 30, 11, "outfit")
+    # The ribbed collar and hem in the accent, the zip down the middle, a patch on the chest.
+    c.r(12, 31, 16, 2, "accent_d")
+    c.r(13, 32, 14, 1, "accent")
+    c.r(19, 33, 2, 11, "outfit_d")
+    c.r(5, 42, 30, 2, "accent_d")
+    c.r(5, 36, 3, 6, "outfit_l")
+    c.r(32, 36, 3, 6, "outfit_l")
+    c.r(25, 36, 4, 3, "accent_l")
+    c.p(26, 37, "accent")
+
+
 # ---- hair --------------------------------------------------------------------
 
 part("hair.none", "None", "starter")(nothing)
@@ -394,6 +426,19 @@ def _hair_nebula(c: Canvas, _f: str) -> None:
     c.r(10, 12, 20, 1, "hair_d")
 
 
+@part("hair.mohawk", "Mohawk", "arcade", ("hair",))
+def _hair_mohawk(c: Canvas, _f: str) -> None:
+    # Shaved sides, dark; a tall crest down the middle with a lit edge.
+    c.r(11, 9, 18, 4, "hair_d")
+    c.r(10, 12, 2, 4, "hair_d")
+    c.r(28, 12, 2, 4, "hair_d")
+    c.r(17, 0, 6, 13, "hair")
+    c.r(18, 1, 1, 10, "hair_l")
+    for y in (0, 4, 8):
+        c.p(16, y + 1, "hair")
+        c.p(23, y + 3, "hair")
+
+
 # ---- hats -------------------------------------------------------------------
 
 part("hat.none", "None", "starter")(nothing)
@@ -436,6 +481,18 @@ def _hat_crown(c: Canvas, _f: str) -> None:
     c.r(19, 6, 2, 1, "mg")
     c.p(26, 6, "mg")
     c.r(12, 8, 16, 1, "accent_d")
+
+
+@part("hat.snapback", "Backwards cap", "arcade", ("accent",))
+def _hat_snapback(c: Canvas, _f: str) -> None:
+    # The starter cap turned round: the brim sticks out behind, to the right.
+    c.r(10, 6, 20, 7, "accent")
+    c.r(27, 11, 9, 2, "accent_d")
+    c.r(12, 8, 3, 1, "accent_l")
+    c.r(19, 5, 2, 1, "accent_l")
+    c.r(10, 12, 20, 1, "accent_d")
+    c.r(14, 8, 3, 3, "wh")
+    c.p(15, 9, "accent_d")
 
 
 # ---- faces (frame-aware) ------------------------------------------------------
@@ -535,6 +592,12 @@ def _eye_dot(c: Canvas, x: int) -> None:
     c.p(x + 1, 17, "eyes")
 
 
+def _eye_pixel(c: Canvas, x: int) -> None:
+    # A sprite's eye: a dark square with a lit square inside.
+    c.r(x, 17, 4, 4, "dk")
+    c.r(x + 1, 18, 2, 2, "eyes")
+
+
 part("face.round", "Round", "starter", ("eyes",))(_face(_eye_round))
 part("face.half", "Half-lidded", "starter", ("eyes",))(_face(_eye_half, closed="smirk"))
 part("face.star", "Starry", "starter", ("eyes",))(_face(_eye_star, brows="up"))
@@ -542,6 +605,7 @@ part("face.happy", "Happy", "starter", ())(_face(_eye_happy, closed="smile", ope
 part("face.dot", "Dot", "starter", ("eyes",))(_face(_eye_dot))
 part("face.galaxy", "Galaxy", "cosmic", ("eyes",))(_face(_eye_galaxy, brows="up"))
 part("face.swirl", "Swirl", "cosmic", ("eyes",))(_face(_eye_swirl, closed="smile", opened="big"))
+part("face.pixel", "Pixel", "arcade", ("eyes",))(_face(_eye_pixel, brows="up"))
 
 
 # ---- accessories ---------------------------------------------------------------
@@ -591,6 +655,26 @@ def _accessory_antenna(c: Canvas, _f: str) -> None:
     c.r(19, 3, 2, 6, "accent_d")
     c.r(18, 1, 4, 2, "accent_l")
     c.r(19, 0, 2, 1, "st")
+
+
+@part("accessory.shades", "Shades", "arcade", ("accent",))
+def _accessory_shades(c: Canvas, _f: str) -> None:
+    c.r(12, 16, 16, 1, "accent_d")
+    c.r(13, 17, 6, 4, "dk")
+    c.r(21, 17, 6, 4, "dk")
+    c.r(19, 18, 2, 1, "accent_d")
+    c.r(10, 17, 3, 1, "accent_d")
+    c.r(27, 17, 3, 1, "accent_d")
+    c.p(14, 18, "wh")
+    c.p(22, 18, "wh")
+
+
+@part("accessory.coin", "Coin", "arcade", ())
+def _accessory_coin(c: Canvas, _f: str) -> None:
+    # A coin floating beside the head, the way they do.
+    c.r(33, 14, 2, 4, "yl")
+    c.r(32, 15, 4, 2, "yl")
+    c.p(33, 15, "st")
 
 
 # ---------------------------------------------------------------------------
