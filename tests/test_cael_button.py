@@ -66,6 +66,15 @@ def test_the_panel_asks_cael_over_the_chat_socket_in_one_guide_conversation():
     assert 'case "chunk":' in LOGIC and 'case "done":' in LOGIC and 'case "error":' in LOGIC and 'case "chunk_reset":' in LOGIC
 
 
+def test_the_answer_is_markdown_once_it_is_whole():
+    assert 'import ReactMarkdown, { type Components } from "react-markdown";' in BUTTON and 'import remarkGfm from "remark-gfm";' in BUTTON
+    assert 'className={`cz-guide-a${reply?.done && reply.text ? " chat-markdown" : ""}`}' in BUTTON, "the chat's markdown styles, once whole"
+    assert "<ReactMarkdown remarkPlugins={[remarkGfm]} components={markdownComponents}>{reply.text}</ReactMarkdown>" in BUTTON
+    assert 'target="_blank" rel="noopener noreferrer"' in BUTTON, "a link leaves the panel in a new tab; the page under it stays"
+    rule = BRAND_CSS.split(".cz-guide-a.chat-markdown {")[1].split("}")[0]
+    assert "white-space: normal;" in rule, "pre-wrap is for the words as they stream; markdown makes its own paragraphs"
+
+
 def test_patch_touches_only_the_files_it_claims():
     touched = sorted({line.split()[1][2:] for line in PATCH.splitlines() if line.startswith("+++ b/")})
     assert touched == ["web/package.json", "web/src/components/layout/Header.tsx", "web/src/lib/i18n.ts"]

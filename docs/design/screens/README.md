@@ -34,7 +34,7 @@ cyan → violet, Space with the nebula glows behind every page.
 | `looks-dress.png` | the customizer: the preview that blinks and talks, a tab per layer, the pieces, the colour rows |
 | `shop.png` | the Shop: the packs with their sheets, Starter always yours, Cosmic one tap away, Arcade for sale with its unlock-code slot (M8e) |
 | `agents.png` | the agents list with each agent's look in its row |
-| `cael-explain.png` | Cael's panel from the top bar on Bodies: what the screen is, the next step, a question answered in his words |
+| `cael-explain.png` | Cael's panel from the top bar on Bodies: what the screen is, the next step, a question answered in his words, as markdown once whole (M8f) |
 
 The two quickstart shots were taken over the vite dev server with the daemon's
 answers canned (Playwright routes for `/api/quickstart/*`, `/api/status`, the

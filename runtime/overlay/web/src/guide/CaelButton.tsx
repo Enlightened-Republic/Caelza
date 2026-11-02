@@ -9,6 +9,8 @@ import { useEffect, useRef, useState } from "react";
 import { createPortal } from "react-dom";
 import { Link, useLocation } from "react-router-dom";
 import { Send, X } from "lucide-react";
+import ReactMarkdown, { type Components } from "react-markdown";
+import remarkGfm from "remark-gfm";
 
 import { getQuickstartState } from "@/lib/api";
 import { t } from "@/lib/i18n";
@@ -58,6 +60,12 @@ const TITLE_KEYS: Record<ReturnType<typeof screenOf>, string> = {
 
 /** How long a question may wait for the whole answer. */
 const ANSWER_TIMEOUT_MS = 90_000;
+
+/** Links in his answer open a new tab, so the page under the panel stays; in-page anchors keep theirs (the chat's rule). */
+const markdownComponents: Components = {
+  a: ({ node: _node, href, ...props }) =>
+    href?.startsWith("#") ? <a {...props} href={href} /> : <a {...props} href={href} target="_blank" rel="noopener noreferrer" />,
+};
 
 export function CaelButton() {
   const [open, setOpen] = useState(false);
@@ -230,8 +238,17 @@ function GuidePanel({ onClose }: { onClose: () => void }) {
         {asked ? (
           <div className="cz-guide-thread" aria-live="polite">
             <div className="cz-guide-q">{asked}</div>
-            <div className="cz-guide-a">
-              {reply?.text ? reply.text : busy ? t("guide.thinking") : null}
+            <div className={`cz-guide-a${reply?.done && reply.text ? " chat-markdown" : ""}`}>
+              {reply?.text ? (
+                reply.done ? (
+                  /* Whole: his answer as markdown, in the chat's styles. While it streams, the words as they come. */
+                  <ReactMarkdown remarkPlugins={[remarkGfm]} components={markdownComponents}>{reply.text}</ReactMarkdown>
+                ) : (
+                  reply.text
+                )
+              ) : busy ? (
+                t("guide.thinking")
+              ) : null}
               {reply?.error ? <div className="cz-guide-err">{reply.error}</div> : null}
             </div>
           </div>
