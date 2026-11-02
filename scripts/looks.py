@@ -15,6 +15,7 @@ from __future__ import annotations
 
 import argparse
 import io
+import re
 import sys
 from pathlib import Path
 
@@ -129,6 +130,9 @@ def check(catalog: dict) -> list[str]:
         if not any(p["layer"] == layer and p["pack"] == "starter" for p in catalog["parts"]):
             problems.append(f"the starter pack has no {layer} part (every default needs one)")
     for pack in catalog["packs"]:
+        # An unlock code is `<PACK>-<ID>-<SIGNATURE>`, so a pack id is one word of lowercase letters, digits and `_`.
+        if not re.fullmatch(r"[a-z0-9_]{1,32}", pack["id"]):
+            problems.append(f"pack {pack['id']!r}: a pack id is lowercase letters, digits and _ (no hyphen: codes split on it)")
         if pack["status"] not in ("available", "soon"):
             problems.append(f"pack {pack['id']}: status must be available or soon")
         if pack["status"] == "soon" and any(p["pack"] == pack["id"] for p in catalog["parts"]):

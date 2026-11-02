@@ -106,6 +106,31 @@ test("part and sheet URLs live under the dashboard's static prefix", () => {
   assert.equal(sheetUrl("", "cosmic"), "/_app/looks/sheets/cosmic.png");
 });
 
+test("the outline goes over an opaque backdrop and under the detail layers, as in parts.py", () => {
+  // 3 x 3, every pixel an opaque backdrop, the silhouette in the middle, a detail pixel to its right.
+  const width = 3;
+  const height = 3;
+  const data = new Uint8ClampedArray(width * height * 4);
+  for (let i = 0; i < width * height; i++) data.set([5, 3, 16, 255], i * 4);
+  data.set([250, 1, 1, 255], 4 * 4); // the silhouette pixel, in the skin key
+  data.set([1, 250, 250, 255], 5 * 4); // a detail pixel (eyes key), right of it
+  const sil = new Uint8Array([0, 0, 0, 0, 1, 0, 0, 0, 0]);
+  const det = new Uint8Array([0, 0, 0, 0, 0, 1, 0, 0, 0]);
+  finishPixels(data, sil, width, height, recolorTable({ skin: "#e0a98a", eyes: "#22e6ff" }), det);
+  const px = (i: number) => [data[i * 4], data[i * 4 + 1], data[i * 4 + 2]];
+  assert.deepEqual(px(1), OUTLINE, "above the silhouette: outline over the backdrop");
+  assert.deepEqual(px(3), OUTLINE, "left");
+  assert.deepEqual(px(7), OUTLINE, "below");
+  assert.deepEqual(px(5), ramp("#22e6ff").m, "the detail pixel keeps its colour: the outline is under it");
+  assert.deepEqual(px(0), [5, 3, 16], "a corner is not a 4-neighbour");
+  assert.deepEqual(px(4), ramp("#e0a98a").m, "the silhouette is recoloured, not outlined");
+  // Without `det`, an opaque non-silhouette pixel counts as detail: right for a look with no backdrop.
+  const bare = new Uint8ClampedArray(width * height * 4);
+  bare.set([250, 1, 1, 255], 4 * 4);
+  finishPixels(bare, sil, width, height, recolorTable({ skin: "#e0a98a" }));
+  assert.deepEqual([bare[1 * 4], bare[1 * 4 + 1], bare[1 * 4 + 2], bare[1 * 4 + 3]], [...OUTLINE, 255]);
+});
+
 test("the wardrobe: the starter always, available packs when added, a priced pack once a code opened it", () => {
   assert.deepEqual([...ownedPacks(catalog, null)], [STARTER]);
   assert.deepEqual([...ownedPacks(catalog, { version: 1, packs: ["cosmic", "arcade", "nope"] })], [STARTER, "cosmic"], "arcade is priced: in the wardrobe but not opened");

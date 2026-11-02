@@ -50,9 +50,11 @@ def test_the_transcript_holds_still_and_the_live_turn_talks():
 
 
 def test_the_renderer_shares_one_composed_frame_per_look_and_can_be_decorative():
-    assert "const composed = new Map<string, Promise<ImageData>>();" in LOOK_TSX
+    assert "const composed = new Map<string, Promise<Composed>>();" in LOOK_TSX
     assert "const COMPOSED_LIMIT = 240;" in LOOK_TSX and "composed.clear()" in LOOK_TSX, "the customizer's tweaks do not grow it without bound"
-    assert "p.catch(() => composed.delete(id));" in LOOK_TSX, "a failed composition is tried again"
+    assert "if (!c.complete && composed.get(id) === mine) composed.delete(id);" in LOOK_TSX, "a frame missing a part is drawn but not kept"
+    assert "images.delete(url);" in LOOK_TSX, "a part that failed to load is fetched again next time"
+    assert "return { data, complete: loaded.every((img) => img !== null) };" in LOOK_TSX
     assert "composedFrame(key, look, shown)" in LOOK_TSX
     assert "frames.current" not in LOOK_TSX, "no per-instance cache beside the shared one"
     assert 'decorative ? { "aria-hidden": true as const } : { role: "img", "aria-label": title ?? "the agent\'s look", title }' in LOOK_TSX

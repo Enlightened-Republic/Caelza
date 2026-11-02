@@ -44,7 +44,11 @@ export default function Shop() {
   const [error, setError] = useState<string | null>(null);
   const [notice, setNotice] = useState<string | null>(null);
   const [codes, setCodes] = useState<Record<string, string>>({});
+  const [attempt, setAttempt] = useState(0);
 
+  // The wardrobe from the Runtime. When it cannot be read, it stays unknown
+  // (every Add and Unlock waits on it): an empty stand-in saved by the next
+  // tap would overwrite the real one.
   useEffect(() => {
     let cancelled = false;
     getWardrobe()
@@ -52,15 +56,12 @@ export default function Shop() {
         if (!cancelled) setWardrobe(w);
       })
       .catch((e: unknown) => {
-        if (!cancelled) {
-          setWardrobe({ version: 1, packs: [] });
-          setError(e instanceof Error ? e.message : String(e));
-        }
+        if (!cancelled) setError(errorText(e));
       });
     return () => {
       cancelled = true;
     };
-  }, []);
+  }, [attempt]);
 
   const owned = useMemo(() => ownedPacks(catalog, wardrobe), [wardrobe]);
 
@@ -124,8 +125,22 @@ export default function Shop() {
         }
       />
       {error ? (
-        <div className="text-sm" role="alert" style={{ color: "var(--color-status-error)" }}>
-          {t("shop.failed")} {error}
+        <div className="text-sm flex items-center gap-3 flex-wrap" role="alert" style={{ color: "var(--color-status-error)" }}>
+          <span>
+            {t("shop.failed")} {error}
+          </span>
+          {wardrobe === null ? (
+            <button
+              type="button"
+              className="cz-btn-text"
+              onClick={() => {
+                setError(null);
+                setAttempt((n) => n + 1);
+              }}
+            >
+              {t("shop.retry")}
+            </button>
+          ) : null}
         </div>
       ) : null}
       {notice ? (

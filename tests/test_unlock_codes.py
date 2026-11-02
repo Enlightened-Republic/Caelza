@@ -76,6 +76,10 @@ def test_the_fixture_the_rust_test_checks_is_what_python_mints():
     assert uc.check(RUST_TEST_CODE.replace("TEST2345", "TEST2346", 1), uc.public_key(TEST_SEED)) is None
     for bad in ("", "ARCADE", "ARCADE-TEST2345", "ARCADE-TEST2345-short", "ARCADE-TEST0345-" + RUST_TEST_CODE.split("-", 2)[2], "A" * 200):
         assert uc.parse(bad) is None, bad
+    # The last character carries padding bits: a non-canonical one is refused here as the Runtime refuses it.
+    tail = RUST_TEST_CODE[:-1] + ("h" if RUST_TEST_CODE[-1] != "h" else "g")
+    assert uc.parse(tail) is None and uc.check(tail, uc.public_key(TEST_SEED)) is None
+    assert 'assert_eq!(parse_code(&tail).unwrap_err(), "not an unlock code"' in API_RS
     minted = {uc.mint(TEST_SEED, "arcade") for _ in range(5)}
     assert len(minted) == 5 and all(uc.check(c, uc.public_key(TEST_SEED))[0] == "arcade" for c in minted)
     assert all(ch in uc.ID_ALPHABET for c in minted for ch in c.split("-")[1]) and "O" not in uc.ID_ALPHABET and "0" not in uc.ID_ALPHABET
@@ -101,6 +105,20 @@ def test_the_shops_key_is_one_key_in_the_catalog_and_the_gateway():
     assert len(arcade_parts) >= 7
     sheet = REPO_ROOT / "runtime" / "overlay" / "web" / "public" / "looks" / "sheets" / "arcade.png"
     assert sheet.is_file() and sheet.stat().st_size > 2000
+
+
+def test_a_pack_id_is_one_word_so_a_code_can_name_it():
+    pytest.importorskip("PIL")
+    sys.path.insert(0, str(REPO_ROOT / "looks"))
+    import looks as cli
+
+    catalog = json.loads(json.dumps(CATALOG))
+    catalog["packs"].append({"id": "neon-nights", "name": "Neon", "blurb": "", "price": {"usd": 2}, "status": "soon", "unlock": "code"})
+    problems = cli.check(catalog)
+    assert any("'neon-nights'" in p and "no hyphen" in p for p in problems), problems
+    assert all("arcade" not in p for p in problems)
+    with pytest.raises(ValueError):
+        uc.mint(TEST_SEED, "neon-nights")
 
 
 def test_the_cli_mints_and_verifies_and_keeps_the_key_private(tmp_path: Path):
@@ -145,7 +163,8 @@ def test_patch_touches_only_the_files_it_claims():
     assert "+export function unlockPack(code: string): Promise<Wardrobe> {" in PATCH
     assert '-    \'shop.codes_soon\': "codes arrive with the first priced pack",' in PATCH
     added = dict(re.findall(r"^\+    '(shop\.[a-z_]+)': (.*),$", PATCH, re.M))
-    assert set(added) == {"shop.code_bad", "shop.code_hint", "shop.code_other_pack", "shop.get_code", "shop.unlock", "shop.unlocked", "shop.unlocking"}
+    assert set(added) == {"shop.code_bad", "shop.code_hint", "shop.code_other_pack", "shop.get_code", "shop.retry", "shop.unlock", "shop.unlocked", "shop.unlocking"}
+    assert "+    'looks.wardrobe_failed': " in PATCH
     assert "{pack}" in added["shop.code_other_pack"]
     rt = MANIFEST["components"]["runtime"]
     assert rt["unlock_codes"] == "scripts/unlock_codes.py" and rt["unlock_patch"] == "runtime/patches/0014-unlock-codes.patch"

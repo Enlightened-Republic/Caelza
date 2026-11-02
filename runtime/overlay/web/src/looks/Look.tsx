@@ -32,13 +32,17 @@ export const catalog = catalogJson as unknown as Catalog;
 
 const images = new Map<string, Promise<HTMLImageElement>>();
 
+/** A part's PNG, fetched once; a failed fetch is forgotten so the next draw tries again. */
 function loadImage(url: string): Promise<HTMLImageElement> {
   let p = images.get(url);
   if (!p) {
     p = new Promise((resolve, reject) => {
       const img = new Image();
       img.onload = () => resolve(img);
-      img.onerror = () => reject(new Error(`could not load ${url}`));
+      img.onerror = () => {
+        images.delete(url);
+        reject(new Error(`could not load ${url}`));
+      };
       img.src = url;
     });
     images.set(url, p);
@@ -46,10 +50,17 @@ function loadImage(url: string): Promise<HTMLImageElement> {
   return p;
 }
 
+/** A composed frame; `complete` is false when a part's PNG did not load (drawn without it, not cached). */
+interface Composed {
+  data: ImageData;
+  complete: boolean;
+}
+
 /** The composed character for one frame, ready to draw. */
-async function compose(look: LookData, frame: Frame): Promise<ImageData> {
+async function compose(look: LookData, frame: Frame): Promise<Composed> {
   const { width, height } = GRID;
   const sil = new Uint8Array(width * height);
+  const det = new Uint8Array(width * height);
   const out = document.createElement("canvas");
   out.width = width;
   out.height = height;
@@ -71,26 +82,39 @@ async function compose(look: LookData, frame: Frame): Promise<ImageData> {
     target.drawImage(img, 0, 0);
   });
   const silData = sctx.getImageData(0, 0, width, height).data;
-  for (let i = 0; i < width * height; i++) sil[i] = silData[i * 4 + 3]! > 0 ? 1 : 0;
+  const detData = dctx.getImageData(0, 0, width, height).data;
+  for (let i = 0; i < width * height; i++) {
+    sil[i] = silData[i * 4 + 3]! > 0 ? 1 : 0;
+    det[i] = detData[i * 4 + 3]! > 0 ? 1 : 0;
+  }
   ctx.drawImage(silCanvas, 0, 0);
   ctx.drawImage(detCanvas, 0, 0);
   const data = ctx.getImageData(0, 0, width, height);
-  finishPixels(data.data, sil, width, height, recolorTable(look.colors));
-  return data;
+  finishPixels(data.data, sil, width, height, recolorTable(look.colors), det);
+  return { data, complete: loaded.every((img) => img !== null) };
 }
 
 /** Composed frames for the page, by look and frame. The customizer makes a new
- *  key per tweak, so the cache is emptied when it grows past a few hundred. */
-const composed = new Map<string, Promise<ImageData>>();
+ *  key per tweak, so the cache is emptied when it grows past a few hundred. A
+ *  frame missing a part (its PNG did not load) is drawn but not kept. */
+const composed = new Map<string, Promise<Composed>>();
 const COMPOSED_LIMIT = 240;
 
-function composedFrame(key: string, look: LookData, frame: Frame): Promise<ImageData> {
+function composedFrame(key: string, look: LookData, frame: Frame): Promise<Composed> {
   const id = `${key}\n${frame}`;
   let p = composed.get(id);
   if (!p) {
     if (composed.size >= COMPOSED_LIMIT) composed.clear();
     p = compose(look, frame);
-    p.catch(() => composed.delete(id));
+    const mine = p;
+    p.then(
+      (c) => {
+        if (!c.complete && composed.get(id) === mine) composed.delete(id);
+      },
+      () => {
+        if (composed.get(id) === mine) composed.delete(id);
+      },
+    );
     composed.set(id, p);
   }
   return p;
@@ -163,7 +187,7 @@ export function Look({ look, size = 64, talking = false, frame, decorative = fal
     if (typeof document === "undefined") return;
     let cancelled = false;
     void composedFrame(key, look, shown)
-      .then((data) => {
+      .then(({ data }) => {
         const canvas = ref.current;
         if (!canvas || cancelled) return;
         canvas.getContext("2d")?.putImageData(data, 0, 0);
