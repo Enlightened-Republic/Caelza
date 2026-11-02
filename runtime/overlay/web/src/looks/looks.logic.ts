@@ -51,8 +51,10 @@ export interface CatalogPack {
   blurb: string;
   price: "free" | { usd: number };
   status: "available" | "soon";
-  /** How a priced pack unlocks, once the gateway can verify a code. */
+  /** How a priced pack unlocks: `code`, an unlock code from the owner's shop (scripts/unlock_codes.py). */
   unlock?: string;
+  /** Where a code is sold, once the owner has a storefront. */
+  buy?: string;
 }
 export interface Catalog {
   version: number;
@@ -61,6 +63,8 @@ export interface Catalog {
   frames: Frame[];
   slots: Slot[];
   colors: Record<Slot, string[]>;
+  /** The public key the Runtime checks unlock codes against (api_looks.rs carries the same hex). */
+  unlock?: { scheme: string; public_key: string };
   packs: CatalogPack[];
   parts: CatalogPart[];
   cael: { parts: Record<Layer, string>; colors: Record<Slot, string> };
@@ -74,6 +78,8 @@ export interface Look {
 export interface Wardrobe {
   version: 1;
   packs: string[];
+  /** Pack id → the id of the code that opened it; the Runtime keeps these, only a code adds one. */
+  unlocks?: Record<string, string>;
 }
 
 /** The pack every wardrobe holds. */
@@ -207,12 +213,44 @@ export function partById(catalog: Catalog, id: string): CatalogPart | null {
   return catalog.parts.find((p) => p.id === id) ?? null;
 }
 
-/** The packs whose pieces the owner can wear: the starter, plus the available packs in the wardrobe. */
+export function isPriced(pack: CatalogPack): boolean {
+  return pack.price !== "free";
+}
+
+/** A code opened this pack before (the Runtime remembers), so it goes back into the wardrobe without one. */
+export function unlocked(packId: string, wardrobe: Wardrobe | null): boolean {
+  return typeof wardrobe?.unlocks?.[packId] === "string";
+}
+
+/** The packs whose pieces the owner can wear: the starter, plus the available
+ *  packs in the wardrobe; a priced pack only once a code opened it. */
 export function ownedPacks(catalog: Catalog, wardrobe: Wardrobe | null): Set<string> {
   const owned = new Set<string>([STARTER]);
-  const available = new Set(catalog.packs.filter((p) => p.status === "available").map((p) => p.id));
-  for (const id of wardrobe?.packs ?? []) if (available.has(id)) owned.add(id);
+  const inWardrobe = new Set(wardrobe?.packs ?? []);
+  for (const pack of catalog.packs) {
+    if (pack.status !== "available" || !inWardrobe.has(pack.id)) continue;
+    if (isPriced(pack) && !unlocked(pack.id, wardrobe)) continue;
+    owned.add(pack.id);
+  }
   return owned;
+}
+
+const CODE_ID = /^[23456789ABCDEFGHJKLMNPQRSTUVWXYZ]{8}$/;
+const CODE_SIGNATURE = /^[A-Za-z0-9_-]{86}$/;
+
+/** An unlock code's shape, `<PACK>-<ID>-<signature>`, before the Runtime
+ *  checks the signature: which pack it names and its id, or null when it is
+ *  not shaped like one. Case and spaces do not matter. */
+export function parseUnlockCode(code: string): { pack: string; id: string } | null {
+  const text = code.replace(/\s+/g, "");
+  const first = text.indexOf("-");
+  const second = first < 0 ? -1 : text.indexOf("-", first + 1);
+  if (first < 0 || second < 0) return null;
+  const pack = text.slice(0, first).toLowerCase();
+  const id = text.slice(first + 1, second).toUpperCase();
+  const signature = text.slice(second + 1);
+  if (!/^[a-z0-9_]{1,64}$/.test(pack) || !CODE_ID.test(id) || !CODE_SIGNATURE.test(signature)) return null;
+  return { pack, id };
 }
 
 /** What a look must be to be saved: every layer a part of that layer, every slot a colour. */

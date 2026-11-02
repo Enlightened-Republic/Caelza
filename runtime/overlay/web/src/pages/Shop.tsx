@@ -1,25 +1,49 @@
 // The Shop (vision M8): the packs in looks/catalog.json. A free pack joins
 // the wardrobe with one tap and its pieces appear in every agent's
-// customizer; a "soon" pack is announced; a priced pack will take an unlock
-// code once the gateway can verify one. The wardrobe lives on the Runtime
-// (/api/looks/wardrobe), so it is the same on every device.
+// customizer; a "soon" pack is announced; a priced pack takes an unlock code
+// (`<PACK>-<ID>-<signature>`, minted by the owner with
+// scripts/unlock_codes.py), which the Runtime checks against its public key
+// and remembers, so the pack goes back in without a code once opened. The
+// wardrobe lives on the Runtime (/api/looks/wardrobe), so it is the same on
+// every device.
 import { useEffect, useMemo, useState } from "react";
 import { Link } from "react-router-dom";
-import { Check, Clock, Plus, Shirt } from "lucide-react";
+import { Check, Clock, KeyRound, Plus, Shirt } from "lucide-react";
 
 import { Badge, Button, PageHeader } from "@/components/ui";
-import { getWardrobe, putWardrobe } from "@/lib/api";
+import { getWardrobe, putWardrobe, unlockPack } from "@/lib/api";
 import { basePath } from "@/lib/basePath";
 import { t } from "@/lib/i18n";
 import { catalog } from "@/looks/Look";
-import { STARTER, ownedPacks, priceLabel, sheetUrl, type CatalogPack, type Wardrobe } from "@/looks/looks.logic";
+import { STARTER, isPriced, ownedPacks, parseUnlockCode, priceLabel, sheetUrl, unlocked, type CatalogPack, type Wardrobe } from "@/looks/looks.logic";
 
 const MUTED = { color: "var(--pc-text-muted)" } as const;
+
+/** The gateway's reason when it gave one, else the error's own words. */
+function errorText(e: unknown): string {
+  const envelope = (e as { envelope?: { message?: unknown } } | null)?.envelope;
+  if (envelope && typeof envelope.message === "string") return envelope.message;
+  const text = e instanceof Error ? e.message : String(e);
+  // The looks routes answer `{"error": "..."}`, which the client wraps as `API 400: {...}`.
+  const wrapped = /^API \d+: (\{[\s\S]*\})$/.exec(text);
+  if (wrapped) {
+    try {
+      const body = JSON.parse(wrapped[1]!) as { error?: unknown; message?: unknown };
+      if (typeof body.error === "string") return body.error;
+      if (typeof body.message === "string") return body.message;
+    } catch {
+      /* not JSON after all */
+    }
+  }
+  return text;
+}
 
 export default function Shop() {
   const [wardrobe, setWardrobe] = useState<Wardrobe | null>(null);
   const [busy, setBusy] = useState<string | null>(null);
   const [error, setError] = useState<string | null>(null);
+  const [notice, setNotice] = useState<string | null>(null);
+  const [codes, setCodes] = useState<Record<string, string>>({});
 
   useEffect(() => {
     let cancelled = false;
@@ -44,12 +68,42 @@ export default function Shop() {
     if (busy) return;
     setBusy(pack.id);
     setError(null);
+    setNotice(null);
     const current = wardrobe?.packs ?? [];
     const next = add ? [...current.filter((p) => p !== pack.id), pack.id] : current.filter((p) => p !== pack.id);
     try {
       setWardrobe(await putWardrobe({ version: 1, packs: next }));
     } catch (e) {
-      setError(e instanceof Error ? e.message : String(e));
+      setError(errorText(e));
+    } finally {
+      setBusy(null);
+    }
+  };
+
+  // A code for a priced pack: its shape is checked here (and which pack it
+  // names), its signature on the Runtime, which answers with the wardrobe.
+  const unlock = async (pack: CatalogPack) => {
+    if (busy) return;
+    const code = codes[pack.id] ?? "";
+    setError(null);
+    setNotice(null);
+    const parsed = parseUnlockCode(code);
+    if (!parsed) {
+      setError(t("shop.code_bad"));
+      return;
+    }
+    if (parsed.pack !== pack.id) {
+      const other = catalog.packs.find((p) => p.id === parsed.pack);
+      setError(t("shop.code_other_pack").replace("{pack}", other?.name ?? parsed.pack));
+      return;
+    }
+    setBusy(pack.id);
+    try {
+      setWardrobe(await unlockPack(code));
+      setCodes((c) => ({ ...c, [pack.id]: "" }));
+      setNotice(t("shop.unlocked"));
+    } catch (e) {
+      setError(errorText(e));
     } finally {
       setBusy(null);
     }
@@ -72,6 +126,11 @@ export default function Shop() {
       {error ? (
         <div className="text-sm" role="alert" style={{ color: "var(--color-status-error)" }}>
           {t("shop.failed")} {error}
+        </div>
+      ) : null}
+      {notice ? (
+        <div className="text-sm" role="status" style={{ color: "var(--color-status-success)" }}>
+          {notice}
         </div>
       ) : null}
       <div className="space-y-4">
@@ -124,17 +183,47 @@ export default function Shop() {
                         {t("shop.remove")}
                       </button>
                     </>
-                  ) : pack.price === "free" ? (
+                  ) : isPriced(pack) && !unlocked(pack.id, wardrobe) ? (
+                    <form
+                      className="cz-unlock flex items-center gap-2 flex-wrap"
+                      onSubmit={(e) => {
+                        e.preventDefault();
+                        void unlock(pack);
+                      }}
+                    >
+                      <input
+                        className="cz-input"
+                        style={{ height: 36, width: 220, maxWidth: "100%" }}
+                        value={codes[pack.id] ?? ""}
+                        onChange={(e) => setCodes((c) => ({ ...c, [pack.id]: e.target.value }))}
+                        placeholder={`${pack.id.toUpperCase()}-XXXXXXXX-…`}
+                        aria-label={t("shop.code_label")}
+                        spellCheck={false}
+                        autoComplete="off"
+                        disabled={busy !== null || wardrobe === null}
+                      />
+                      <Button variant="primary" size="sm" type="submit" disabled={busy !== null || wardrobe === null || !(codes[pack.id] ?? "").trim()}>
+                        <KeyRound className="h-4 w-4" />
+                        {busy === pack.id ? t("shop.unlocking") : t("shop.unlock")}
+                      </Button>
+                      <span className="text-xs" style={MUTED}>
+                        {t("shop.code_hint")}
+                        {pack.buy ? (
+                          <>
+                            {" "}
+                            <a className="underline" href={pack.buy} target="_blank" rel="noreferrer">
+                              {t("shop.get_code")}
+                            </a>
+                          </>
+                        ) : null}
+                      </span>
+                    </form>
+                  ) : (
+                    /* Free, or a priced pack a code opened before: one tap. */
                     <Button variant="primary" size="sm" disabled={busy !== null || wardrobe === null} onClick={() => void change(pack, true)}>
                       <Plus className="h-4 w-4" />
                       {busy === pack.id ? t("shop.adding") : t("shop.add")}
                     </Button>
-                  ) : (
-                    <label className="flex items-center gap-2 text-xs" style={MUTED}>
-                      {t("shop.code_label")}
-                      <input className="cz-input" style={{ height: 36, width: 160 }} disabled placeholder="XXXX-XXXX" />
-                      <span>{t("shop.codes_soon")}</span>
-                    </label>
                   )}
                 </div>
               </div>

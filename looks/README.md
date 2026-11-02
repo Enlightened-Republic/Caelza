@@ -34,9 +34,33 @@ accessory) on top. Faces have three frames: `closed`, `open`, `blink`.
 ## Adding a pack
 
 1. Draw the pieces in `parts.py` with the `@part("layer.name", "Name", "pack", ("slots",))` decorator; keep to the grid conventions at the top of the file and BRAND.md's palette.
-2. List the pack and its pieces in `catalog.json` (`price: "free"` or `{"usd": n}` with an `unlock`; `status: "available"`, or `"soon"` with no pieces yet).
+2. List the pack and its pieces in `catalog.json` (`price: "free"`, or `{"usd": n}` with `"unlock": "code"`; `status: "available"`, or `"soon"` with no pieces yet; `buy` is the storefront link once there is one).
 3. `python3 scripts/looks.py export`, then look at `runtime/overlay/web/public/looks/sheets/<pack>.png`.
 4. `python3 scripts/looks.py check` (CI runs it through `tests/test_looks.py`).
+
+## Selling a pack: unlock codes
+
+A priced pack (the Arcade pack is the first) opens with a code the owner
+mints and the Runtime checks; nothing else is needed, so a pack can be sold
+through any storefront that can hand out a code after payment.
+
+```
+python3 scripts/unlock_codes.py keygen --out ~/.caelza-keys/unlock.key      # once: the signing key, kept out of the repo
+python3 scripts/unlock_codes.py mint --key ~/.caelza-keys/unlock.key --pack arcade --count 10
+python3 scripts/unlock_codes.py verify ARCADE-7K3PQ2M9-…                    # against the catalog's public key
+```
+
+A code is `<PACK>-<ID>-<SIGNATURE>`: the pack, eight characters that make
+it its own (no 0/O or 1/I), and an Ed25519 signature over
+`caelza-unlock:v1:<pack>:<id>`. The public key lives in two places that
+`tests/test_unlock_codes.py` keeps equal: `catalog.json` (`unlock.public_key`)
+and the gateway (`api_looks.rs` `UNLOCK_PUBLIC_KEY`, verified through rustls'
+ring provider, so no new crate). The owner pastes a code into the Shop; the
+Runtime verifies it (`POST /api/looks/wardrobe/unlock`), puts the pack in the
+wardrobe and remembers the unlock, so the pack goes back in with one tap
+after a remove. Rotating the key is `keygen` again and the two hex strings
+updated; codes minted with the old key stop working, unlocks already
+recorded stay. A code is cosmetic: this is an honest storefront, not DRM.
 
 Every agent gets a default dealt from its name until the owner dresses it;
 Cael's is fixed (`CAEL_LOOK`). A saved look lives on the Runtime at
