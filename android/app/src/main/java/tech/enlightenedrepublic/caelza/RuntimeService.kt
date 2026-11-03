@@ -10,6 +10,8 @@ import android.util.Log
 import androidx.core.app.NotificationCompat
 import androidx.core.app.NotificationManagerCompat
 import androidx.core.content.ContextCompat
+import kotlinx.coroutines.CancellationException
+import kotlinx.coroutines.CoroutineExceptionHandler
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.Job
@@ -74,7 +76,8 @@ class RuntimeService : Service() {
         val detail: String = "",
     )
 
-    private val scope = CoroutineScope(SupervisorJob() + Dispatchers.IO)
+    /** Nothing launched here may take the process down: an escaped exception is logged, not thrown at Android. */
+    private val scope = CoroutineScope(SupervisorJob() + Dispatchers.IO + CoroutineExceptionHandler { _, e -> Log.e(TAG, "unhandled in the service", e) })
     private lateinit var store: RuntimeStore
     private var job: Job? = null
     private var corpusJob: Job? = null
@@ -254,19 +257,28 @@ class RuntimeService : Service() {
      */
     private fun startBody() {
         if (bodyServer?.isRunning == true) return
+        val token: String
         try {
             val home = BodyHome(File(filesDir, BodyHome.DIR_NAME))
             home.prune()
-            val token = home.token()
-            store.ensureBodyWiring(token)
+            token = home.token()
             val tools = BodyTools(BodyShell(ShizukuShell()), home, AndroidSensors(applicationContext))
             val server = BodyServer(tools, token, log = { Log.w(TAG, it) })
             server.start()
             bodyServer = server
             _body.value = BodyState(serving = true, port = server.port, tools = tools.tools.size)
         } catch (e: Exception) {
+            // The port held by another Body (Termux on the same phone): the Runtime keeps that
+            // Body's own wiring; writing this app's token into the config would point it at a
+            // server that answers 401 to it.
             Log.w(TAG, "Body not serving", e)
             _body.value = BodyState(detail = "not serving: ${e.message ?: e.javaClass.simpleName}")
+            return
+        }
+        try {
+            store.ensureBodyWiring(token)
+        } catch (e: Exception) {
+            Log.w(TAG, "Body wiring not written", e)
         }
     }
 
@@ -278,7 +290,18 @@ class RuntimeService : Service() {
 
     private fun startRuntime() {
         stopping = false
-        job = scope.launch { supervise() }
+        job = scope.launch {
+            try {
+                supervise()
+            } catch (e: CancellationException) {
+                throw e
+            } catch (e: Exception) {
+                // A full disk, a pointer that cannot be written: the ladder stops with a word
+                // (the Python supervisor's try/except around the guard), the process stays up.
+                Log.e(TAG, "supervisor stopped", e)
+                halt("supervisor error: ${e.message ?: e.javaClass.simpleName}")
+            }
+        }
     }
 
     private fun stopRuntime() {
@@ -322,6 +345,7 @@ class RuntimeService : Service() {
             process = proc
             _state.value = RuntimeState(Phase.RUNNING, version)
             updateNotification(getString(R.string.status_running, version ?: ""))
+            corpusJob?.cancel()
             corpusJob = scope.launch { loadCaelCorpus() }
             scope.launch { promoteWhenStable(proc, version, myGeneration) }
             val code = withContextWait(proc)

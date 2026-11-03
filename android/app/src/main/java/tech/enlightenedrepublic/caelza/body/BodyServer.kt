@@ -16,6 +16,7 @@ import java.net.Socket
 import java.net.SocketTimeoutException
 import java.security.MessageDigest
 import java.util.Base64
+import java.util.concurrent.Semaphore
 import java.util.concurrent.atomic.AtomicBoolean
 
 /**
@@ -39,6 +40,8 @@ class BodyServer(
 ) {
     private var socket: ServerSocket? = null
     private val running = AtomicBoolean(false)
+    /** Connections being served: past the cap the next one is told 503 and closed, so no app on the phone can pile up threads. */
+    private val connections = Semaphore(MAX_CONNECTIONS)
 
     val port: Int get() = socket?.localPort ?: requestedPort
     val isRunning: Boolean get() = running.get()
@@ -73,10 +76,33 @@ class BodyServer(
             } catch (_: Exception) {
                 if (running.get()) continue else break
             }
-            Thread({ serve(client) }, "caelza-body-conn").apply {
+            if (!connections.tryAcquire()) {
+                Thread({ refuseBusy(client) }, "caelza-body-busy").apply {
+                    isDaemon = true
+                    start()
+                }
+                continue
+            }
+            Thread({
+                try {
+                    serve(client)
+                } finally {
+                    connections.release()
+                }
+            }, "caelza-body-conn").apply {
                 isDaemon = true
                 start()
             }
+        }
+    }
+
+    private fun refuseBusy(client: Socket) {
+        try {
+            client.use { sock ->
+                sock.soTimeout = 2_000
+                writeResponse(BufferedOutputStream(sock.getOutputStream()), Response(503, TEXT, "too many connections".toByteArray()), close = true)
+            }
+        } catch (_: Exception) {
         }
     }
 
@@ -86,8 +112,16 @@ class BodyServer(
             val input = BufferedInputStream(sock.getInputStream())
             val output = BufferedOutputStream(sock.getOutputStream())
             while (running.get()) {
+                // The head first; a request that cannot pass is refused before a byte of its
+                // body is read, so a stranger on the phone cannot make the Body hold 16 MiB
+                // per connection while it waits for bytes that never come.
                 val request = try {
-                    readRequest(input) ?: return
+                    val head = readHead(input) ?: return
+                    refusal(head)?.let { r ->
+                        writeResponse(output, r, close = true)
+                        return
+                    }
+                    Request(head.method, head.path, head.headers, readBody(input, head.length))
                 } catch (e: HttpError) {
                     writeResponse(output, Response(e.status, TEXT, (e.message ?: "bad request").toByteArray()), close = true)
                     return
@@ -115,6 +149,11 @@ class BodyServer(
 
     // --- HTTP -----------------------------------------------------------------
 
+    /** The request line and the headers, before the body is read. */
+    private class Head(val method: String, val path: String, val headers: Map<String, String>, val length: Long) {
+        fun header(name: String): String? = headers[name.lowercase()]
+    }
+
     private class Request(val method: String, val path: String, val headers: Map<String, String>, val body: ByteArray) {
         fun header(name: String): String? = headers[name.lowercase()]
     }
@@ -135,8 +174,8 @@ class BodyServer(
         return buf.toString("ISO-8859-1").trimEnd('\r')
     }
 
-    /** One request, or null at a clean end of the connection. */
-    private fun readRequest(input: InputStream): Request? {
+    /** The request line and the headers, or null at a clean end of the connection. */
+    private fun readHead(input: InputStream): Head? {
         var line = readLine(input) ?: return null
         while (line.isEmpty()) line = readLine(input) ?: return null
         val parts = line.split(' ')
@@ -156,14 +195,40 @@ class BodyServer(
         }
         val length = headers["content-length"]?.toLongOrNull() ?: 0L
         if (length < 0 || length > MAX_BODY) throw HttpError(413, "body too large")
-        val body = ByteArray(length.toInt())
-        var read = 0
-        while (read < body.size) {
-            val n = input.read(body, read, body.size - read)
-            if (n < 0) throw HttpError(400, "body cut short")
-            read += n
+        return Head(parts[0], parts[1], headers, length)
+    }
+
+    /**
+     * What a request fails on before its body is worth reading: the path, then for `/mcp` the
+     * Host and the bearer, then the method. Null means read the body and handle it.
+     */
+    private fun refusal(head: Head): Response? {
+        val path = head.path.substringBefore('?')
+        if (path == HEALTH_PATH) {
+            if (head.method != "GET") return Response(405, TEXT, "method not allowed".toByteArray(), allow = "GET")
+            if (head.length > 0) return Response(400, TEXT, "no body expected".toByteArray())
+            return null
         }
-        return Request(parts[0], parts[1], headers, body)
+        if (path != MCP_PATH) return Response(404, TEXT, "not found".toByteArray())
+        if (!hostOk(head.header("host"))) return Response(421, TEXT, "unexpected Host header".toByteArray())
+        if (!bearerOk(head.header("authorization"))) return Response(401, TEXT, "unauthorized".toByteArray())
+        if (head.method != "POST") return Response(405, TEXT, "method not allowed".toByteArray(), allow = "POST")
+        return null
+    }
+
+    /** The body of a request that passed, read in pieces rather than allocated whole up front. */
+    private fun readBody(input: InputStream, length: Long): ByteArray {
+        if (length == 0L) return ByteArray(0)
+        val out = ByteArrayOutputStream(minOf(length, 64L * 1024).toInt())
+        val buf = ByteArray(16 * 1024)
+        var remaining = length
+        while (remaining > 0) {
+            val n = input.read(buf, 0, minOf(buf.size.toLong(), remaining).toInt())
+            if (n < 0) throw HttpError(400, "body cut short")
+            out.write(buf, 0, n)
+            remaining -= n
+        }
+        return out.toByteArray()
     }
 
     private fun writeResponse(out: OutputStream, r: Response, close: Boolean) {
@@ -308,6 +373,8 @@ class BodyServer(
 
         const val IDLE_TIMEOUT_MS = 60_000
         const val MAX_BODY = 16L * 1024 * 1024
+        /** The Runtime's MCP client holds one or two; the rest is headroom, not a pool for strangers. */
+        const val MAX_CONNECTIONS = 8
 
         private const val TEXT = "text/plain; charset=utf-8"
         private const val JSON = "application/json"
@@ -315,7 +382,7 @@ class BodyServer(
         private val REASONS = mapOf(
             200 to "OK", 202 to "Accepted", 400 to "Bad Request", 401 to "Unauthorized", 404 to "Not Found",
             405 to "Method Not Allowed", 411 to "Length Required", 413 to "Payload Too Large", 421 to "Misdirected Request",
-            431 to "Request Header Fields Too Large", 500 to "Internal Server Error",
+            431 to "Request Header Fields Too Large", 500 to "Internal Server Error", 503 to "Service Unavailable",
         )
     }
 }

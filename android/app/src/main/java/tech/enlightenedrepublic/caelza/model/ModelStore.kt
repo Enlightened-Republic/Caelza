@@ -92,6 +92,18 @@ object VerifiedDownload {
                     part.delete()
                     have = 0
                 }
+                if (have == bytes && have > 0) {
+                    // Whole already (the process died between the last write and the rename):
+                    // verify it with no request at all; a range past the end would only earn a 416.
+                    hashInto(digest, part)
+                    if (hex(digest) == sha256) {
+                        Files.move(part.toPath(), dest.toPath(), StandardCopyOption.REPLACE_EXISTING, StandardCopyOption.ATOMIC_MOVE)
+                        return dest
+                    }
+                    part.delete()
+                    have = 0
+                    digest.reset()
+                }
                 if (have > 0) hashInto(digest, part)
                 downloader.open(url, have).use { dl ->
                     if (have > 0 && !dl.resumed) {
@@ -113,7 +125,7 @@ object VerifiedDownload {
                     }
                 }
                 if (part.length() != bytes) throw IOException("short download: ${part.length()} of $bytes bytes")
-                val actual = digest.digest().joinToString("") { "%02x".format(it) }
+                val actual = hex(digest)
                 if (actual != sha256) {
                     part.delete()
                     throw IllegalStateException("checksum mismatch for ${dest.name}: expected ${sha256.take(12)}…, got ${actual.take(12)}…")
@@ -127,6 +139,8 @@ object VerifiedDownload {
         }
         throw lastError ?: IOException("download failed")
     }
+
+    private fun hex(digest: MessageDigest): String = digest.digest().joinToString("") { "%02x".format(it) }
 
     private fun hashInto(digest: MessageDigest, file: File) {
         file.inputStream().use { input ->

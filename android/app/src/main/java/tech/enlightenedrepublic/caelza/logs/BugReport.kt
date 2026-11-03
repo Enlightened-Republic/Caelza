@@ -163,9 +163,12 @@ object BugReport {
     private val SCRUBS: List<Pair<Regex, String>> = listOf(
         // A bearer first, so `Authorization: Bearer …` then folds into one blank below.
         Regex("""(?i)\bBearer\s+[A-Za-z0-9._~+/=-]+""") to "Bearer $REDACTED",
-        // name = value / name: value: the name may follow `_`, `-` or `.` (paired_tokens, admin-token, x.api_key),
-        // the value a bearer, a quoted string, an array or one word (stopping at `&`, so a URL's next field stays).
-        Regex("""(?i)(?<![A-Za-z])($KEYISH)(\s*[:=]\s*)(?:Bearer\s+\S+|"[^"\n]*"|'[^'\n]*'|\[[^\]\n]*]|[^\s"',;&]+)""") to "$1$2$REDACTED",
+        // name = value / name: value: the name may follow `_`, `-` or `.` (paired_tokens, admin-token, x.api_key) and
+        // may be quoted as a JSON key (`"api_key": "…"`); the value a bearer, a quoted string, an array or one word
+        // (stopping at `&`, so a URL's next field stays).
+        Regex("""(?i)(?<![A-Za-z])($KEYISH)("?)(\s*[:=]\s*)(?:Bearer\s+\S+|"[^"\n]*"|'[^'\n]*'|\[[^\]\n]*]|[^\s"',;&]+)""") to "$1$2$3$REDACTED",
+        // The gateway's first-start banner boxes the one-time pairing code (`│  482913  │`).
+        Regex("""(│\s*)\d{4,12}(\s*│)""") to "$1$REDACTED$2",
         Regex("""\bsk-[A-Za-z0-9_-]{8,}""") to REDACTED,
         Regex("""\b(?:ghp|gho|ghu|ghs|github_pat|gsk|xoxb|xoxp|xapp)[_-][A-Za-z0-9_-]{8,}""") to REDACTED,
         Regex("""\bAIza[0-9A-Za-z_-]{20,}""") to REDACTED,

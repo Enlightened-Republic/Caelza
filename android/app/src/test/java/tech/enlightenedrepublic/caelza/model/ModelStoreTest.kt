@@ -87,6 +87,29 @@ class ModelStoreTest {
     }
 
     @Test
+    fun a_part_that_is_already_whole_is_verified_without_a_request() {
+        // The process died between the last write and the rename: no range past the end (a 416 that nothing could clear).
+        val s = store()
+        File(s.dir, gguf.file + ".part").apply { parentFile!!.mkdirs(); writeBytes(payload) }
+        val dl = FakeDownloader(payload)
+        assertTrue(s.download(gguf, dl).readBytes().contentEquals(payload))
+        assertEquals(emptyList<Long>(), dl.opens)
+        assertTrue(s.verified(gguf))
+        assertFalse(File(s.dir, gguf.file + ".part").exists())
+    }
+
+    @Test
+    fun a_whole_part_with_the_wrong_bytes_is_thrown_away_and_fetched_again() {
+        val s = store()
+        val wrong = payload.copyOf().also { it[7] = (it[7] + 1).toByte() }
+        File(s.dir, gguf.file + ".part").apply { parentFile!!.mkdirs(); writeBytes(wrong) }
+        val dl = FakeDownloader(payload)
+        assertTrue(s.download(gguf, dl).readBytes().contentEquals(payload))
+        assertEquals("from the start", listOf(0L), dl.opens)
+        assertTrue(s.verified(gguf))
+    }
+
+    @Test
     fun tampered_bytes_are_refused_and_nothing_is_kept() {
         val s = store()
         val wrong = payload.copyOf().also { it[7] = (it[7] + 1).toByte() }

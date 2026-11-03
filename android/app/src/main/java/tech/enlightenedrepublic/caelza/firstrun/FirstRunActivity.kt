@@ -357,7 +357,7 @@ class FirstRunActivity : AppCompatActivity() {
                 line(getString(R.string.fr_verified, g.file))
             }
             models.writeServe(ModelServe(pick.agent.file))
-            CaelzaCli(binary, filesDir, ::line).configure(FirstRun.localConfig(pick))
+            CaelzaCli(binary, filesDir, log = ::line).configure(FirstRun.localConfig(pick))
             CaelzaCli.writeCaelPersona(store.configDir, assets.open(CAEL_SOUL).bufferedReader().readText())
             line(getString(R.string.fr_that_worked_local, pick.agent.name))
             runOnUiThread { advance() }
@@ -383,7 +383,7 @@ class FirstRunActivity : AppCompatActivity() {
             return
         }
         work {
-            CaelzaCli(binary, filesDir, ::line).configure(FirstRun.keyConfig(p, model, key))
+            CaelzaCli(binary, filesDir, log = ::line).configure(FirstRun.keyConfig(p, model, key))
             ModelStore(File(store.configDir, ModelStore.DIR)).clearServe()
             CaelzaCli.writeCaelPersona(store.configDir, assets.open(CAEL_SOUL).bufferedReader().readText())
             line(getString(R.string.fr_that_worked_key, p.label))

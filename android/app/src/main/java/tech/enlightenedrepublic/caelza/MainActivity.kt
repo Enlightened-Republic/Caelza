@@ -5,6 +5,7 @@ import android.content.Intent
 import android.os.Bundle
 import android.util.Log
 import android.view.View
+import android.webkit.WebResourceRequest
 import android.webkit.WebView
 import android.webkit.WebViewClient
 import androidx.activity.addCallback
@@ -214,6 +215,8 @@ class MainActivity : AppCompatActivity() {
 
     private var handoffToken: String? = null
     private var handoffTarget: String? = null
+    /** The gateway's port the shell is showing: the one origin the WebView stays on and the token goes to. */
+    private var dashboardPort: Int = RuntimeStore.GATEWAY_PORT
 
     /**
      * The dashboard, paired: with a token the shell first opens /health on the gateway's
@@ -221,6 +224,7 @@ class MainActivity : AppCompatActivity() {
      * dashboard, which finds itself paired; the view shows once the dashboard has loaded.
      */
     private fun loadDashboard(port: Int, token: String?) {
+        dashboardPort = port
         val target = Gateway.url(port)
         if (token == null) {
             binding.dashboard.loadUrl(target)
@@ -233,16 +237,32 @@ class MainActivity : AppCompatActivity() {
         binding.dashboard.loadUrl(Gateway.url(port, "/health"))
     }
 
+    /**
+     * The WebView is the gateway's and nothing else's: the token is injected only on the
+     * gateway's own /health (scheme, host and port compared, not a path suffix), and a link
+     * to any other origin (a URL in a chat, a docs link) opens in the browser instead of
+     * taking the shell, and with it the next handoff, somewhere else.
+     */
     private inner class TokenHandoff : WebViewClient() {
+        override fun shouldOverrideUrlLoading(view: WebView, request: WebResourceRequest): Boolean {
+            if (Gateway.own(request.url.toString(), dashboardPort)) return false
+            try {
+                startActivity(Intent(Intent.ACTION_VIEW, request.url))
+            } catch (e: Exception) {
+                Log.w("caelza", "no app for ${request.url}", e)
+            }
+            return true
+        }
+
         override fun onPageFinished(view: WebView, url: String?) {
             val token = handoffToken
             val target = handoffTarget
-            if (token != null && target != null && url != null && url.endsWith("/health")) {
+            if (token != null && target != null && url == Gateway.url(dashboardPort, "/health")) {
                 handoffToken = null
                 view.evaluateJavascript(GatewayPairing.tokenScript(token)) { view.loadUrl(target) }
                 return
             }
-            if (target != null && url != null && url.startsWith(target)) {
+            if (target != null && Gateway.own(url, dashboardPort)) {
                 handoffTarget = null
                 showDashboard(true)
             }

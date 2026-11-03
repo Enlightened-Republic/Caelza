@@ -330,18 +330,10 @@ class ProcessProber(
     companion object {
         private val VERSION = Regex("""^caelza\s+(\d+\.\d+\.\d+\S*)""")
 
-        /** `caelza --version` → `0.8.6`, or null when the binary does not answer. */
+        /** `caelza --version` → `0.8.6`, or null when the binary does not answer (or not in time: a hang is killed). */
         fun versionOf(binary: File, timeoutMs: Long = 30_000): String? = try {
-            val proc = ProcessBuilder(binary.path, "--version").redirectErrorStream(true).start()
-            val out = proc.inputStream.bufferedReader().readText()
-            if (!proc.waitFor(timeoutMs, java.util.concurrent.TimeUnit.MILLISECONDS)) {
-                proc.destroyForcibly()
-                null
-            } else if (proc.exitValue() != 0) {
-                null
-            } else {
-                VERSION.find(out.trim())?.groupValues?.get(1)
-            }
+            val out = Processes.run(ProcessBuilder(binary.path, "--version"), timeoutMs)
+            if (out.exitCode != 0) null else VERSION.find(out.output.trim())?.groupValues?.get(1)
         } catch (_: Exception) {
             null
         }

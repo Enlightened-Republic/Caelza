@@ -134,7 +134,11 @@ the shell on its waiting screen and the next tick asks again),
 goes on the app's own API calls (Cael's corpus loader) and is handed to the
 dashboard before its scripts run: the shell opens `/health` on the gateway's
 origin, drops the token into `localStorage` there, then navigates to the
-dashboard, which finds itself paired. So no other app on the phone can use the
+dashboard, which finds itself paired. The shell trusts exactly that origin
+(scheme, host and port, `Gateway.own`): the token is dropped only on the
+gateway's own `/health`, and a link to anywhere else, in a chat or a memory,
+opens in the phone's browser instead of inside the WebView, so a page cannot
+take the dashboard or the token elsewhere. So no other app on the phone can use the
 gateway's API, which was the open item in §6; a config the app wrote before
 it could pair is turned on at the next start, and `require_pairing` is
 re-asserted at every start.

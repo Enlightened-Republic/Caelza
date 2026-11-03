@@ -24,6 +24,20 @@ object Gateway {
 
     fun url(port: Int, path: String = "/"): String = "http://127.0.0.1:$port$path"
 
+    /**
+     * Is `url` on the gateway's own origin, scheme, host and port all three? The shell's
+     * WebView hands its paired token only to this origin and opens every other one in
+     * the browser, so a link in a chat can never take the dashboard, or the token, elsewhere.
+     */
+    fun own(url: String?, port: Int): Boolean {
+        val u = try {
+            java.net.URI(url ?: return false)
+        } catch (_: Exception) {
+            return false
+        }
+        return u.scheme == "http" && u.host == "127.0.0.1" && u.port == port
+    }
+
     /** Does `/health` answer 200 within `timeoutMs`? */
     fun healthy(port: Int, timeoutMs: Int = 2_000): Boolean = try {
         val conn = URL(url(port, "/health")).openConnection() as HttpURLConnection
