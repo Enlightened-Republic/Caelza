@@ -183,6 +183,33 @@ class BodyServerTest {
     }
 
     @Test
+    fun a_request_that_cannot_pass_is_refused_before_its_body_is_read() {
+        // 16 MiB declared and none sent: the refusal comes at once, not after a wait for bytes that never come.
+        val started = System.currentTimeMillis()
+        val noToken = raw("POST /mcp HTTP/1.1\r\nHost: 127.0.0.1:$port\r\nContent-Length: ${BodyServer.MAX_BODY}\r\n\r\n")
+        assertTrue(noToken, noToken.startsWith("HTTP/1.1 401 ") && noToken.contains("Connection: close"))
+        val wrongHost = raw("POST /mcp HTTP/1.1\r\nHost: evil.example\r\nAuthorization: Bearer $token\r\nContent-Length: ${BodyServer.MAX_BODY}\r\n\r\n")
+        assertTrue(wrongHost, wrongHost.startsWith("HTTP/1.1 421 "))
+        val wrongPath = raw("POST /nope HTTP/1.1\r\nHost: 127.0.0.1:$port\r\nContent-Length: ${BodyServer.MAX_BODY}\r\n\r\n")
+        assertTrue(wrongPath, wrongPath.startsWith("HTTP/1.1 404 "))
+        assertTrue("answered within the idle timeout, so the body was never awaited", System.currentTimeMillis() - started < 10_000)
+    }
+
+    @Test
+    fun connections_are_capped_and_the_one_past_the_cap_is_told_so() {
+        val held = (1..BodyServer.MAX_CONNECTIONS).map { Socket("127.0.0.1", port) }
+        try {
+            Thread.sleep(300)
+            val extra = raw("GET /health HTTP/1.1\r\nHost: 127.0.0.1:$port\r\n\r\n")
+            assertTrue(extra, extra.startsWith("HTTP/1.1 503 "))
+        } finally {
+            held.forEach { it.close() }
+        }
+        Thread.sleep(300)
+        assertEquals("the slots come back once those connections end", 200, http("GET", BodyServer.HEALTH_PATH, auth = null).first)
+    }
+
+    @Test
     fun one_connection_serves_several_requests() {
         val ping = rpc("ping", id = 1).toString()
         val one = "POST /mcp HTTP/1.1\r\nHost: 127.0.0.1:$port\r\nAuthorization: Bearer $token\r\nContent-Type: application/json\r\nContent-Length: ${ping.length}\r\n\r\n$ping"

@@ -49,6 +49,11 @@ class BugReportTest {
             "GET /api/pair?token=abc123&x=1" to "GET /api/pair?token=[redacted]&x=1",
             "pairing_code: 482913" to "pairing_code: [redacted]",
             "password='hunter22'" to "password=[redacted]",
+            // A JSON body: the quoted key keeps its quotes, the value goes.
+            "{\"api_key\": \"sk-ant-api03-abcdefghijklmnop\", \"model\": \"x\"}" to "{\"api_key\": [redacted], \"model\": \"x\"}",
+            "\"token\":\"QmFzZTY0VG9rZW4\"" to "\"token\":[redacted]",
+            // The gateway's first-start banner boxes the pairing code (`caelza paircode` prints it the same way).
+            "  │  482913  │" to "  │  [redacted]  │",
         )
         for ((input, expected) in cases) assertEquals(input, expected, BugReport.scrub(input))
 
@@ -59,6 +64,9 @@ class BugReportTest {
             "the admin token file is data/gateway-admin.token",
             "An API key is a password for a model provider.",
             "2026-11-01T08:35:00Z INFO gateway listening on 127.0.0.1:42617",
+            "  ┌──────────────┐",
+            "  │  caelza  │",
+            "{\"model\": \"qwen\", \"temperature\": 0.2}",
         )
         for (line in untouched) assertEquals(line, BugReport.scrub(line))
     }

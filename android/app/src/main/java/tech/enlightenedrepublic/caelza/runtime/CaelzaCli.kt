@@ -1,7 +1,6 @@
 package tech.enlightenedrepublic.caelza.runtime
 
 import java.io.File
-import java.util.concurrent.TimeUnit
 
 /**
  * The installed Runtime's own command line, run with `HOME` set to the app's
@@ -10,24 +9,23 @@ import java.util.concurrent.TimeUnit
  * Termux, validated by the Runtime and, for a key, encrypted by it. The
  * first run uses it to point the agent at its brain and to create Cael.
  */
-class CaelzaCli(private val binary: File, private val home: File, private val log: (String) -> Unit = {}) {
+class CaelzaCli(
+    private val binary: File,
+    private val home: File,
+    private val timeoutMs: Long = TIMEOUT_S * 1000,
+    private val log: (String) -> Unit = {},
+) {
     class Failed(message: String) : Exception(message)
 
     fun configSet(path: String, value: String) {
-        val pb = ProcessBuilder(binary.path, "config", "set", "--no-interactive", path, value)
-            .directory(home)
-            .redirectErrorStream(true)
+        val pb = ProcessBuilder(binary.path, "config", "set", "--no-interactive", path, value).directory(home)
         pb.environment()["HOME"] = home.path
         pb.environment()["TERM"] = "dumb"
-        val proc = pb.start()
-        proc.outputStream.close()
-        val out = proc.inputStream.bufferedReader().readText()
-        if (!proc.waitFor(TIMEOUT_S, TimeUnit.SECONDS)) {
-            proc.destroyForcibly()
-            throw Failed("caelza config set $path did not finish in ${TIMEOUT_S}s")
-        }
-        if (proc.exitValue() != 0) {
-            throw Failed("caelza config set $path failed (exit ${proc.exitValue()}): ${out.trim().takeLast(400)}")
+        // The value (a key, perhaps) is one argv element: no shell, and never in a message.
+        val out = Processes.run(pb, timeoutMs)
+        val code = out.exitCode ?: throw Failed("caelza config set $path did not finish in ${timeoutMs / 1000}s")
+        if (code != 0) {
+            throw Failed("caelza config set $path failed (exit $code): ${out.output.trim().takeLast(400)}")
         }
         log("set $path")
     }

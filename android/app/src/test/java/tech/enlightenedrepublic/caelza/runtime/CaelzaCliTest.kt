@@ -55,6 +55,22 @@ class CaelzaCliTest {
     }
 
     @Test
+    fun a_caelza_that_hangs_is_killed_at_the_deadline_instead_of_holding_the_caller() {
+        // Neither exits nor closes stdout: reading its output first would wait forever and the deadline would never come.
+        val bin = File(tmp.root, "caelza").apply {
+            writeText("#!/bin/sh\necho started\nexec sleep 60\n")
+            setExecutable(true, false)
+        }
+        val started = System.currentTimeMillis()
+        val e = assertThrows(CaelzaCli.Failed::class.java) { CaelzaCli(bin, tmp.root, timeoutMs = 1_000).configSet("a.b", "1") }
+        assertTrue(e.message, e.message!!.contains("did not finish in 1s"))
+        assertTrue("killed at the deadline", System.currentTimeMillis() - started < 15_000)
+        val probed = System.currentTimeMillis()
+        org.junit.Assert.assertNull("the installer's probe gives up the same way", ProcessProber.versionOf(bin, timeoutMs = 1_000))
+        assertTrue(System.currentTimeMillis() - probed < 15_000)
+    }
+
+    @Test
     fun caels_workspace_gets_his_soul_and_identity_once() {
         val config = File(tmp.root, ".caelza")
         val ws = CaelzaCli.writeCaelPersona(config, "You are Cael.\n")
