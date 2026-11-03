@@ -62,6 +62,9 @@ def check(catalog: dict) -> list[str]:
     seen_kinds: set[str] = set()
     for i, p in enumerate(providers):
         where = f"providers[{i}]"
+        if not isinstance(p, dict):
+            problems.append(f"{where}: must be an object, not {type(p).__name__}")
+            continue
         kind = p.get("id")
         if not isinstance(kind, str) or not _KIND.match(kind):
             problems.append(f"{where}: id must be the Runtime's provider kind (lowercase, underscores)")
@@ -86,6 +89,9 @@ def check(catalog: dict) -> list[str]:
         ids: set[str] = set()
         tag_count = {t: 0 for t in TAGS}
         for m in models:
+            if not isinstance(m, dict):
+                problems.append(f"{where}: model entries must be objects, not {m!r}")
+                continue
             mid = m.get("id")
             if not isinstance(mid, str) or not _ID.match(mid):
                 problems.append(f"{where}: model id {mid!r} is not a model name")
@@ -107,7 +113,7 @@ def check(catalog: dict) -> list[str]:
         for tag in TAGS:
             if tag_count[tag] > 1:
                 problems.append(f"{where}: more than one model tagged {tag!r}")
-        first_tag = models[0].get("tag")
+        first_tag = models[0].get("tag") if isinstance(models[0], dict) else None
         if first_tag != "best":
             problems.append(f"{where}: the first model must be the 'best' pick (the wheel rests on it)")
     return problems
@@ -116,7 +122,11 @@ def check(catalog: dict) -> list[str]:
 def check_against_models_dev(catalog: dict, models_dev: dict) -> list[str]:
     """Every model id must exist under the provider's models.dev key."""
     problems: list[str] = []
+    if not isinstance(models_dev, dict):
+        return [f"models.dev: expected an object of providers, got {type(models_dev).__name__}"]
     for p in catalog.get("providers", []):
+        if not isinstance(p, dict):
+            continue  # check() has said so
         key = p.get("models_dev") or p.get("id")
         prov = models_dev.get(key)
         if not isinstance(prov, dict):
@@ -124,6 +134,8 @@ def check_against_models_dev(catalog: dict, models_dev: dict) -> list[str]:
             continue
         known = prov.get("models") or {}
         for m in p.get("models", []):
+            if not isinstance(m, dict):
+                continue
             if m.get("id") not in known:
                 problems.append(f"provider {p.get('id')}: models.dev/{key} does not list {m.get('id')!r}")
     return problems
@@ -176,11 +188,14 @@ def main(argv: list[str] | None = None) -> int:
     problems = check(catalog)
     models_dev = None
     if args.models_dev:
-        models_dev = json.loads(args.models_dev.read_text(encoding="utf-8"))
+        try:
+            models_dev = json.loads(args.models_dev.read_text(encoding="utf-8"))
+        except (OSError, ValueError) as e:
+            problems.append(f"could not read {args.models_dev}: {e}")
     elif args.online:
         try:
             models_dev = fetch_models_dev()
-        except OSError as e:
+        except (OSError, ValueError) as e:  # the network, or a body that is not JSON
             problems.append(f"could not fetch {MODELS_DEV_URL}: {e}")
     if models_dev is not None:
         problems += check_against_models_dev(catalog, models_dev)

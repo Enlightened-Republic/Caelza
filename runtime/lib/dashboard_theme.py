@@ -66,6 +66,8 @@ def theme_entries(tokens: dict) -> list[dict]:
             # purple at the top left, cyan at the bottom right, as the hero has them.
             "--cz-glow-1": _rgba(c["purple"], 0.22),
             "--cz-glow-2": _rgba(c["primary"], 0.14),
+            # The mark gradient the page titles are filled with (.cz-page-title).
+            "--cz-gradient-mark": _gradient(c["gradient_mark"]),
         },
     }
     lt = {
@@ -101,9 +103,19 @@ def theme_entries(tokens: dict) -> list[dict]:
             # Faint on the light base: the tint, not the glow.
             "--cz-glow-1": _rgba(c["purple"], 0.07),
             "--cz-glow-2": _rgba(light["primary"], 0.06),
+            # The title gradient starts from the light theme's own cyan: the mark's
+            # #22e6ff is 1.4:1 on the light base, the light primary 4.2:1, the violet
+            # and the purple 3.5:1 and 3.3:1, all past AA for the bold 20 px titles.
+            "--cz-gradient-mark": _gradient([light["primary"], c["violet"], c["purple"]]),
         },
     }
     return [dark, lt]
+
+
+def _gradient(stops: list[str]) -> str:
+    """`linear-gradient(90deg, a 0%, b 50%, c 100%)` from three stops."""
+    a, b, c = stops
+    return f"linear-gradient(90deg, {a} 0%, {b} 50%, {c} 100%)"
 
 
 def patch_registry(themes_path: Path, entries: list[dict]) -> None:

@@ -129,7 +129,7 @@ mcp_server = "xanima"             # published 2026-10-19; keeps a `sharpwave` al
 brain_dir = "~/.xanima/<agent>/brain.db"   # ~/.sharpwave is read until `xanima-server migrate`
 token_env = "XANIMA_BRAIN_TOKEN"  # OPENWAVE_BRAIN_TOKEN still accepted with a warning
 upgrade_cli = "xanima-openclaw-upgrade"    # copies plugins.entries.openwave -> plugins.entries.xanima
-tools = 43                        # brain_* names unchanged and permanent; schema v25
+tools = 42                        # brain_* names unchanged and permanent; what the 0.7.0 service's tools/list answers (read 2026-11-03); schema v28
 integration = "mind/README.md"
 # M3: the native Memory backend in the Runtime (`[memory] backend = "xanima"`),
 # carried into every build as an overlay file plus a patch (see mind/README.md §C).

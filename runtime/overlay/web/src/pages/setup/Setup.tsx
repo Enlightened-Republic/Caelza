@@ -7,7 +7,7 @@
 // whole thing goes through upstream's /api/quickstart/apply, so the result
 // is exactly what the full wizard (still at /quickstart, "Advanced setup")
 // would have written. Phone-first: one column, 52 px buttons, 390 px wide.
-import { useEffect, useMemo, useState, type ReactNode } from "react";
+import { useEffect, useMemo, useState, type KeyboardEvent, type ReactNode } from "react";
 import { Link, useNavigate } from "react-router-dom";
 import { ArrowLeft, Eye, EyeOff, ExternalLink, KeyRound, Sparkles } from "lucide-react";
 
@@ -24,6 +24,7 @@ import { basePath } from "@/lib/basePath";
 import { t } from "@/lib/i18n";
 import { Eyebrow, Mark, Wordmark } from "@/components/brand/CaelzaLockup";
 import {
+  LOCAL_ALIAS,
   RAM_BANDS,
   bandMb,
   guessDefaults,
@@ -42,6 +43,7 @@ import {
   judgeKey,
   keyPageName,
   modelRows,
+  providerAlias,
   providerById,
   providerRows,
   secretField,
@@ -140,6 +142,9 @@ export default function Setup() {
     setLive(null);
     setTyped(false);
     setExtra({});
+    // A key pasted for one provider never rides along to the next one.
+    setKey("");
+    setShowKey(false);
     void (async () => {
       try {
         const f = await quickstartFields({ section: "model_provider", type_key: providerId });
@@ -186,10 +191,20 @@ export default function Setup() {
   const pRows = useMemo(() => providerRows(catalog, state?.model_provider_types ?? null, more), [state, more]);
   const mRows = useMemo(() => modelRows(provider, live?.live ? live.models : null), [provider, live]);
 
-  // The model wheel rests on the pick when the provider changes.
+  // The model wheel rests on the pick when the provider changes. The live list
+  // lands seconds later (the Runtime asks the provider, then models.dev): it
+  // adds rows under the owner's choice without moving the wheel off it.
   useEffect(() => {
-    if (!typed) setModel(defaultModel(mRows));
-  }, [mRows, typed]);
+    if (typed) return;
+    if (model === "" || !mRows.some((r) => r.id === model)) setModel(defaultModel(mRows));
+  }, [mRows, typed, model]);
+
+  // A provider the Runtime can list nothing for (no curated picks, an empty or
+  // keyless answer) goes straight to the typed box instead of a wheel that
+  // says "asking" forever.
+  useEffect(() => {
+    if (live !== null && mRows.length === 0) setTyped(true);
+  }, [live, mRows]);
 
   // A provider that fell off the wheel (the Runtime does not list it, or "more" closed) gives way to the first row.
   useEffect(() => {
@@ -205,6 +220,16 @@ export default function Setup() {
   const verdict = judgeKey(key, provider?.key_prefix ?? "");
   const extrasFilled = extras.every((d) => (extra[d.key] ?? "").trim() !== "");
   const canTry = model.trim() !== "" && (verdict.ok || secretKey === null) && extrasFilled && !busy;
+  // `<kind>.<alias>` for every provider the config holds: the next free alias, so a second setup never fails on the first's.
+  const aliases = state?.model_providers ?? [];
+
+  // The phone keyboard's Go key (Enter) does what the primary button does.
+  const onEnter = (fn: () => void) => (e: KeyboardEvent<HTMLInputElement>) => {
+    if (e.key === "Enter") {
+      e.preventDefault();
+      fn();
+    }
+  };
 
   const apply = async (staged: StagedProvider, guide?: string) => {
     setBusy(true);
@@ -226,12 +251,14 @@ export default function Setup() {
 
   const tryKey = () => {
     if (!canTry) return;
-    void apply(stagedKeyProvider(providerId, model, secretKey, key, { ...nonEmptyFields(fieldSeed), ...extra }));
+    void apply(
+      stagedKeyProvider(providerId, model, secretKey, key, { ...nonEmptyFields(fieldSeed), ...extra }, providerAlias(aliases, providerId)),
+    );
   };
 
   const useLocal = () => {
     if (busy) return;
-    void apply(stagedLocalProvider(runner, pick.model, nonEmptyFields(localSeed)), pick.guide);
+    void apply(stagedLocalProvider(runner, pick.model, nonEmptyFields(localSeed), providerAlias(aliases, runner, LOCAL_ALIAS)), pick.guide);
   };
 
   const go = (next: Screen) => {
@@ -368,6 +395,9 @@ export default function Setup() {
             className="cz-input"
             value={model}
             onChange={(e) => setModel(e.target.value)}
+            onKeyDown={onEnter(() => {
+              if (model.trim() !== "") go("key");
+            })}
             placeholder={defaultModel(mRows)}
             autoCapitalize="none"
             autoCorrect="off"
@@ -384,7 +414,7 @@ export default function Setup() {
             value={model}
             onChange={setModel}
           />
-          {mRows.length === 0 ? <p className="cz-note">{t("setup.loading")}</p> : null}
+          {live === null && mRows.length === 0 ? <p className="cz-note">{t("setup.loading")}</p> : null}
           <div className="cz-mono">{model}</div>
         </>
       );
@@ -434,6 +464,7 @@ export default function Setup() {
                   type={showKey ? "text" : "password"}
                   value={key}
                   onChange={(e) => setKey(e.target.value)}
+                  onKeyDown={onEnter(tryKey)}
                   placeholder={fill(t("setup.key_hint"), { prefix: provider?.key_prefix ?? "" })}
                   autoCapitalize="none"
                   autoCorrect="off"
@@ -460,6 +491,7 @@ export default function Setup() {
                 value={extra[d.key] ?? ""}
                 placeholder={d.default ?? ""}
                 onChange={(e) => setExtra((prev) => ({ ...prev, [d.key]: e.target.value }))}
+                onKeyDown={onEnter(tryKey)}
                 autoCapitalize="none"
                 autoCorrect="off"
                 spellCheck={false}

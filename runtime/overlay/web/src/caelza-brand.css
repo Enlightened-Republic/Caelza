@@ -119,11 +119,23 @@
    caelza-light), so another theme from the settings page gets a plain base. */
 
 .cz-space {
+  position: relative;
+  isolation: isolate;
   background-color: var(--pc-bg-base);
+}
+/* The glows on a fixed layer of their own rather than background-attachment:
+   fixed, which iOS Safari ignores (the glows would then size to the whole
+   document, a blob the height of a long page) and Android Chrome repaints on
+   every scroll. The layer sits under the page's content, over its base colour. */
+.cz-space::before {
+  content: "";
+  position: fixed;
+  inset: 0;
+  z-index: -1;
+  pointer-events: none;
   background-image:
     radial-gradient(60% 40% at 12% 0%, var(--cz-glow-1, transparent), transparent 70%),
     radial-gradient(50% 35% at 90% 100%, var(--cz-glow-2, transparent), transparent 70%);
-  background-attachment: fixed;
   background-repeat: no-repeat;
 }
 
@@ -466,6 +478,19 @@ main .surface-panel {
    page sits outside the dashboard chrome, so these are the page's own rules. */
 
 .cz-setup {
+  /* Space in every theme, so the dark palette's text, borders and inputs too: the
+     page is outside the dashboard chrome but inside its theme, and Caelza Light
+     would otherwise put its near-black text on this background. */
+  --pc-text-primary: #e8e4f0;
+  --pc-text-secondary: #a8a8c0;
+  --pc-text-muted: #6e6e85;
+  --pc-text-faint: #4a4a5e;
+  --pc-border: rgba(255, 255, 255, 0.08);
+  --pc-border-strong: rgba(255, 255, 255, 0.15);
+  --pc-bg-surface: #0c0918;
+  --pc-bg-elevated: #120e22;
+  --pc-bg-input: #06040f;
+  --pc-hover: rgba(255, 255, 255, 0.05);
   min-height: 100vh;
   min-height: 100dvh;
   color: var(--pc-text-primary);
@@ -501,7 +526,8 @@ main .surface-panel {
   font-size: 11px;
   letter-spacing: 0.16em;
   text-transform: uppercase;
-  color: var(--pc-text-muted);
+  /* Secondary, not muted: at 11-14 px the muted grey is 4.1:1 on Space, under AA. */
+  color: var(--pc-text-secondary);
 }
 .cz-kicker-violet {
   color: #7b6bff;
@@ -520,7 +546,8 @@ main .surface-panel {
   filter: drop-shadow(0 0 14px rgba(34, 230, 255, 0.18));
 }
 .cz-bubble {
-  background: rgba(18, 14, 34, 0.85);
+  /* The theme's elevated surface: Cael's panel in the top bar is read in Caelza Light too. */
+  background: var(--pc-bg-elevated);
   border: 1px solid var(--pc-border);
   border-left: 2px solid #7b6bff;
   border-radius: 14px;
@@ -528,6 +555,10 @@ main .surface-panel {
   display: flex;
   flex-direction: column;
   gap: 8px;
+}
+/* The setup page is Space in every theme, so its bubble keeps the dark glass. */
+.cz-setup .cz-bubble {
+  background: rgba(18, 14, 34, 0.85);
 }
 .cz-bubble-text {
   font-size: 16px;
@@ -579,7 +610,7 @@ main .surface-panel {
   font-size: 13px;
 }
 .cz-setup-foot a {
-  color: var(--pc-text-muted);
+  color: var(--pc-text-secondary);
   min-height: 2.25rem;
   display: inline-flex;
   align-items: center;
@@ -635,7 +666,7 @@ main .surface-panel {
   padding: 0 6px;
   border: none;
   background: transparent;
-  color: var(--pc-text-muted);
+  color: var(--pc-text-secondary);
   font-size: 14px;
   cursor: pointer;
 }

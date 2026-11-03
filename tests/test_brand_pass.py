@@ -37,7 +37,9 @@ def test_patch_touches_only_the_files_it_claims():
 def test_the_top_bar_wears_the_mark_and_the_wordmark_on_every_width():
     assert "+import { Mark, Wordmark } from '@/components/brand/CaelzaLockup';" in PATCH
     assert "+            <Mark src={`${basePath}/_app/logo.png`} size={28} />" in PATCH
-    assert "+            <Wordmark size=\"sm\" />" in PATCH
+    # The wordmark yields below 460 px: at 390 the six controls fill the bar and it was drawn under the palette button.
+    assert '+            <Wordmark size="sm" className="hidden min-[460px]:inline" />' in PATCH
+    assert '+          <div className="flex items-center gap-2 min-w-0">' in PATCH
     # The page title keeps its place on a desktop; the page's own header carries it on a phone.
     assert '+          <h1 className="hidden md:block' in PATCH
     assert '-          <h1 className="h-9 leading-9 text-lg font-semibold tracking-tight truncate min-w-0" style={{ color: \'var(--pc-text-primary)\' }}>{pageTitle}</h1>' in PATCH
@@ -52,6 +54,18 @@ def test_titles_buttons_and_the_backdrop_take_the_brand():
     assert "background: var(--cz-gradient-mark);" in BRAND_CSS.split(".cz-page-title {")[1].split("}")[0]
     # The glows fall back to nothing, so a theme without them gets a plain base.
     assert "var(--cz-glow-1, transparent)" in BRAND_CSS and "var(--cz-glow-2, transparent)" in BRAND_CSS
+    # The glows on a fixed layer of their own: background-attachment: fixed is ignored by iOS Safari.
+    assert ".cz-space::before {" in BRAND_CSS and "background-attachment: fixed" not in BRAND_CSS
+    # Cael's bubble takes the theme's surface in the dashboard; the setup page (Space in every theme) keeps the dark glass.
+    bubble = BRAND_CSS.split(".cz-bubble {")[1].split("}")[0]
+    assert "background: var(--pc-bg-elevated);" in bubble and ".cz-setup .cz-bubble {" in BRAND_CSS
+    # ... and so pins the dark palette's text and surfaces for its subtree, whatever theme the dashboard wears.
+    setup = BRAND_CSS.split("\n.cz-setup {")[1].split("}")[0]
+    for var in ("--pc-text-primary: #e8e4f0;", "--pc-text-secondary: #a8a8c0;", "--pc-border: rgba(255, 255, 255, 0.08);", "--pc-bg-input: #06040f;"):
+        assert var in setup, var
+    # Text the owner acts on is never the muted grey (4.1:1 on Space, under AA at 13-14 px).
+    for rule in (".cz-btn-text {", ".cz-setup-foot a {", ".cz-kicker {"):
+        assert "color: var(--pc-text-secondary);" in BRAND_CSS.split(rule)[1].split("}")[0], rule
     # The pairing screen's and the error boundary's primary button follow.
     assert re.search(r"^\.btn-electric \{", BRAND_CSS, re.M)
 
@@ -65,6 +79,10 @@ def test_the_theme_carries_the_glow_colours():
     # Faint on the light base: a tint, not a glow.
     assert float(light["vars"]["--cz-glow-1"].rsplit(",", 1)[1].rstrip(")")) < 0.1
     assert float(light["vars"]["--cz-glow-2"].rsplit(",", 1)[1].rstrip(")")) < 0.1
+    # The title gradient per theme: the mark's on dark; on light it starts from the light primary (the mark's
+    # cyan is 1.4:1 on the light base). The theme vars go inline on :root, so they win over the stylesheet's default.
+    assert dark["vars"]["--cz-gradient-mark"] == "linear-gradient(90deg, #22e6ff 0%, #7b6bff 50%, #b44fff 100%)"
+    assert light["vars"]["--cz-gradient-mark"].startswith("linear-gradient(90deg, #0a8fb0 0%,")
 
 
 def test_manifest_points_at_the_pass():

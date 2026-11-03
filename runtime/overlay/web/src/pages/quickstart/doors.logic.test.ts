@@ -66,6 +66,10 @@ test("the local door stages <runner>.local, the alias the installers write", () 
   assert.equal(doorOf(stagedLocalProvider("llamacpp", "x")), "local");
   assert.equal(doorOf({ provider_type: "anthropic", alias: "default" }), "key");
   assert.equal(doorOf({ provider_type: "ollama", alias: "default" }), "key");
+  // A second local setup writes local2 (setup.logic's providerAlias); it is still the local door.
+  assert.equal(stagedLocalProvider("llamacpp", "x", {}, "local2").alias, "local2");
+  assert.equal(doorOf({ provider_type: "llamacpp", alias: "local2" }), "local");
+  assert.equal(doorOf({ provider_type: "llamacpp", alias: "localhost" }), "key");
 });
 
 test("the field buffer is seeded and trimmed the way upstream's form does it", () => {

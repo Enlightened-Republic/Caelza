@@ -52,7 +52,11 @@ def test_the_checker_catches_the_mistakes_an_edit_makes():
     p["models"].append({"id": "x", "label": "x", "tag": "cheapest"})  # a tag that is not one
     broken["providers"].append(dict(broken["providers"][1], id="openai"))  # a provider twice
     broken["providers"][2]["key_page"] = "http://plain"
+    broken["providers"][3]["models"].append("gpt-5")  # a bare string where an object goes
+    broken["providers"].append("mistral")  # the same, one level up
     problems = model_catalog.check(broken)
+    assert any("model entries must be objects" in m and "gpt-5" in m for m in problems)
+    assert any("providers[9]: must be an object, not str" in m for m in problems), problems
     assert any("exactly one model must be tagged 'best'" in m for m in problems)
     assert any("listed twice" in m and "claude-sonnet-5-5" in m for m in problems)
     assert any("unknown tag 'cheapest'" in m for m in problems)
@@ -148,6 +152,17 @@ def test_the_page_stages_upstreams_shapes_and_the_wheel_is_a_listbox():
     # The key door writes <provider>.default, the local door <runner>.local (the doors' logic).
     assert 'export const KEY_ALIAS = "default";' in LOGIC
     assert "stagedLocalProvider(runner, pick.model" in PAGE and "stagedKeyProvider(providerId, model" in PAGE
+    # ... unless that alias exists already: the Runtime refuses one that does, so the next free one is taken.
+    assert "export function providerAlias(" in LOGIC
+    assert "providerAlias(aliases, providerId)" in PAGE and "providerAlias(aliases, runner, LOCAL_ALIAS)" in PAGE
+    assert "state?.model_providers ?? []" in PAGE, "the aliases the config holds come from the quickstart state"
+    # A key never rides along to the next provider; the live list never moves the wheel off the owner's choice;
+    # a provider the Runtime lists nothing for goes to the typed box; Enter does what the button does.
+    assert 'setKey("");' in PAGE
+    assert "!mRows.some((r) => r.id === model)" in PAGE
+    assert "if (live !== null && mRows.length === 0) setTyped(true);" in PAGE
+    assert "live === null && mRows.length === 0" in PAGE
+    assert PAGE.count("onKeyDown={onEnter(") == 3
     assert "quickstartApply(submission(" in PAGE
     assert 'to="/quickstart"' in PAGE, "the full wizard is one tap away"
     # Everything the owner is not asked takes a default the daemon lists.
