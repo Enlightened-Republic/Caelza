@@ -21,6 +21,7 @@
 #   CAELZA_MIND_DIR=...          where it lands (default ~/.local/share/caelza/mind)
 #   CAELZA_BIN_DIR=...           where the launcher goes
 #   CAELZA_SERVICE=1             also install the boot script / systemd user unit
+#   CAELZA_SKIP_CHECKSUM=1       install a release asset that has no .sha256 beside it (refused otherwise)
 #   GITHUB_TOKEN=ghp_...         required while the repo is private (API + asset download)
 #
 # The Runtime is a separate install (runtime/termux-install.sh, or the release
@@ -40,16 +41,21 @@ termux=0
 case "${PREFIX:-}" in */com.termux/*) termux=1 ;; esac
 if [ "$termux" = 1 ]; then
   BIN_DIR="${CAELZA_BIN_DIR:-$PREFIX/bin}"
-  say "installing packages (node, and what the native sqlite modules build with)"
-  pkg install -y nodejs python make clang pkg-config >/dev/null
+  # Termux's own sh for the scripts this writes: /usr/bin/env is only there through termux-exec's preload.
+  SHEBANG="$PREFIX/bin/sh"
+  say "installing packages (node, jq for the token lines below, and what the native sqlite modules build with)"
+  pkg install -y nodejs python make clang pkg-config jq >/dev/null
 else
   BIN_DIR="${CAELZA_BIN_DIR:-$HOME/.local/bin}"
+  SHEBANG="/usr/bin/env sh"
   [ "$(uname -s)" = "Linux" ] || die "this installer is for Linux and Termux; elsewhere: npm install --omit=dev <caelza-mind-*.tgz> and run node_modules/xanima-server/dist/cli.js"
   command -v node >/dev/null 2>&1 || die "node >= 22 is required: https://nodejs.org or your package manager"
   command -v npm >/dev/null 2>&1 || die "npm is required (it comes with node)"
+  command -v jq >/dev/null 2>&1 || say "jq is not installed; the token lines in the next steps use it (apt install jq), or read the token field of the --json output yourself"
 fi
 command -v curl >/dev/null 2>&1 || die "curl is required"
 command -v tar >/dev/null 2>&1 || die "tar is required"
+command -v sha256sum >/dev/null 2>&1 || die "sha256sum is required (coreutils)"
 node -e 'const [m] = process.versions.node.split(".").map(Number); process.exit(m >= 22 ? 0 : 1)' \
   || die "node $(node --version) is too old; xanima-server needs node >= 22"
 NODE="$(command -v node)"
@@ -94,8 +100,11 @@ EOF
     curl -fsSL -H "$(auth)" -H 'Accept: application/octet-stream' -o "$work/$name.sha256" "$sha_url"
     (cd "$work" && sha256sum -c "$name.sha256" >/dev/null) || die "checksum mismatch for $name"
     say "checksum ok"
+  elif [ "${CAELZA_SKIP_CHECKSUM:-0}" = "1" ]; then
+    say "no .sha256 published for $name; CAELZA_SKIP_CHECKSUM=1, installing it unverified"
   else
-    say "no .sha256 published for $name; skipping the checksum"
+    # pack.sh always writes the sum and release.yml uploads both, so a missing one is a broken or tampered release, not a normal one.
+    die "no .sha256 published beside $name; refusing to install it unverified (CAELZA_SKIP_CHECKSUM=1 to override)"
   fi
   archive="$work/$name"
 fi
@@ -114,10 +123,12 @@ cli="$MIND_DIR/node_modules/xanima-server/dist/cli.js"
 [ -f "$cli" ] || die "the install left no $cli"
 
 mkdir -p "$BIN_DIR"
+# node from PATH at run time first (a version manager moves it between versions), else the one this install saw.
 cat > "$BIN_DIR/caelza-mind" <<EOF
-#!/usr/bin/env sh
+#!$SHEBANG
 # Caelza Mind: xanima-server, installed by mind/install.sh into $MIND_DIR
-exec "$NODE" "$cli" "\$@"
+node=\$(command -v node 2>/dev/null || printf '%s' "$NODE")
+exec "\$node" "$cli" "\$@"
 EOF
 chmod 755 "$BIN_DIR/caelza-mind"
 say "launcher → $BIN_DIR/caelza-mind"
@@ -131,7 +142,7 @@ if [ "${CAELZA_SERVICE:-0}" = "1" ]; then
   if [ "$termux" = 1 ]; then
     mkdir -p "$HOME/.termux/boot"
     cat > "$HOME/.termux/boot/caelza-mind" <<EOF
-#!/data/data/com.termux/files/usr/bin/sh
+#!$SHEBANG
 # Termux:Boot — start the Caelza Mind (xanima-server, the brain service) after a reboot.
 termux-wake-lock
 exec "$BIN_DIR/caelza-mind" serve >> "$MIND_DIR/logs/service.log" 2>&1
@@ -147,7 +158,7 @@ Description=Caelza Mind (xanima-server, the brain service on 127.0.0.1:18790)
 After=network.target
 
 [Service]
-ExecStart=$BIN_DIR/caelza-mind serve
+ExecStart="$BIN_DIR/caelza-mind" serve
 Restart=on-failure
 RestartSec=5
 

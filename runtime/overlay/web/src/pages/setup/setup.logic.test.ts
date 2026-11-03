@@ -17,6 +17,7 @@ import {
   pickMemory,
   pickPreset,
   pickRuntime,
+  providerAlias,
   providerById,
   providerRows,
   secretField,
@@ -123,6 +124,17 @@ test("the key door stages <provider>.default with the key under the daemon's fie
     fields: { org: "o", api_key: "sk-ant-x" },
   });
   assert.deepEqual(stagedKeyProvider("ollama", "m", null, "").fields, {});
+});
+
+test("a second setup for the same provider takes the next free alias instead of failing on the first", () => {
+  // The Runtime refuses an alias that exists; the state lists them as <kind>.<alias>.
+  assert.equal(providerAlias([], "anthropic"), "default");
+  assert.equal(providerAlias(["anthropic.default", "openai.default"], "openai"), "default2");
+  assert.equal(providerAlias(["anthropic.default", "anthropic.default2", "anthropic.work"], "anthropic"), "default3");
+  assert.equal(providerAlias(["anthropic.default"], "openai"), "default");
+  assert.equal(providerAlias(["llamacpp.local", "llamacpp.guide"], "llamacpp", "local"), "local2");
+  assert.equal(providerAlias(["llamacpp.local"], "ollama", "local"), "local");
+  assert.equal(stagedKeyProvider("openai", "gpt-5", "api_key", "k".repeat(20), {}, "default2").alias, "default2");
 });
 
 test("the submission carries our defaults for everything the owner was not asked", () => {

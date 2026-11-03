@@ -44,6 +44,25 @@ export const KEY_ALIAS = "default";
 /** The agent the setup creates; the app's first run and model-setup.sh point `agents.main` too. */
 export const AGENT_NAME = "main";
 
+/**
+ * The alias to write under `providers.models.<kind>`: `base` (`default`, or
+ * `local` for the local door) when it is free, else base2, base3… The Runtime
+ * refuses an alias that already exists (upstream's quickstart only stages
+ * fresh entries), so a second setup for the same provider adds one beside
+ * the first instead of failing with "alias already exists" and no way past
+ * it. `existing` is the state's `model_providers` (`<kind>.<alias>` each).
+ */
+export function providerAlias(existing: ReadonlyArray<string>, kind: string, base: string = KEY_ALIAS): string {
+  const prefix = `${kind}.`;
+  const taken = new Set(existing.filter((e) => e.startsWith(prefix)).map((e) => e.slice(prefix.length)));
+  if (!taken.has(base)) return base;
+  for (let n = 2; n < 100; n++) {
+    const alias = `${base}${n}`;
+    if (!taken.has(alias)) return alias;
+  }
+  return `${base}-${Date.now().toString(36)}`;
+}
+
 export interface ProviderRow {
   id: string;
   label: string;
@@ -179,13 +198,14 @@ export interface StagedProvider {
   fields: Record<string, string>;
 }
 
-/** What the key door stages: `<provider>.default` on the chosen model, the key under the daemon's field. */
+/** What the key door stages: `<provider>.<alias>` (`default` unless taken, see providerAlias) on the chosen model, the key under the daemon's field. */
 export function stagedKeyProvider(
   providerId: string,
   model: string,
   secretKey: string | null,
   key: string,
   extra: Record<string, string> = {},
+  alias: string = KEY_ALIAS,
 ): StagedProvider {
   const fields: Record<string, string> = {};
   for (const [k, v] of Object.entries(extra)) {
@@ -193,7 +213,7 @@ export function stagedKeyProvider(
     if (trimmed !== "") fields[k] = trimmed;
   }
   if (secretKey) fields[secretKey] = key.trim();
-  return { provider_type: providerId, alias: KEY_ALIAS, model: model.trim(), fields };
+  return { provider_type: providerId, alias, model: model.trim(), fields };
 }
 
 interface Preset {

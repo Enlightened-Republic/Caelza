@@ -96,18 +96,24 @@ export interface StagedLocalProvider {
   fields: Record<string, string>;
 }
 
-/** What the local door stages: the alias scripts/model-setup.sh and the app's first run write. */
+/** What the local door stages: the alias scripts/model-setup.sh and the app's first run write (`local2`… when `local` is taken, see setup.logic's providerAlias). */
 export function stagedLocalProvider(
   runner: Runner,
   model: string,
   fields: Record<string, string> = {},
+  alias: string = LOCAL_ALIAS,
 ): StagedLocalProvider {
-  return { provider_type: runner, alias: LOCAL_ALIAS, model: model.trim(), fields };
+  return { provider_type: runner, alias, model: model.trim(), fields };
+}
+
+/** `local`, `local2`, `local3`…: the aliases the local door writes. */
+export function isLocalAlias(alias: string): boolean {
+  return alias === LOCAL_ALIAS || new RegExp(`^${LOCAL_ALIAS}\\d+$`).test(alias);
 }
 
 /** Which door a staged provider came through, for the section's summary. */
 export function doorOf(p: { provider_type: string; alias: string }): Door {
-  return p.alias === LOCAL_ALIAS && p.provider_type in LADDER ? "local" : "key";
+  return isLocalAlias(p.alias) && p.provider_type in LADDER ? "local" : "key";
 }
 
 /** Upstream's provider form seeds its field buffer this way: an enum row is

@@ -114,10 +114,21 @@ def test_the_installer_lands_the_service_and_the_launcher_where_the_docs_say():
         'if [ "${CAELZA_SERVICE:-0}" = "1" ]; then',
         '"$HOME/.termux/boot/caelza-mind"',
         "caelza-mind.service",
-        "ExecStart=$BIN_DIR/caelza-mind serve",
-        "pkg install -y nodejs python make clang pkg-config",
+        'ExecStart="$BIN_DIR/caelza-mind" serve',  # quoted: a HOME with a space
+        "pkg install -y nodejs python make clang pkg-config jq",  # jq: the token lines in the next steps
+        # A release asset with no .sha256 beside it is refused, not installed with a note in the scroll-back.
+        'die "no .sha256 published beside $name; refusing to install it unverified (CAELZA_SKIP_CHECKSUM=1 to override)"',
+        'elif [ "${CAELZA_SKIP_CHECKSUM:-0}" = "1" ]; then',
+        "command -v sha256sum >/dev/null 2>&1 || die",
+        # The launcher finds node on PATH at run time (a version manager moves it) and falls back to the one the install saw.
+        "node=\\$(command -v node 2>/dev/null || printf '%s' \"$NODE\")",
+        'exec "\\$node" "$cli" "\\$@"',
+        # Termux scripts get Termux's own sh; /usr/bin/env is only there through termux-exec.
+        'SHEBANG="$PREFIX/bin/sh"',
+        "#!$SHEBANG",
     ):
         assert needle in text, needle
+    assert 'caelza-mind" <<EOF\n#!/usr/bin/env sh' not in text, "the launcher's shebang follows the platform"
     for doc, needle in (
         ("README.md", "mind/install.sh | sh"),
         ("README.md", "caelza-mind serve"),

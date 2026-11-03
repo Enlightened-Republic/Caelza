@@ -31,7 +31,7 @@ Applied after 0009 and the overlay copy.
          <div className="flex items-center gap-3 min-w-0">
            {/* Hamburger — opens the mobile drawer; hidden on desktop where the
                slim rail is always present. */}
-@@ -101,10 +103,16 @@
+@@ -101,10 +103,17 @@
              <Menu className="h-5 w-5 shrink-0" />
            </Button>
  
@@ -39,12 +39,13 @@ Applied after 0009 and the overlay copy.
 -              now that the rail is icon-only. Truncates (rather than pushing the
 -              action cluster) so the right-side icons never get squeezed. */}
 -          <h1 className="h-9 leading-9 text-lg font-semibold tracking-tight truncate min-w-0" style={{ color: 'var(--pc-text-primary)' }}>{pageTitle}</h1>
-+          {/* The brand on every page (brand/BRAND.md): the mark and the
-+              wordmark, then the page title where there is room. On a phone the
-+              page's own header carries the title; the drawer repeats the lockup. */}
-+          <div className="flex items-center gap-2 shrink-0">
++          {/* The brand on every page (brand/BRAND.md): the mark, the wordmark
++              from 460 px up (at 390 px the six controls leave no room for it;
++              the drawer repeats the lockup), then the page title where there is
++              room. On a phone the page's own header carries the title. */}
++          <div className="flex items-center gap-2 min-w-0">
 +            <Mark src={`${basePath}/_app/logo.png`} size={28} />
-+            <Wordmark size="sm" />
++            <Wordmark size="sm" className="hidden min-[460px]:inline" />
 +          </div>
 +          {/* Page title — truncates (rather than pushing the action cluster)
 +              so the right-side icons never get squeezed. */}

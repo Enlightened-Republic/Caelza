@@ -79,7 +79,10 @@ def test_the_overlays_ladder_is_the_python_ladder():
 
 
 def test_the_local_door_stages_the_runner_alias_and_keeps_the_key_door_upstreams():
-    assert 'return { provider_type: runner, alias: LOCAL_ALIAS, model: model.trim(), fields };' in LOGIC
+    # `local` unless it is taken: the simplified setup passes the next free one (local2…), the doors page the default.
+    assert "alias: string = LOCAL_ALIAS," in LOGIC
+    assert "return { provider_type: runner, alias, model: model.trim(), fields };" in LOGIC
+    assert "export function isLocalAlias(alias: string): boolean" in LOGIC
     assert "stagedLocalProvider(runner, model, nonEmptyFields(fieldValues))" in DOORS
     assert 'quickstartFields({ section: "model_provider", type_key: runner })' in DOORS, "the daemon's enum rows are seeded like upstream's form"
     assert "keyDoor" in DOORS and "ProviderForm" not in DOORS, "the key door is upstream's form, handed in by the page"

@@ -33,7 +33,7 @@ What moved, and what did not:
 | engine env vars | `SHARPWAVE_DATA_DIR`, `SHARPWAVE_DB_PATH`, `SHARPWAVE_AGENT_ID`, `SHARPWAVE_EMBEDDING_MODEL`, … | unchanged |
 | service root / port | `~/.sharpwave/service/`, `127.0.0.1:18790` | unchanged |
 | host cron id | `openwave:consolidation` | unchanged (rename deferred) |
-| tools | 16 `brain_*` | 43 `brain_*`, schema v25; names unchanged and permanent |
+| tools | 16 `brain_*` | 42 `brain_*` at 0.7.0 (schema v28); names unchanged and permanent |
 | old packages on npm | `openwave` 0.1.1, `sharpwave` 0.4.1, `sharpwave-core` 0.4.5 | still listed, not deprecated; the `sharpwave` bin now ships inside `xanima` |
 
 One lag worth knowing: the published `xanima-openclaw` README still shows the
