@@ -55,10 +55,12 @@ caelza daemon                        # gateway on http://127.0.0.1:42617 + chann
 ## Mind
 
 ```bash
-# run xanima-server (one brain per agent plus a shared one; from a sharpwave checkout for now)
-xanima-server token mint --agent main --scopes read,write --json | jq -r .token > ~/.xanima/tokens/main.token
-# then merge mind/caelza-mind.example.toml into ~/.caelza/config.toml:
-#   [memory] backend = "xanima"   ← the Runtime's own memory is the brain service
+# xanima-server, the brain service, from the latest Caelza release → the `caelza-mind` launcher
+# (Termux or a Linux hub; CAELZA_SERVICE=1 also installs what starts it after a reboot)
+curl -fsSL https://raw.githubusercontent.com/Enlightened-Republic/caelza/main/mind/install.sh | sh
+caelza-mind serve &                      # one brain per agent plus a shared one, on 127.0.0.1:18790
+caelza-mind token mint --agent main --scopes read,write --json | jq -r .token > ~/.xanima/tokens/main.token
+caelza config set memory.backend xanima  # the Runtime's own memory is the brain service (mind/caelza-mind.example.toml has the whole block)
 caelza memory stats                      # the smoke test
 ```
 

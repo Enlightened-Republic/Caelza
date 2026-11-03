@@ -119,7 +119,12 @@ version = "0.7.0"                 # the plugin vendors the 0.7.0 engine (its REA
 engine = "xanima-core"            # formerly sharpwave-core; published 2026-10-19
 engine_version = "0.7.0"          # npm, read 2026-11-01
 engine_repo = "https://github.com/Enlightened-Republic/xanima"   # main carries the rename
-service = "xanima-server"         # formerly sharpwave-server; private workspace package (not on npm), runs from a sharpwave checkout; MCP Streamable HTTP on 127.0.0.1:18790
+service = "xanima-server"         # formerly sharpwave-server; a private workspace package (not on npm): every Caelza release carries it built, see service_asset; MCP Streamable HTTP on 127.0.0.1:18790
+service_version = "0.7.0"         # packages/server/package.json at service_commit
+service_commit = "0869836b4b25c3c7e25a3698e98a3fa3e01980b3"   # engine_repo main at 0.7.0 (schema v28), read 2026-11-03; the commit mind/pack.sh builds
+service_asset = "caelza-mind-<version>.tgz"   # on every release beside the Runtime tarballs and the APK, its .sha256 beside it: npm pack of the built xanima-server workspace (mind/pack.sh, run by release.yml's mind job)
+service_pack = "mind/pack.sh"
+service_install = "mind/install.sh"           # Termux or a Linux hub: ~/.local/share/caelza/mind, the `caelza-mind` launcher; CAELZA_SERVICE=1 adds the Termux:Boot script or the systemd user unit
 mcp_server = "xanima"             # published 2026-10-19; keeps a `sharpwave` alias bin
 brain_dir = "~/.xanima/<agent>/brain.db"   # ~/.sharpwave is read until `xanima-server migrate`
 token_env = "XANIMA_BRAIN_TOKEN"  # OPENWAVE_BRAIN_TOKEN still accepted with a warning
