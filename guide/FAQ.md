@@ -70,6 +70,62 @@ model, has no tools and cannot change settings or act for you; he points at
 the next step. The agent is yours; Cael is the manual that talks. His persona
 lives in `~/.caelza/agents/cael/workspace/SOUL.md`.
 
+## What does the Cael button in the top bar do?
+
+Cael's face sits in the top bar of every dashboard page. Tap it and a panel
+says what the screen you are on is for and what the next step is, in his
+words, with no model needed. Below that you can ask him anything about the
+screen; the answer streams from the Cael agent on the local model, and his
+look talks while he answers. Escape or the X closes the panel. If Cael is not
+set up as an agent yet, the panel still explains the screen and points at the
+setup.
+
+## What are looks?
+
+Every agent has a look: a small pixel character, one piece per layer
+(backdrop, body, outfit, hair, hat, face, accessory) in the colours you choose
+(skin, hair, outfit, accent, eyes). It blinks on its own and talks in the chat
+while the agent answers; it stands beside the agent's messages, on its chat
+tab, in the agents list and on Home. A new agent is dealt a look from its
+name; Cael's is fixed (the constellation hoodie and galaxy eyes). A look is
+saved on the Runtime under `~/.caelza/agents/<alias>/look.json`, so every
+device shows the same character.
+
+## How do I dress an agent?
+
+Open Looks in the dashboard's menu (`/looks`) and tap the agent, or go
+straight to `/looks/<alias>`. Pick a tab per layer, tap a piece, tap a colour
+per slot (or choose any colour), watch the preview, then Save look. Undo puts
+the saved look back; Back to the default drops the saved look. A dimmed piece
+comes with a pack that is not in your wardrobe yet.
+
+## What is the Shop, and what is a pack?
+
+The Shop (`/shop`) sells packs of pieces for the looks. Starter is always
+yours; Cosmic (Cael's own pieces) is free and joins your wardrobe with one
+tap; Arcade is the first priced pack and opens with an unlock code. The
+wardrobe is the list of packs you added, kept on the Runtime at
+`~/.caelza/looks/wardrobe.json`, so it is the same on the phone and the
+desktop. Removing a pack from the wardrobe deletes nothing: add it back any
+time, and a pack you unlocked once needs no code again.
+
+## What is an unlock code?
+
+A code opens a priced pack. It looks like `ARCADE-7K3PQ2M9-` followed by a
+long signature, it comes with your purchase, and you paste it into the box
+under the pack in the Shop and tap Unlock. The Runtime checks the signature
+itself, offline, against the shop's public key; nothing is sent anywhere. A
+code that is mistyped or meant for another pack says so. Codes are cosmetic:
+they open pieces for the looks and nothing else.
+
+## How do I use my agent's look as a profile picture?
+
+On the agent's customizer (`/looks/<alias>`) tap Save as avatar: a 512 × 512
+PNG named `<alias>-avatar.png` lands in your downloads, with Space behind a
+look that has no backdrop. Telegram, Discord and the rest take it as is. From
+the command line, `python3 scripts/looks.py avatar <alias> out.png` writes the
+same file.
+
 ## What is an approval, and what happens if I deny it?
 
 An approval is the owner's safety gate. When the agent wants to do something

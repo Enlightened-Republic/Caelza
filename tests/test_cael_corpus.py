@@ -422,6 +422,37 @@ def test_the_faq_agrees_with_the_rest_of_the_repo():
     assert "guide/corpus.jsonl" in FAQ
 
 
+def test_the_faq_knows_the_looks_the_shop_the_codes_and_the_avatar():
+    """The M8 slices in the owner's words, each fact checked against the code that makes it true."""
+    for heading in ("## What does the Cael button in the top bar do?", "## What are looks?", "## How do I dress an agent?",
+                    "## What is the Shop, and what is a pack?", "## What is an unlock code?", "## How do I use my agent's look as a profile picture?"):
+        assert heading in FAQ, heading
+    api = (REPO_ROOT / "runtime/overlay/crates/caelza-gateway/src/api_looks.rs").read_text()
+    assert 'LOOK_FILE: &str = "look.json"' in api and "`~/.caelza/agents/<alias>/look.json`" in FAQ
+    assert 'WARDROBE_FILE: &str = "wardrobe.json"' in api and ".join(\"looks\").join(WARDROBE_FILE)" in api and "`~/.caelza/looks/wardrobe.json`" in FAQ
+    assert "pub async fn handle_wardrobe_unlock(" in api and "paste it into the box" in FAQ
+    catalog = json.loads((REPO_ROOT / "looks" / "catalog.json").read_text())
+    packs = {p["id"]: p for p in catalog["packs"]}
+    assert packs["starter"]["price"] == "free" and packs["cosmic"]["price"] == "free" and packs["arcade"]["price"] != "free"
+    assert "Starter is always" in FAQ and "Cosmic" in FAQ and "Arcade is the first priced pack" in FAQ
+    unlock_patch = (REPO_ROOT / "runtime/patches/0014-unlock-codes.patch").read_text()
+    assert "+    'looks.avatar': \"Save as avatar\"," in unlock_patch and "Save as avatar" in FAQ
+    assert "`<alias>-avatar.png`" in FAQ and "`${alias}-avatar.png`" in (REPO_ROOT / "runtime/overlay/web/src/pages/Looks.tsx").read_text()
+    assert "python3 scripts/looks.py avatar <alias> out.png" in FAQ and 'sub.add_parser("avatar"' in (REPO_ROOT / "scripts" / "looks.py").read_text()
+    # The code's shape as the FAQ shows it is the shape the minter makes.
+    sys.path.insert(0, str(REPO_ROOT / "scripts"))
+    import unlock_codes as uc
+    assert "`ARCADE-7K3PQ2M9-`" in FAQ and uc.parse("ARCADE-7K3PQ2M9-" + "A" * 86) is not None
+    # Cael's own panel no longer promises codes for later.
+    explain_patch = (REPO_ROOT / "runtime/patches/0012-cael-explain.patch").read_text()
+    shop_line = next(l for l in explain_patch.splitlines() if l.startswith("+    'guide.screen_shop': "))
+    assert "once that exists" not in shop_line and "unlock code" in shop_line
+    # Every new section is in the corpus, whole.
+    titles = {r["title"] for r in RECORDS if r["key"].startswith("docs/faq#")}
+    for t in ("Caelza FAQ › What are looks?", "Caelza FAQ › What is an unlock code?", "Caelza FAQ › What does the Cael button in the top bar do?"):
+        assert t in titles, t
+
+
 def test_the_corpus_is_wired_in():
     setup = (REPO_ROOT / "scripts" / "model-setup.sh").read_text()
     assert "scripts/cael_corpus.py load" in setup, "model-setup's next steps load the corpus once the gateway runs"

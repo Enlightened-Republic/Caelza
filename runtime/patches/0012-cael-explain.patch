@@ -89,7 +89,7 @@ beside the others. Applied after 0011 and the overlay copy.
 +    'guide.screen_quickstart': "Quickstart is the full wizard: a provider, a risk profile, a runtime profile, memory, then the agent. It writes exactly what the simple setup writes, with every option shown.",
 +    'guide.screen_runs': "Runs are what happened each time a procedure ran: which step, what the agent did, where it waited for you.",
 +    'guide.screen_setup': "This is the simple setup: I ask one thing at a time. A brain for your agent, free and local or with a key you bring, then it's ready. Nothing here is a trick question.",
-+    'guide.screen_shop': "The Shop holds packs of pieces for your agents' looks. Add a free pack and its pieces appear in every customizer; a priced pack will take an unlock code once that exists. Starter is always yours.",
++    'guide.screen_shop': "The Shop holds packs of pieces for your agents' looks. Add a free pack and its pieces appear in every customizer; a priced pack opens with an unlock code pasted into its box, and the Runtime checks the code itself. Starter is always yours.",
 +    'guide.screen_skills': "Skills are bundles of instructions an agent can load: a way of doing a job, written down. Each is a SKILL.md the agent reads when it needs it.",
 +    'guide.screen_sops': "SOPs are the written procedures: steps, triggers, gates. Procedures runs them; this page is where they are edited and validated.",
 +    'guide.screen_tools': "Tools are what an agent may do: read a file, run a command, use the phone. The grid says which agent may use which, and the risk profile adds its own limits on top.",
