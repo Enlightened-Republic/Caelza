@@ -478,6 +478,19 @@ main .surface-panel {
    page sits outside the dashboard chrome, so these are the page's own rules. */
 
 .cz-setup {
+  /* Space in every theme, so the dark palette's text, borders and inputs too: the
+     page is outside the dashboard chrome but inside its theme, and Caelza Light
+     would otherwise put its near-black text on this background. */
+  --pc-text-primary: #e8e4f0;
+  --pc-text-secondary: #a8a8c0;
+  --pc-text-muted: #6e6e85;
+  --pc-text-faint: #4a4a5e;
+  --pc-border: rgba(255, 255, 255, 0.08);
+  --pc-border-strong: rgba(255, 255, 255, 0.15);
+  --pc-bg-surface: #0c0918;
+  --pc-bg-elevated: #120e22;
+  --pc-bg-input: #06040f;
+  --pc-hover: rgba(255, 255, 255, 0.05);
   min-height: 100vh;
   min-height: 100dvh;
   color: var(--pc-text-primary);

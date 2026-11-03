@@ -59,6 +59,10 @@ def test_titles_buttons_and_the_backdrop_take_the_brand():
     # Cael's bubble takes the theme's surface in the dashboard; the setup page (Space in every theme) keeps the dark glass.
     bubble = BRAND_CSS.split(".cz-bubble {")[1].split("}")[0]
     assert "background: var(--pc-bg-elevated);" in bubble and ".cz-setup .cz-bubble {" in BRAND_CSS
+    # ... and so pins the dark palette's text and surfaces for its subtree, whatever theme the dashboard wears.
+    setup = BRAND_CSS.split("\n.cz-setup {")[1].split("}")[0]
+    for var in ("--pc-text-primary: #e8e4f0;", "--pc-text-secondary: #a8a8c0;", "--pc-border: rgba(255, 255, 255, 0.08);", "--pc-bg-input: #06040f;"):
+        assert var in setup, var
     # Text the owner acts on is never the muted grey (4.1:1 on Space, under AA at 13-14 px).
     for rule in (".cz-btn-text {", ".cz-setup-foot a {", ".cz-kicker {"):
         assert "color: var(--pc-text-secondary);" in BRAND_CSS.split(rule)[1].split("}")[0], rule
