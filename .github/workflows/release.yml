@@ -22,6 +22,11 @@ name: release
 # them the APK is signed with the debug key and named -debug-signed. The
 # installers pick their tarball by its -<target>.tar.gz suffix, so the APK
 # beside it is never mistaken for the Runtime.
+#
+# And the Mind: xanima-server, the brain service, is a private workspace
+# package upstream (not on npm), so the same tag packs it from the commit
+# bundle/manifest.toml pins (mind/pack.sh) as caelza-mind-<version>.tgz, which
+# mind/install.sh installs on a hub or in Termux.
 
 on:
   push:
@@ -278,10 +283,43 @@ jobs:
             ${{ steps.pack.outputs.sum }}
           if-no-files-found: error
 
+  # The Mind for the same tag: xanima-server built at the manifest's pinned
+  # commit and packed as caelza-mind-<version>.tgz (mind/pack.sh). Like the app,
+  # a broken pack never holds the Runtime's release back.
+  mind:
+    name: Mind (xanima-server)
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    continue-on-error: true
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: "24"
+      - name: Version from the tag
+        id: version
+        run: |
+          set -euo pipefail
+          if [ "$GITHUB_REF_TYPE" = tag ]; then ver="${GITHUB_REF_NAME#v}"; else ver="dev-${GITHUB_SHA::8}"; fi
+          echo "ver=$ver" >> "$GITHUB_OUTPUT"
+      # XANIMA_READ_TOKEN is needed only while the xanima repo is private: a fine-grained
+      # token with contents:read on Enlightened-Republic/xanima. Unset, the fetch is anonymous.
+      - name: Pack (fetch the pinned commit, build, npm pack the server workspace)
+        env:
+          CAELZA_MIND_TOKEN: ${{ secrets.XANIMA_READ_TOKEN }}
+        run: ./mind/pack.sh --version "${{ steps.version.outputs.ver }}" --out "$RUNNER_TEMP/mind"
+      - uses: actions/upload-artifact@v4
+        with:
+          name: caelza-mind
+          path: |
+            ${{ runner.temp }}/mind/caelza-mind-*.tgz
+            ${{ runner.temp }}/mind/caelza-mind-*.tgz.sha256
+          if-no-files-found: error
+
   release:
     name: GitHub release
     if: github.ref_type == 'tag'
-    needs: [build, app]
+    needs: [build, app, mind]
     runs-on: ubuntu-latest
     steps:
       - uses: actions/download-artifact@v4
@@ -297,3 +335,4 @@ jobs:
             Caelza runtime built from the pinned upstream commit (see `UPSTREAM.md` inside each archive).
             Each archive holds the `caelza` binary, the web dashboard (`web/dist`), and the upstream notices.
             `caelza-app-<version>.apk` is the Android app for this release (`-debug-signed` when it was built without the release keystore: install it only to try things, it will not upgrade to a release-signed build).
+            `caelza-mind-<version>.tgz` is the Mind: `xanima-server`, the brain service, built from the commit `bundle/manifest.toml` pins. `mind/install.sh` installs it on a hub or in Termux as `caelza-mind`; the Runtime's `[memory] backend = "xanima"` talks to it.

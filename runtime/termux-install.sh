@@ -123,6 +123,7 @@ cat <<EOF
 Next:
   caelza quickstart                       # pick a model provider, create the first agent
   caelza config set channels.telegram.home.bot_token   # if you want Telegram (masked prompt)
+  curl -fsSL https://raw.githubusercontent.com/Enlightened-Republic/caelza/main/mind/install.sh | sh   # the Mind (xanima-server) from the same release → caelza-mind
   # then merge runtime/caelza.phone.example.toml into ~/.caelza/config.toml:
   #   Telegram alias + peer group, the Mind (xanima) and Body (caelza-body) MCP servers,
   #   the risk profile that gates the dangerous Body tools, and [sop] sops_dir

@@ -52,7 +52,7 @@ jobs:
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
-      - run: bash -n runtime/build.sh && sh -n install.sh && sh -n runtime/termux-install.sh && sh -n scripts/model-setup.sh && perl -c runtime/lib/rename.pl
+      - run: bash -n runtime/build.sh && sh -n install.sh && sh -n runtime/termux-install.sh && sh -n scripts/model-setup.sh && bash -n mind/pack.sh && sh -n mind/install.sh && perl -c runtime/lib/rename.pl
 
   runtime:
     name: Runtime rebrand + cargo check

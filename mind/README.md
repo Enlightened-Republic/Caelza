@@ -18,10 +18,10 @@ The rebrand shipped on 2026-10-18/19: both repos' `main` branches carry it
 
 | Package | What | Where |
 |---|---|---|
-| `xanima-openclaw` 0.5.0 | the OpenClaw plugin, id `xanima` (legacy id `openwave` honoured), bin `xanima-openclaw-upgrade` | npm; ClawHub as `clawhub:xanima`; repo [Enlightened-Republic/xanima-openclaw](https://github.com/Enlightened-Republic/xanima-openclaw) `main` |
-| `xanima-core` 0.5.0 | the engine (formerly `sharpwave-core`) | npm; repo [Enlightened-Republic/xanima](https://github.com/Enlightened-Republic/xanima) `main`, `packages/core` |
-| `xanima` 0.5.0 | the stdio MCP server (formerly `sharpwave`), bins `xanima` and `sharpwave` | npm; `packages/mcp` |
-| `xanima-server` 0.5.0 | the brain service (formerly `sharpwave-server`), bins `xanima-server`, `xanima-client` plus the old names | **private, not on npm**: build from a sharpwave checkout (`npm run build --workspace xanima-server`) and run `node packages/server/dist/cli.js serve` |
+| `xanima-openclaw` 0.7.0 | the OpenClaw plugin, id `xanima` (legacy id `openwave` honoured), bin `xanima-openclaw-upgrade` | npm; ClawHub as `clawhub:xanima`; repo [Enlightened-Republic/xanima-openclaw](https://github.com/Enlightened-Republic/xanima-openclaw) `main` |
+| `xanima-core` 0.7.0 | the engine (formerly `sharpwave-core`) | npm; repo [Enlightened-Republic/xanima](https://github.com/Enlightened-Republic/xanima) `main`, `packages/core` |
+| `xanima` 0.7.0 | the stdio MCP server (formerly `sharpwave`), bins `xanima` and `sharpwave` | npm; `packages/mcp` |
+| `xanima-server` 0.7.0 | the brain service (formerly `sharpwave-server`), bins `xanima-server`, `xanima-client` plus the old names | **private, not on npm**: every Caelza release carries it built, as `caelza-mind-<version>.tgz` (`mind/pack.sh` packs the commit `bundle/manifest.toml` pins as `service_commit`), and `mind/install.sh` installs it as `caelza-mind` on a hub or in Termux. From a checkout: `npm run build --workspace xanima-server`, then `node packages/server/dist/cli.js serve` |
 
 What moved, and what did not:
 
@@ -63,8 +63,16 @@ runtime; the MCP server consolidates on its own schedule.
 Run `xanima-server`, the brain service: one process owning a shared brain plus
 one private brain per agent, serving the brain tools over MCP Streamable HTTP
 on `127.0.0.1:18790` with per-agent bearer tokens (`xanima-server token mint`).
-It is a private workspace package, so it runs from a sharpwave checkout rather
-than an npm install. This is exactly the endpoint xanima's **remote brain
+It is a private workspace package, so it does not come from npm: every Caelza
+release carries it built as `caelza-mind-<version>.tgz`, and `sh mind/install.sh`
+(Termux or a Linux hub) looks the asset up, checks its `.sha256`, installs it
+under `~/.local/share/caelza/mind` with `npm install --omit=dev` (the two native
+sqlite modules come prebuilt for Linux and are built on Termux) and writes the
+`caelza-mind` launcher; `CAELZA_SERVICE=1` adds the Termux:Boot script or the
+systemd user unit that starts it after a reboot. `mind/pack.sh` makes the same
+tarball from the commit the manifest pins (`service_commit`; while the xanima
+repo is private the fetch needs `CAELZA_MIND_TOKEN`, a token with read access
+to it, which release.yml takes from the `XANIMA_READ_TOKEN` secret). This is exactly the endpoint xanima's **remote brain
 mode** speaks, so one service serves an OpenClaw gateway (through xanima) and
 a Caelza runtime (through its `http` MCP transport) with the same brains.
 Auto-provisioning (`brain_provision_agent`, a provision-scoped token on
@@ -116,10 +124,11 @@ Mint tokens once per agent, or once for the provisioner and let the backend
 mint the rest:
 
 ```sh
-xanima-server token mint --agent main --scopes read,write --json | jq -r .token > ~/.xanima/tokens/main.token
-xanima-server token mint --agent cael --scopes read       --json | jq -r .token > ~/.xanima/tokens/cael.token
+# caelza-mind is the launcher mind/install.sh writes; from a checkout it is node packages/server/dist/cli.js
+caelza-mind token mint --agent main --scopes read,write --json | jq -r .token > ~/.xanima/tokens/main.token
+caelza-mind token mint --agent cael --scopes read       --json | jq -r .token > ~/.xanima/tokens/cael.token
 # or: one provision-scoped token, and every new agent gets a brain on first use
-xanima-server token mint --agent provisioner --scopes provision --json | jq -r .token > ~/.xanima/tokens/provision.token
+caelza-mind token mint --agent provisioner --scopes provision --json | jq -r .token > ~/.xanima/tokens/provision.token
 ```
 
 `brain_turn_context` needs the `write` scope: an agent on a read-only token
@@ -168,5 +177,7 @@ and cron turns never become memories.
 ```
 mind/
 ├── README.md                  this
-└── caelza-mind.example.toml   MCP server blocks for paths A and B
+├── caelza-mind.example.toml   MCP server blocks for paths A and B, the native backend's block
+├── pack.sh                    builds xanima-server at the manifest's pinned commit and packs it as caelza-mind-<version>.tgz (release.yml runs it)
+└── install.sh                 installs that tarball from the release as `caelza-mind` (Termux or a Linux hub), optionally as a boot service
 ```
