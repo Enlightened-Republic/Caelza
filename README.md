@@ -23,6 +23,17 @@ An agent that lives on your own hardware, remembers across months, and acts on t
 3. Open **Caelza** and follow Cael's first-run screens. The app downloads the runtime on first run, so connect to Wi-Fi first.
 4. Something broke? Use **Logs** in the app to share a bug report.
 
+### What's coming
+
+Planned, not shipped yet. This build does not have any of it, and the order may change:
+
+- **Your apps, connected.** Gmail, Calendar, Drive, Notion, Slack and more through [Maton](https://maton.ai), with Cael walking you through each sign-in. Reading is free; sending, posting, paying and deleting always ask you first.
+- **Smart home.** Lights, locks, cameras and thermostats through Home Assistant.
+- **3D printers.** Status, progress and a camera snapshot over Wi-Fi (Moonraker and OctoPrint first, Bambu after), with pause and cancel behind an approval.
+- **Updates that arrive by themselves.** Today a new version means installing the new APK over this one by hand. We're working on the app telling you when an update is ready and installing it for you.
+
+Want something else? Open an [issue](https://github.com/Enlightened-Republic/Caelza/issues).
+
 ---
 
 Caelza is three layers shipped as one product (`bundle/manifest.toml`):
