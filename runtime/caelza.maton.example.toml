@@ -1,0 +1,34 @@
+# Caelza + Maton: the owner's apps (Gmail, Calendar, Drive, Notion, Slack, HubSpot...)
+# through Maton's hosted MCP server, https://mcp.maton.ai.
+#
+# Maton holds the OAuth to each app; Caelza holds one Maton API key. Connect with
+# `sh scripts/maton-connect.sh` (it writes this for you), or merge these blocks by
+# hand and set the key yourself:
+#
+#   caelza config set mcp.servers.maton.headers.Authorization   # masked prompt
+#                                                               # type: Bearer <your Maton key>
+#
+# The key is a secret: it is encrypted in the config, never written in this file,
+# and never shown back. Anyone holding it can reach every app you connected on
+# Maton, so treat it like a password.
+
+[[mcp.servers]]
+name = "maton"
+transport = "http"
+url = "https://mcp.maton.ai"
+tool_timeout_secs = 60
+# headers.Authorization: never here (see above).
+
+[mcp_bundles.maton]
+servers = ["maton"]
+
+# Add "maton" to the agent that should reach the apps, keeping what it has:
+[agents.main]
+mcp_bundles = ["mind", "body", "maton"]
+
+# Reads run without a prompt; anything that sends, posts, pays or deletes asks the
+# owner. The tool names are Maton's (`maton__<tool>`); run `caelza tools list`
+# after connecting and put the read-only ones here. Until then the supervised
+# defaults ask for everything, which is the safe side.
+[risk_profiles.phone]
+# auto_approve = ["maton__<a read-only tool>"]
