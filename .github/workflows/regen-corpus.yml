@@ -1,0 +1,28 @@
+# TEMPORARY: rebuild Cael's corpus on Linux after the README changed (it is a corpus source).
+name: regen-corpus
+on:
+  push:
+    branches: [main]
+    paths: [.github/workflows/regen-corpus.yml]
+permissions:
+  contents: write
+jobs:
+  regen:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+      - run: pip install pillow
+      - uses: dtolnay/rust-toolchain@stable
+      - run: sudo apt-get update -qq && sudo apt-get install -y -qq pkg-config libudev-dev
+      - run: ./runtime/build.sh --no-build
+      - run: python3 scripts/cael_corpus.py build
+      - run: cp guide/corpus.jsonl android/app/src/main/assets/cael-corpus.jsonl
+      - run: |
+          git config user.name "github-actions"
+          git config user.email "actions@users.noreply.github.com"
+          git add guide/corpus.jsonl android/app/src/main/assets/cael-corpus.jsonl
+          git diff --cached --quiet || git commit -m "chore(corpus): rebuild after the README change"
+          git push
