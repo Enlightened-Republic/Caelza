@@ -199,6 +199,18 @@ pick the phone, and approve or deny at the gate. The deterministic parts (the
 debloat plan, the suspects list, the health check) are read-only tools you can
 run on their own.
 
+## How do I connect my apps (Gmail, Calendar, Drive, Notion, Slack)?
+
+Through Maton, a service that keeps the sign-in to each app so Caelza does not
+have to. Make a free account at maton.ai, connect the apps you want there, and
+copy your Maton API key from its settings. Then run `sh scripts/maton-connect.sh`
+in Termux or a shell: it adds Maton's server to the Runtime and asks for the key
+at a masked prompt (type `Bearer ` and then the key). Add `maton` to your agent's
+bundles, restart `caelza daemon`, and ask something harmless first, such as what
+is on your calendar today. The key is encrypted and never shown again; anyone
+who holds it can reach every app you connected, so treat it like a password.
+Reading is free; sending, posting, paying and deleting always ask you first.
+
 ## Where do settings live?
 
 The Runtime's config is `~/.caelza/config.toml` (the app keeps it under its
