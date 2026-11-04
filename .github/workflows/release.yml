@@ -267,6 +267,7 @@ jobs:
       CAELZA_BUILD_ID: ${{ needs.stage.outputs.build_id }}
       CARGO_TARGET_DIR: C:\t
     steps:
+      - uses: actions/checkout@v4
       - uses: dtolnay/rust-toolchain@stable
         with:
           targets: x86_64-pc-windows-msvc
@@ -301,14 +302,28 @@ jobs:
           Compress-Archive -Path $stage -DestinationPath $zip
           $hash = (Get-FileHash $zip -Algorithm SHA256).Hash.ToLower()
           "$hash  $name.zip" | Out-File -Encoding ascii "$zip.sha256"
+          # The one-click installer (no terminal): Inno Setup, per-user, adds a Start menu entry.
+          choco install innosetup -y --no-progress | Out-Null
+          $iscc = "${env:ProgramFiles(x86)}\Inno Setup 6\ISCC.exe"
+          $out = Join-Path $env:RUNNER_TEMP "setup"
+          & $iscc "/DAppVersion=$ver" "/DSourceDir=$stage" "/DOutDir=$out" "runtime\windows\caelza.iss"
+          if ($LASTEXITCODE -ne 0) { throw "ISCC failed" }
+          $setup = Join-Path $env:RUNNER_TEMP "Caelza-Setup.exe"
+          Move-Item (Join-Path $out "Caelza-Setup.exe") $setup
+          $h2 = (Get-FileHash $setup -Algorithm SHA256).Hash.ToLower()
+          "$h2  Caelza-Setup.exe" | Out-File -Encoding ascii "$setup.sha256"
           "asset=$zip" >> $env:GITHUB_OUTPUT
           "sum=$zip.sha256" >> $env:GITHUB_OUTPUT
+          "setup=$setup" >> $env:GITHUB_OUTPUT
+          "setupsum=$setup.sha256" >> $env:GITHUB_OUTPUT
       - uses: actions/upload-artifact@v4
         with:
           name: caelza-windows
           path: |
             ${{ steps.pack.outputs.asset }}
             ${{ steps.pack.outputs.sum }}
+            ${{ steps.pack.outputs.setup }}
+            ${{ steps.pack.outputs.setupsum }}
           if-no-files-found: error
 
   # The app for the same tag. A broken app build never holds the Runtime's
@@ -436,5 +451,5 @@ jobs:
             Caelza runtime built from the pinned upstream commit (see `UPSTREAM.md` inside each archive).
             Each archive holds the `caelza` binary, the web dashboard (`web/dist`), and the upstream notices.
             `caelza-app-<version>.apk` is the Android app for this release (`-debug-signed` when it was built without the release keystore: install it only to try things, it will not upgrade to a release-signed build).
-            `caelza-<version>-x86_64-pc-windows-msvc.zip` is the experimental Windows build (`runtime/windows-install.ps1` installs it).
+            `caelza-<version>-x86_64-pc-windows-msvc.zip` is the experimental Windows build and `Caelza-Setup.exe` its one-click installer (unsigned, so Windows SmartScreen asks you to confirm; `runtime/windows-install.ps1` is the PowerShell route).
             `caelza-mind-<version>.tgz` is the Mind: `xanima-server`, the brain service, built from the commit `bundle/manifest.toml` pins. `mind/install.sh` installs it on a hub or in Termux as `caelza-mind`; the Runtime's `[memory] backend = "xanima"` talks to it.
