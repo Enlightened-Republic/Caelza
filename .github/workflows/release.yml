@@ -279,7 +279,7 @@ jobs:
         shell: bash
         run: |
           git config --global core.longpaths true
-          mkdir -p /c/w && tar -C /c/w -xzf "$RUNNER_TEMP/tree.tar.gz"
+          mkdir -p /c/w && tar --force-local -C /c/w -xzf "$RUNNER_TEMP/tree.tar.gz"
       - uses: Swatinem/rust-cache@v2
         with:
           workspaces: C:\w\src -> C:\t
