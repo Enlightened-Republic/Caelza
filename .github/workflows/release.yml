@@ -250,7 +250,11 @@ jobs:
           name: web-dist
           path: runtime/.build/src/web/dist/
       - name: Tar the tree
-        run: tar -C runtime/.build -czf "$RUNNER_TEMP/tree.tar.gz" src
+        # Windows runners cannot create symlinks: drop the dangling ones (they
+        # point at files the rename moved) and store the rest as plain files.
+        run: |
+          find runtime/.build/src -xtype l -print -delete
+          tar -h -C runtime/.build -czf "$RUNNER_TEMP/tree.tar.gz" src
       - uses: actions/upload-artifact@v4
         with:
           name: windows-tree
