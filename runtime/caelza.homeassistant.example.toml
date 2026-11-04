@@ -1,0 +1,35 @@
+# Caelza + Home Assistant: lights, switches, thermostats, locks, through Home
+# Assistant's own MCP server (built in since Home Assistant 2025.2, Settings >
+# System > AI shows the URL). Home Assistant decides what Caelza can see: only
+# entities you exposed to voice assistants (the "Device control" tool set).
+#
+# Connect with `sh scripts/home-connect.sh`, or merge these blocks and set the token:
+#
+#   caelza config set mcp.servers.homeassistant.headers.Authorization   # masked prompt
+#                                                                       # type: Bearer <long-lived token>
+#
+# Make the token in Home Assistant: your profile > Security > Long-lived access
+# tokens > Create. It is a secret (encrypted in the config, never shown back).
+# UNVERIFIED: Home Assistant's docs describe OAuth for MCP clients and do not
+# mention long-lived tokens for /api/mcp. Tokens work on the rest of its API, so
+# this should work, but it has not been tried against a live Home Assistant.
+
+[[mcp.servers]]
+name = "homeassistant"
+transport = "http"
+url = "http://homeassistant.local:8123/api/mcp/assist"   # Device control only
+tool_timeout_secs = 30
+# headers.Authorization: never here (see above).
+
+[mcp_bundles.homeassistant]
+servers = ["homeassistant"]
+
+[agents.main]
+mcp_bundles = ["mind", "body", "homeassistant"]
+
+# Reading state is free; anything that acts on the house asks the owner. Locks,
+# garage doors, alarms and anything that opens the house must always ask: never
+# list them in auto_approve. Tool names are `homeassistant__<tool>`; run
+# `caelza tools list` after connecting and add only the read-only ones.
+[risk_profiles.phone]
+# auto_approve = ["homeassistant__GetLiveContext"]

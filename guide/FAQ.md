@@ -211,6 +211,20 @@ is on your calendar today. The key is encrypted and never shown again; anyone
 who holds it can reach every app you connected, so treat it like a password.
 Reading is free; sending, posting, paying and deleting always ask you first.
 
+## How do I connect my smart home (Home Assistant)?
+
+Caelza talks to your lights, switches and thermostats through Home Assistant,
+which must be version 2025.2 or newer and on the same Wi-Fi as the device
+running Caelza. In Home Assistant: Settings > System > AI, turn the Model
+Context Protocol Server on; expose the devices Caelza may use to voice
+assistants (Settings > Voice assistants > Expose); then create a long-lived
+access token (your profile > Security). Caelza only sees what you exposed.
+Then run `sh scripts/home-connect.sh` (or `sh scripts/home-connect.sh
+http://your-address:8123`) and paste `Bearer <token>` at the masked prompt.
+Reading what is on is free; anything that acts on the house asks you first, and
+locks, doors and alarms always ask. This is new and has not been tried against
+a real Home Assistant yet, so tell us if the token is refused.
+
 ## Where do settings live?
 
 The Runtime's config is `~/.caelza/config.toml` (the app keeps it under its
