@@ -67,6 +67,13 @@ renames everything a user can see (`zeroclaw` â†’ `caelza`, the TUI `zerocode` â
 Caelza palette and mark, and keeps the WASM plugin ABI namespace so upstream
 plugins load unchanged. Details and the upstream pin: [`runtime/README.md`](runtime/README.md).
 
+On Windows 10/11 (experimental, new and untested in real use), in PowerShell:
+
+```powershell
+irm https://raw.githubusercontent.com/Enlightened-Republic/Caelza/main/runtime/windows-install.ps1 | iex
+caelza quickstart
+```
+
 On the phone, in Termux, the release build installs with one line:
 
 ```bash

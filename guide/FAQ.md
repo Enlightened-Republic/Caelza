@@ -242,3 +242,15 @@ Cael, and serves the Body itself. In Termux, one line installs the Runtime
 `scripts/model-setup.sh` fetches the free model and creates Cael. On a laptop
 or server, build the Runtime with `./runtime/build.sh`, run `caelza
 quickstart`, then `caelza daemon`.
+
+## Can I use Caelza on a Windows PC?
+
+Experimentally. The Runtime has a Windows build (64-bit Windows 10 or 11) that
+is new and has not been through real use yet. In PowerShell, run
+`irm https://raw.githubusercontent.com/Enlightened-Republic/Caelza/main/runtime/windows-install.ps1 | iex`
+(`runtime/windows-install.ps1`). It checks the download, installs to
+`%LOCALAPPDATA%\Caelza`, and puts `caelza` on your PATH. Then run `caelza
+quickstart`. Settings live in `.caelza` in your user folder. If a release has
+no Windows build, the installer says so. The Android app is phone-only, and
+the Body works with a phone over ADB rather than on the PC itself. WSL2 with
+the Linux build is the fallback.
