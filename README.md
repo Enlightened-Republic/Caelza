@@ -9,6 +9,20 @@ An agent that lives on your own hardware, remembers across months, and acts on t
 
 <p align="center"><sub><a href="https://www.enlightenedrepublic.tech"><img src="https://enlightenedrepublic.online/assets/er-profile-pic.png" alt="" width="20" align="absmiddle" /></a>&nbsp; Built by <a href="https://www.enlightenedrepublic.tech">Enlightened Republic</a>, the lab behind SharpWave and xanima. · EST. 2026</sub></p>
 
+<p align="center">
+  <a href="https://github.com/Enlightened-Republic/Caelza/releases/download/v0.1.0/caelza-app-0.1.0-debug-signed.apk"><img src="https://img.shields.io/badge/%E2%AC%87%EF%B8%8F_Install_the_Android_app-APK_v0.1.0-00d4ff?style=for-the-badge&logo=android&logoColor=white" alt="Install the Android app (APK v0.1.0)" /></a>
+</p>
+
+> [!WARNING]
+> **This is a testing build.** Caelza is early, unfinished software and is being tested right now. Expect bugs, rough edges and breaking changes. Don't rely on it for anything important, and don't give it access to anything you can't afford to lose. The APK is debug-signed, so it will not upgrade in place to a later release-signed build.
+
+## Try it on your Android phone
+
+1. On your phone, tap the **Install the Android app** button above (or [download the APK](https://github.com/Enlightened-Republic/Caelza/releases/download/v0.1.0/caelza-app-0.1.0-debug-signed.apk)).
+2. Open the downloaded file. If Android asks, allow your browser or Files app to **install unknown apps**, then tap **Install**.
+3. Open **Caelza** and follow Cael's first-run screens. The app downloads the runtime on first run, so connect to Wi-Fi first.
+4. Something broke? Use **Logs** in the app to share a bug report.
+
 ---
 
 Caelza is three layers shipped as one product (`bundle/manifest.toml`):
@@ -42,8 +56,7 @@ renames everything a user can see (`zeroclaw` → `caelza`, the TUI `zerocode` �
 Caelza palette and mark, and keeps the WASM plugin ABI namespace so upstream
 plugins load unchanged. Details and the upstream pin: [`runtime/README.md`](runtime/README.md).
 
-On the phone, in Termux, the release build installs with one line
-(`export GITHUB_TOKEN=…` first while the repo is private):
+On the phone, in Termux, the release build installs with one line:
 
 ```bash
 curl -fsSL https://raw.githubusercontent.com/Enlightened-Republic/caelza/main/runtime/termux-install.sh | sh
@@ -169,7 +182,7 @@ The wiring in TOML: [`runtime/caelza.local-model.example.toml`](runtime/caelza.l
 ## Status
 
 Reference Body ("Niba") is deployed and running. Runtime pipeline builds from
-upstream `c473221` (v0.8.6). Private while it's early.
+upstream `c473221` (v0.8.6). Public for testing: expect rough edges.
 
 ## License
 
