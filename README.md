@@ -9,6 +9,31 @@ An agent that lives on your own hardware, remembers across months, and acts on t
 
 <p align="center"><sub><a href="https://www.enlightenedrepublic.tech"><img src="https://enlightenedrepublic.online/assets/er-profile-pic.png" alt="" width="20" align="absmiddle" /></a>&nbsp; Built by <a href="https://www.enlightenedrepublic.tech">Enlightened Republic</a>, the lab behind SharpWave and xanima. · EST. 2026</sub></p>
 
+<p align="center">
+  <a href="https://github.com/Enlightened-Republic/Caelza/releases/download/v0.1.0/caelza-app-0.1.0-debug-signed.apk"><img src="https://img.shields.io/badge/%E2%AC%87%EF%B8%8F_Install_the_Android_app-APK_v0.1.0-00d4ff?style=for-the-badge&logo=android&logoColor=white" alt="Install the Android app (APK v0.1.0)" /></a>
+</p>
+
+> [!WARNING]
+> **This is a testing build.** Caelza is early, unfinished software and is being tested right now. Expect bugs, rough edges and breaking changes. Don't rely on it for anything important, and don't give it access to anything you can't afford to lose. The APK is debug-signed, so it will not upgrade in place to a later release-signed build.
+
+## Try it on your Android phone
+
+1. On your phone, tap the **Install the Android app** button above (or [download the APK](https://github.com/Enlightened-Republic/Caelza/releases/download/v0.1.0/caelza-app-0.1.0-debug-signed.apk)).
+2. Open the downloaded file. If Android asks, allow your browser or Files app to **install unknown apps**, then tap **Install**.
+3. Open **Caelza** and follow Cael's first-run screens. The app downloads the runtime on first run, so connect to Wi-Fi first.
+4. Something broke? Use **Logs** in the app to share a bug report.
+
+### What's coming
+
+Planned, not shipped yet. This build does not have any of it, and the order may change:
+
+- **Your apps, connected.** Gmail, Calendar, Drive, Notion, Slack and more through [Maton](https://maton.ai), with Cael walking you through each sign-in. Reading is free; sending, posting, paying and deleting always ask you first.
+- **Smart home.** Lights, locks, cameras and thermostats through Home Assistant.
+- **3D printers.** Status, progress and a camera snapshot over Wi-Fi (Moonraker and OctoPrint first, Bambu after), with pause and cancel behind an approval.
+- **Updates that arrive by themselves.** Today a new version means installing the new APK over this one by hand. We're working on the app telling you when an update is ready and installing it for you.
+
+Want something else? Open an [issue](https://github.com/Enlightened-Republic/Caelza/issues).
+
 ---
 
 Caelza is three layers shipped as one product (`bundle/manifest.toml`):
@@ -17,7 +42,7 @@ Caelza is three layers shipped as one product (`bundle/manifest.toml`):
 |---|---|---|
 | **Runtime** | the engine: agent loop, 20+ model providers, 30+ channels, tools, security policy, SOP engine, cron, gateway + web dashboard, WASM plugins, hardware peripherals. A rebranded build of [ZeroClaw](https://github.com/zeroclaw-labs/zeroclaw), regenerated from a pinned commit. | [`runtime/`](runtime/) |
 | **Mind** | autonomic long-term memory: a graph with a real forgetting curve and a sleep system. [xanima](https://github.com/Enlightened-Republic/xanima-openclaw) (formerly openwave) on the [xanima-core](https://github.com/Enlightened-Republic/xanima) engine (formerly sharpwave-core), both on npm at 0.5.0. | [`mind/`](mind/) |
-| **Body** | the device layer: camera, mic, location, notifications and TTS through termux-api; ADB control of its own phone and paired phones with audit logging and pre-removal snapshots; an immutable supervisor that probes self-modified builds and rolls back. Served to the Runtime as the `caelza-body` MCP server. Formerly **Airframe Lite**. | [`caelza_body/`](caelza_body/), [`body/`](body/) |
+| **Body** | the device layer: camera, mic, location, notifications and TTS through termux-api; ADB control of its own phone and paired phones with audit logging and pre-removal snapshots; an immutable supervisor that probes self-modified builds and rolls back. Served to the Runtime as the `caelza-body` MCP server. | [`caelza_body/`](caelza_body/), [`body/`](body/) |
 
 Read [`docs/design/caelza-vision.md`](docs/design/caelza-vision.md) for the
 architecture, the roadmap, what we are borrowing from
@@ -42,8 +67,14 @@ renames everything a user can see (`zeroclaw` → `caelza`, the TUI `zerocode` �
 Caelza palette and mark, and keeps the WASM plugin ABI namespace so upstream
 plugins load unchanged. Details and the upstream pin: [`runtime/README.md`](runtime/README.md).
 
-On the phone, in Termux, the release build installs with one line
-(`export GITHUB_TOKEN=…` first while the repo is private):
+On Windows 10/11 (experimental, new and untested in real use), in PowerShell:
+
+```powershell
+irm https://raw.githubusercontent.com/Enlightened-Republic/Caelza/main/runtime/windows-install.ps1 | iex
+caelza quickstart
+```
+
+On the phone, in Termux, the release build installs with one line:
 
 ```bash
 curl -fsSL https://raw.githubusercontent.com/Enlightened-Republic/caelza/main/runtime/termux-install.sh | sh
@@ -70,11 +101,16 @@ service's sleep doing the forgetting. The two tool paths (the stdio `xanima`
 MCP server, the same service as an `http` MCP server) are for deliberate memory
 work and are described in [`mind/README.md`](mind/README.md).
 
-## Body (the Airframe Lite layer)
+## Body
 
 A supervised, self-modifying Python agent that treats a phone as its body.
 Target runtime: **Termux on non-root Android**, Python 3.11+. The reference
-agent is named **Niba** and runs on a T-Mobile REVVL 7 5G.
+device is a T-Mobile REVVL 7 5G.
+
+The Body's design comes from Niba, the original phone-body agent, which has
+since been renamed Cael. The code, paths and docs now use the Caelza names; the
+only place the old name survives is the `~/.niba` folder that a phone set up
+before the rename still has (see the migration note below).
 
 ```
 caelza_body/supervisor.py   immutable: git-commits → probes the new build → promotes it
@@ -108,9 +144,9 @@ cp caelza_body/agent/prompt.example.md caelza_body/agent/prompt.md   # name, own
 python scripts/setup.py                                  # walks every bring-up step
 ```
 
-Config lives in `~/.caelza-body/config.toml` (never committed). A phone that
-ran Airframe Lite needs one migration after pulling this: `python
-scripts/setup.py --migrate` moves `~/.niba` to `~/.caelza-body` and replaces
+Config lives in `~/.caelza-body/config.toml` (never committed). A phone set up
+before the Caelza rename needs one migration after pulling this: `python
+scripts/setup.py --migrate` moves the old `~/.niba` folder to `~/.caelza-body` and replaces
 the boot script. Until then the legacy paths still boot. Tests run on a dev box
 or on-device:
 
@@ -162,17 +198,60 @@ The wiring in TOML: [`runtime/caelza.local-model.example.toml`](runtime/caelza.l
 ## Design docs
 
 - [`docs/design/caelza-vision.md`](docs/design/caelza-vision.md) — Caelza: architecture, roadmap, borrow list, UI
-- [`docs/design/agent-design.md`](docs/design/agent-design.md) — Body spec (written as Airframe Lite / Niba)
+- [`docs/design/agent-design.md`](docs/design/agent-design.md) — Body spec (written before the Caelza rename)
 - [`docs/design/plan-1-core.md`](docs/design/plan-1-core.md), [`plan-2-device-tools.md`](docs/design/plan-2-device-tools.md) — Body implementation plans
 - [`docs/examples/revvl-7-debloat/`](docs/examples/revvl-7-debloat/) — worked example: debloating a carrier phone for an agent
 
 ## Status
 
-Reference Body ("Niba") is deployed and running. Runtime pipeline builds from
-upstream `c473221` (v0.8.6). Private while it's early.
+The reference Body is deployed and running. Runtime pipeline builds from
+upstream `c473221` (v0.8.6). Public for testing: expect rough edges.
 
 ## License
 
-MIT for this repository (the Body, the pipeline, the brand and the docs). The
-Runtime binary is built from ZeroClaw under MIT OR Apache-2.0; the pipeline
-writes the upstream notices into every build. Fonts are SIL OFL 1.1.
+Caelza is open source. Each of the three layers is licensed on its own, and
+the parts we wrote are ours and MIT-licensed.
+
+| Part | Who wrote it | License |
+|---|---|---|
+| **Body** (`caelza_body/`, `body/`), the build pipeline (`runtime/` scripts and patches), the Android app (`android/`), Cael's guide (`guide/`), the brand assets and the docs | Enlightened Republic | [MIT](LICENSE) |
+| **Mind**: [xanima](https://github.com/Enlightened-Republic/xanima-openclaw) and the [xanima-core](https://github.com/Enlightened-Republic/xanima) engine (formerly openwave and sharpwave-core) | Enlightened Republic | MIT |
+| **Runtime** engine: the compiled `caelza` binary, built from [ZeroClaw](https://github.com/zeroclaw-labs/zeroclaw) | ZeroClaw authors, rebranded by our pipeline | MIT OR Apache-2.0, your choice |
+| **Fonts** in `brand/fonts/` | their authors | SIL OFL 1.1 |
+
+### What you can do
+
+MIT is about as permissive as licenses get. For the MIT parts you may use
+Caelza for yourself, for your business or for clients; change it; fork it;
+redistribute it; and sell products built on it, including closed-source ones,
+with no fee and no need to ask. The one condition is that you keep the
+copyright notice and the license text with any copy or substantial portion
+of the code you pass on. There is no warranty: the software is provided as is,
+and Enlightened Republic is not liable for what it does, so read the testing
+warning at the top before you hand it access to anything you care about.
+
+### What is ours, and what is not
+
+The Body (the device layer and its safety model), the Mind (xanima) and the
+Android app are original Enlightened Republic work. The Runtime is not: the
+agent engine inside it is ZeroClaw, and our pipeline fetches a pinned upstream
+commit, renames and re-themes it, and writes the upstream notices into every
+build. Credit for that engine belongs to the ZeroClaw authors. If you
+redistribute a Caelza Runtime binary, keep those notices with it.
+
+### Things that are not covered by our license
+
+- **Model weights.** Caelza ships no models; it downloads them on your device.
+  DeepSeek R1 is MIT, but the distilled sizes are built on other base models
+  that carry their own terms (Qwen-based sizes are Apache 2.0; the 8B is
+  Llama-based and follows Meta's Llama license). Check the card of the exact
+  model you pull if you plan to use it commercially.
+- **Services you connect.** Maton, Home Assistant, Telegram, your model
+  provider and anything else you wire up have their own terms, and your use of
+  them is between you and them.
+- **Other dependencies.** Third-party libraries (for example Shizuku, which is
+  Apache 2.0) keep their own licenses.
+
+This is a plain-language summary, not legal advice. The license files are the
+authority: [`LICENSE`](LICENSE), [`runtime/README.md`](runtime/README.md) and
+the `NOTICE` inside every Runtime build.

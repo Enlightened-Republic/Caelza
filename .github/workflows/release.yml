@@ -210,6 +210,126 @@ jobs:
             ${{ steps.pack.outputs.sum }}
           if-no-files-found: error
 
+  # Windows (x86_64-pc-windows-msvc), experimental: upstream checks this target
+  # in its CI, but Caelza has not shipped it before, so a failure here never holds
+  # the release back. build.sh needs bash and perl, so the rebranded tree is
+  # staged on Linux (with the version stamped in) and handed to the Windows
+  # runner as a tarball; the Windows runner only compiles and zips.
+  stage:
+    name: Stage tree for Windows
+    needs: dashboard
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    outputs:
+      ver: ${{ steps.version.outputs.ver }}
+      build_id: ${{ steps.version.outputs.build_id }}
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+      - run: pip install pillow
+      - name: Version and build id
+        id: version
+        run: |
+          set -euo pipefail
+          up=$(sed -n -E 's/^commit[[:space:]]*=[[:space:]]*"([0-9a-f]+)".*/\1/p' runtime/upstream.toml)
+          [ -n "$up" ] || { echo "runtime/upstream.toml names no upstream commit" >&2; exit 1; }
+          if [ "$GITHUB_REF_TYPE" = tag ] && ! [[ "$GITHUB_REF_NAME" =~ ^v[0-9]+\.[0-9]+\.[0-9]+(-[0-9A-Za-z.-]+)?$ ]]; then
+            echo "tag $GITHUB_REF_NAME is not v<major>.<minor>.<patch>[-pre]" >&2
+            exit 1
+          fi
+          if [ "$GITHUB_REF_TYPE" = tag ]; then ver="${GITHUB_REF_NAME#v}"; id="$GITHUB_REF_NAME"; else ver="dev-${GITHUB_SHA::8}"; id="$ver"; fi
+          echo "CAELZA_BUILD_ID=${id}+zeroclaw.${up::10}" >> "$GITHUB_ENV"
+          echo "ver=$ver" >> "$GITHUB_OUTPUT"
+          echo "build_id=${id}+zeroclaw.${up::10}" >> "$GITHUB_OUTPUT"
+      - name: Stage the rebranded tree
+        run: ./runtime/build.sh --no-build
+      - uses: actions/download-artifact@v4
+        with:
+          name: web-dist
+          path: runtime/.build/src/web/dist/
+      - name: Tar the tree
+        # Windows runners cannot create symlinks: drop the dangling ones (they
+        # point at files the rename moved) and store the rest as plain files.
+        run: |
+          find runtime/.build/src -xtype l -print -delete
+          tar -h -C runtime/.build -czf "$RUNNER_TEMP/tree.tar.gz" src
+      - uses: actions/upload-artifact@v4
+        with:
+          name: windows-tree
+          path: ${{ runner.temp }}/tree.tar.gz
+          if-no-files-found: error
+
+  windows:
+    name: x86_64-pc-windows-msvc
+    needs: stage
+    runs-on: windows-latest
+    timeout-minutes: 120
+    continue-on-error: true
+    env:
+      CAELZA_BUILD_ID: ${{ needs.stage.outputs.build_id }}
+      CARGO_TARGET_DIR: C:\t
+    steps:
+      - uses: actions/checkout@v4
+      - uses: dtolnay/rust-toolchain@stable
+        with:
+          targets: x86_64-pc-windows-msvc
+      - uses: actions/download-artifact@v4
+        with:
+          name: windows-tree
+          path: ${{ runner.temp }}
+      - name: Unpack (short path, long paths on)
+        shell: bash
+        run: |
+          git config --global core.longpaths true
+          mkdir -p /c/w && tar --force-local -C /c/w -xzf "$RUNNER_TEMP/tree.tar.gz"
+      - uses: Swatinem/rust-cache@v2
+        with:
+          workspaces: C:\w\src -> C:\t
+          prefix-key: caelza-windows
+      - name: cargo build --release
+        working-directory: C:\w\src
+        run: cargo build --release --locked -p caelza --features channel-git --target x86_64-pc-windows-msvc
+      - name: Package
+        id: pack
+        shell: pwsh
+        run: |
+          $ver = "${{ needs.stage.outputs.ver }}"
+          $name = "caelza-$ver-x86_64-pc-windows-msvc"
+          $stage = Join-Path $env:RUNNER_TEMP $name
+          New-Item -ItemType Directory -Force "$stage\web" | Out-Null
+          Copy-Item "C:\t\x86_64-pc-windows-msvc\release\caelza.exe" $stage
+          Copy-Item -Recurse "C:\w\src\web\dist" "$stage\web\dist"
+          foreach ($f in "NOTICE","UPSTREAM.md","LICENSE-MIT","LICENSE-APACHE") { Copy-Item "C:\w\src\$f" $stage }
+          $zip = Join-Path $env:RUNNER_TEMP "$name.zip"
+          Compress-Archive -Path $stage -DestinationPath $zip
+          $hash = (Get-FileHash $zip -Algorithm SHA256).Hash.ToLower()
+          "$hash  $name.zip" | Out-File -Encoding ascii "$zip.sha256"
+          # The one-click installer (no terminal): Inno Setup, per-user, adds a Start menu entry.
+          choco install innosetup -y --no-progress | Out-Null
+          $iscc = "${env:ProgramFiles(x86)}\Inno Setup 6\ISCC.exe"
+          $out = Join-Path $env:RUNNER_TEMP "setup"
+          & $iscc "/DAppVersion=$ver" "/DSourceDir=$stage" "/DOutDir=$out" "runtime\windows\caelza.iss"
+          if ($LASTEXITCODE -ne 0) { throw "ISCC failed" }
+          $setup = Join-Path $env:RUNNER_TEMP "Caelza-Setup.exe"
+          Move-Item (Join-Path $out "Caelza-Setup.exe") $setup
+          $h2 = (Get-FileHash $setup -Algorithm SHA256).Hash.ToLower()
+          "$h2  Caelza-Setup.exe" | Out-File -Encoding ascii "$setup.sha256"
+          "asset=$zip" >> $env:GITHUB_OUTPUT
+          "sum=$zip.sha256" >> $env:GITHUB_OUTPUT
+          "setup=$setup" >> $env:GITHUB_OUTPUT
+          "setupsum=$setup.sha256" >> $env:GITHUB_OUTPUT
+      - uses: actions/upload-artifact@v4
+        with:
+          name: caelza-windows
+          path: |
+            ${{ steps.pack.outputs.asset }}
+            ${{ steps.pack.outputs.sum }}
+            ${{ steps.pack.outputs.setup }}
+            ${{ steps.pack.outputs.setupsum }}
+          if-no-files-found: error
+
   # The app for the same tag. A broken app build never holds the Runtime's
   # release back (continue-on-error, like the experimental Android leg above);
   # the release then simply has no APK, and the job's log says why.
@@ -319,7 +439,7 @@ jobs:
   release:
     name: GitHub release
     if: github.ref_type == 'tag'
-    needs: [build, app, mind]
+    needs: [build, windows, app, mind]
     runs-on: ubuntu-latest
     steps:
       - uses: actions/download-artifact@v4
@@ -335,4 +455,5 @@ jobs:
             Caelza runtime built from the pinned upstream commit (see `UPSTREAM.md` inside each archive).
             Each archive holds the `caelza` binary, the web dashboard (`web/dist`), and the upstream notices.
             `caelza-app-<version>.apk` is the Android app for this release (`-debug-signed` when it was built without the release keystore: install it only to try things, it will not upgrade to a release-signed build).
+            `caelza-<version>-x86_64-pc-windows-msvc.zip` is the experimental Windows build and `Caelza-Setup.exe` its one-click installer (unsigned, so Windows SmartScreen asks you to confirm; `runtime/windows-install.ps1` is the PowerShell route).
             `caelza-mind-<version>.tgz` is the Mind: `xanima-server`, the brain service, built from the commit `bundle/manifest.toml` pins. `mind/install.sh` installs it on a hub or in Termux as `caelza-mind`; the Runtime's `[memory] backend = "xanima"` talks to it.

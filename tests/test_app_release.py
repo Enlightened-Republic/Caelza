@@ -120,7 +120,7 @@ def test_release_yml_builds_the_app_for_the_tag_and_attaches_it():
     assert "apksigner" in job, "the signature is printed in the log"
     assert "name: caelza-app\n" in job, "the artifact matches the release job's caelza-* pattern"
     release_job = RELEASE[RELEASE.index("\n  release:\n"):]
-    assert "needs: [build, app, mind]" in release_job and "pattern: caelza-*" in release_job
+    assert "needs: [build, windows, app, mind]" in release_job and "pattern: caelza-*" in release_job
     assert "caelza-app-<version>.apk" in release_job
     assert "assembleDebug assembleRelease testDebugUnitTest" in ANDROID_CI, "CI takes the release build's path too"
 

@@ -31,6 +31,8 @@ import tech.enlightenedrepublic.caelza.runtime.ProcessProber
 import tech.enlightenedrepublic.caelza.runtime.ReleaseInstaller
 import tech.enlightenedrepublic.caelza.runtime.RuntimeStore
 import tech.enlightenedrepublic.caelza.shizuku.ShizukuStatus
+import tech.enlightenedrepublic.caelza.update.AppUpdate
+import tech.enlightenedrepublic.caelza.update.AppUpdater
 import java.io.File
 
 /**
@@ -106,8 +108,59 @@ class MainActivity : AppCompatActivity() {
         }
     }
 
+    /**
+     * The app's own update (the Runtime updates through the guard). At most every six hours, and only
+     * after the first run is done so Cael's screens are not interrupted: ask the release feed, and if a
+     * newer APK is there offer it. The system installer still asks the owner to confirm.
+     */
+    private fun checkForAppUpdate() {
+        val prefs = getSharedPreferences(UPDATE_PREFS, MODE_PRIVATE)
+        if (!getSharedPreferences(FirstRun.PREFS, MODE_PRIVATE).getBoolean(FirstRun.DONE, false)) return
+        val now = System.currentTimeMillis()
+        if (now - prefs.getLong(UPDATE_LAST_CHECK, 0L) < AppUpdater.CHECK_INTERVAL_MS) return
+        lifecycleScope.launch {
+            val update = withContext(Dispatchers.IO) {
+                try {
+                    AppUpdater().check(BuildConfig.VERSION_CODE.toLong())
+                } catch (e: Exception) {
+                    Log.w("CaelzaUpdate", "update check failed: ${e.message}")
+                    return@withContext null
+                }
+            }
+            prefs.edit().putLong(UPDATE_LAST_CHECK, now).apply()
+            if (update == null || update.tag == prefs.getString(UPDATE_DECLINED, null)) return@launch
+            androidx.appcompat.app.AlertDialog.Builder(this@MainActivity)
+                .setTitle("Caelza ${update.version} is ready")
+                .setMessage("A new version of the app is available. It downloads, is checked, and Android asks you to confirm the install.")
+                .setPositiveButton("Update") { _, _ -> installAppUpdate(update) }
+                .setNegativeButton("Later") { _, _ -> prefs.edit().putString(UPDATE_DECLINED, update.tag).apply() }
+                .show()
+        }
+    }
+
+    private fun installAppUpdate(update: AppUpdate) {
+        if (!AppUpdater.canInstall(this)) {
+            android.widget.Toast.makeText(this, "Allow Caelza to install updates, then tap Update again.", android.widget.Toast.LENGTH_LONG).show()
+            startActivity(AppUpdater.allowInstallsIntent(this))
+            return
+        }
+        android.widget.Toast.makeText(this, "Downloading ${update.version}…", android.widget.Toast.LENGTH_SHORT).show()
+        lifecycleScope.launch {
+            try {
+                withContext(Dispatchers.IO) {
+                    val apk = AppUpdater().download(update, File(cacheDir, "app-update"))
+                    AppUpdater.install(this@MainActivity, apk)
+                }
+            } catch (e: Exception) {
+                Log.w("CaelzaUpdate", "update failed: ${e.message}")
+                android.widget.Toast.makeText(this@MainActivity, "The update did not download: ${e.message}", android.widget.Toast.LENGTH_LONG).show()
+            }
+        }
+    }
+
     override fun onResume() {
         super.onResume()
+        checkForAppUpdate()
         renderShizuku()
         renderSensors()
         render(RuntimeService.state.value)
@@ -309,5 +362,11 @@ class MainActivity : AppCompatActivity() {
             )
             render(RuntimeService.state.value)
         }
+    }
+
+    private companion object {
+        const val UPDATE_PREFS = "app_update"
+        const val UPDATE_LAST_CHECK = "last_check"
+        const val UPDATE_DECLINED = "declined_tag"
     }
 }

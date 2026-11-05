@@ -199,6 +199,46 @@ pick the phone, and approve or deny at the gate. The deterministic parts (the
 debloat plan, the suspects list, the health check) are read-only tools you can
 run on their own.
 
+## How do I connect my apps (Gmail, Calendar, Drive, Notion, Slack)?
+
+Through Maton, a service that keeps the sign-in to each app so Caelza does not
+have to. Make a free account at maton.ai, connect the apps you want there, and
+copy your Maton API key from its settings. Then run `sh scripts/maton-connect.sh`
+in Termux or a shell: it adds Maton's server to the Runtime and asks for the key
+at a masked prompt (type `Bearer ` and then the key). Add `maton` to your agent's
+bundles, restart `caelza daemon`, and ask something harmless first, such as what
+is on your calendar today. The key is encrypted and never shown again; anyone
+who holds it can reach every app you connected, so treat it like a password.
+Reading is free; sending, posting, paying and deleting always ask you first.
+
+## How do I connect my smart home (Home Assistant)?
+
+Caelza talks to your lights, switches and thermostats through Home Assistant,
+which must be version 2025.2 or newer and on the same Wi-Fi as the device
+running Caelza. In Home Assistant: Settings > System > AI, turn the Model
+Context Protocol Server on; expose the devices Caelza may use to voice
+assistants (Settings > Voice assistants > Expose); then create a long-lived
+access token (your profile > Security). Caelza only sees what you exposed.
+Then run `sh scripts/home-connect.sh` (or `sh scripts/home-connect.sh
+http://your-address:8123`) and paste `Bearer <token>` at the masked prompt.
+Reading what is on is free; anything that acts on the house asks you first, and
+locks, doors and alarms always ask. This is new and has not been tried against
+a real Home Assistant yet, so tell us if the token is refused.
+
+## Can Caelza watch my 3D printer?
+
+Yes, for printers running Moonraker (Klipper, Mainsail, Fluidd) or OctoPrint, as
+long as the printer is on the same Wi-Fi as the device running Caelza. Bambu Lab
+printers are not supported yet. Caelza can tell you the state, progress, time left
+and temperatures, and fetch a camera snapshot. It can pause or cancel a print only
+after you say yes; it never starts prints, sends G-code or hits the emergency stop.
+To set it up, copy `runtime/caelza.printer.example.toml` into your config with your
+printer's address (that one address is allowed, not your whole network), and for
+OctoPrint store its API key with `caelza config set http_request.secrets.octoprint`
+(type `Bearer ` and the key). Then install the 3d-printer skill from the `skills`
+folder. Every request asks you for approval, reads included. This is new and has
+not been tried against a real printer yet.
+
 ## Where do settings live?
 
 The Runtime's config is `~/.caelza/config.toml` (the app keeps it under its
@@ -230,3 +270,15 @@ Cael, and serves the Body itself. In Termux, one line installs the Runtime
 `scripts/model-setup.sh` fetches the free model and creates Cael. On a laptop
 or server, build the Runtime with `./runtime/build.sh`, run `caelza
 quickstart`, then `caelza daemon`.
+
+## Can I use Caelza on a Windows PC?
+
+Experimentally. The Runtime has a Windows build (64-bit Windows 10 or 11) that
+is new and has not been through real use yet. In PowerShell, run
+`irm https://raw.githubusercontent.com/Enlightened-Republic/Caelza/main/runtime/windows-install.ps1 | iex`
+(`runtime/windows-install.ps1`). It checks the download, installs to
+`%LOCALAPPDATA%\Caelza`, and puts `caelza` on your PATH. Then run `caelza
+quickstart`. Settings live in `.caelza` in your user folder. If a release has
+no Windows build, the installer says so. The Android app is phone-only, and
+the Body works with a phone over ADB rather than on the PC itself. WSL2 with
+the Linux build is the fallback.

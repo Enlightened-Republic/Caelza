@@ -69,7 +69,7 @@ def test_release_yml_packs_the_mind_for_the_tag_and_attaches_it():
     assert "name: caelza-mind\n" in job, "the artifact matches the release job's caelza-* pattern"
     assert "caelza-mind-*.tgz.sha256" in job
     release_job = RELEASE[RELEASE.index("\n  release:\n"):]
-    assert "needs: [build, app, mind]" in release_job and "pattern: caelza-*" in release_job
+    assert "needs: [build, windows, app, mind]" in release_job and "pattern: caelza-*" in release_job
     assert "caelza-mind-<version>.tgz" in release_job, "the release notes name the asset"
 
 
