@@ -107,6 +107,11 @@ A supervised, self-modifying Python agent that treats a phone as its body.
 Target runtime: **Termux on non-root Android**, Python 3.11+. The reference
 device is a T-Mobile REVVL 7 5G.
 
+The Body's design comes from Niba, the original phone-body agent, which has
+since been renamed Cael. The code, paths and docs now use the Caelza names; the
+only place the old name survives is the `~/.niba` folder that a phone set up
+before the rename still has (see the migration note below).
+
 ```
 caelza_body/supervisor.py   immutable: git-commits → probes the new build → promotes it
                      or rolls back to last-good; crash-loop guard; heartbeat
@@ -204,6 +209,49 @@ upstream `c473221` (v0.8.6). Public for testing: expect rough edges.
 
 ## License
 
-MIT for this repository (the Body, the pipeline, the brand and the docs). The
-Runtime binary is built from ZeroClaw under MIT OR Apache-2.0; the pipeline
-writes the upstream notices into every build. Fonts are SIL OFL 1.1.
+Caelza is open source. Each of the three layers is licensed on its own, and
+the parts we wrote are ours and MIT-licensed.
+
+| Part | Who wrote it | License |
+|---|---|---|
+| **Body** (`caelza_body/`, `body/`), the build pipeline (`runtime/` scripts and patches), the Android app (`android/`), Cael's guide (`guide/`), the brand assets and the docs | Enlightened Republic | [MIT](LICENSE) |
+| **Mind**: [xanima](https://github.com/Enlightened-Republic/xanima-openclaw) and the [xanima-core](https://github.com/Enlightened-Republic/xanima) engine (formerly openwave and sharpwave-core) | Enlightened Republic | MIT |
+| **Runtime** engine: the compiled `caelza` binary, built from [ZeroClaw](https://github.com/zeroclaw-labs/zeroclaw) | ZeroClaw authors, rebranded by our pipeline | MIT OR Apache-2.0, your choice |
+| **Fonts** in `brand/fonts/` | their authors | SIL OFL 1.1 |
+
+### What you can do
+
+MIT is about as permissive as licenses get. For the MIT parts you may use
+Caelza for yourself, for your business or for clients; change it; fork it;
+redistribute it; and sell products built on it, including closed-source ones,
+with no fee and no need to ask. The one condition is that you keep the
+copyright notice and the license text with any copy or substantial portion
+of the code you pass on. There is no warranty: the software is provided as is,
+and Enlightened Republic is not liable for what it does, so read the testing
+warning at the top before you hand it access to anything you care about.
+
+### What is ours, and what is not
+
+The Body (the device layer and its safety model), the Mind (xanima) and the
+Android app are original Enlightened Republic work. The Runtime is not: the
+agent engine inside it is ZeroClaw, and our pipeline fetches a pinned upstream
+commit, renames and re-themes it, and writes the upstream notices into every
+build. Credit for that engine belongs to the ZeroClaw authors. If you
+redistribute a Caelza Runtime binary, keep those notices with it.
+
+### Things that are not covered by our license
+
+- **Model weights.** Caelza ships no models; it downloads them on your device.
+  DeepSeek R1 is MIT, but the distilled sizes are built on other base models
+  that carry their own terms (Qwen-based sizes are Apache 2.0; the 8B is
+  Llama-based and follows Meta's Llama license). Check the card of the exact
+  model you pull if you plan to use it commercially.
+- **Services you connect.** Maton, Home Assistant, Telegram, your model
+  provider and anything else you wire up have their own terms, and your use of
+  them is between you and them.
+- **Other dependencies.** Third-party libraries (for example Shizuku, which is
+  Apache 2.0) keep their own licenses.
+
+This is a plain-language summary, not legal advice. The license files are the
+authority: [`LICENSE`](LICENSE), [`runtime/README.md`](runtime/README.md) and
+the `NOTICE` inside every Runtime build.
