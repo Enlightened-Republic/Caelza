@@ -225,6 +225,20 @@ Reading what is on is free; anything that acts on the house asks you first, and
 locks, doors and alarms always ask. This is new and has not been tried against
 a real Home Assistant yet, so tell us if the token is refused.
 
+## Can Caelza watch my 3D printer?
+
+Yes, for printers running Moonraker (Klipper, Mainsail, Fluidd) or OctoPrint, as
+long as the printer is on the same Wi-Fi as the device running Caelza. Bambu Lab
+printers are not supported yet. Caelza can tell you the state, progress, time left
+and temperatures, and fetch a camera snapshot. It can pause or cancel a print only
+after you say yes; it never starts prints, sends G-code or hits the emergency stop.
+To set it up, copy `runtime/caelza.printer.example.toml` into your config with your
+printer's address (that one address is allowed, not your whole network), and for
+OctoPrint store its API key with `caelza config set http_request.secrets.octoprint`
+(type `Bearer ` and the key). Then install the 3d-printer skill from the `skills`
+folder. Every request asks you for approval, reads included. This is new and has
+not been tried against a real printer yet.
+
 ## Where do settings live?
 
 The Runtime's config is `~/.caelza/config.toml` (the app keeps it under its

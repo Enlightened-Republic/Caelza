@@ -1,0 +1,24 @@
+# Caelza + a 3D printer on your own Wi-Fi (Moonraker/Klipper or OctoPrint).
+#
+# The skill in skills/3d-printer/ tells the agent how to talk to the printer with
+# the Runtime's built-in `http_request` tool. Two things to set up:
+#
+# 1. Allow that ONE address (the Runtime blocks private addresses by default):
+[http_request]
+allowed_private_hosts = ["192.168.1.40"]   # your printer's address, or e.g. "voron.local"
+
+# 2. OctoPrint only: the API key, as a secret (masked prompt, encrypted, never shown back).
+#    Type:  Bearer <your OctoPrint API key>
+#      caelza config set http_request.secrets.octoprint
+#
+# 3. Install the skill and give it to the agent:
+#      caelza skills bundle add printers
+#      caelza skills install ./skills/3d-printer --bundle printers
+[skill_bundles.printers]
+
+[agents.main]
+skill_bundles = ["printers"]
+#
+# Every request still asks the owner under the supervised defaults, reads included.
+# That is the safe side: `http_request` cannot tell a status check from a cancel,
+# so it must not be auto-approved. A read-only printer tool that can be is on the list.
