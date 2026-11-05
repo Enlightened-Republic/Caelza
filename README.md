@@ -42,7 +42,7 @@ Caelza is three layers shipped as one product (`bundle/manifest.toml`):
 |---|---|---|
 | **Runtime** | the engine: agent loop, 20+ model providers, 30+ channels, tools, security policy, SOP engine, cron, gateway + web dashboard, WASM plugins, hardware peripherals. A rebranded build of [ZeroClaw](https://github.com/zeroclaw-labs/zeroclaw), regenerated from a pinned commit. | [`runtime/`](runtime/) |
 | **Mind** | autonomic long-term memory: a graph with a real forgetting curve and a sleep system. [xanima](https://github.com/Enlightened-Republic/xanima-openclaw) (formerly openwave) on the [xanima-core](https://github.com/Enlightened-Republic/xanima) engine (formerly sharpwave-core), both on npm at 0.5.0. | [`mind/`](mind/) |
-| **Body** | the device layer: camera, mic, location, notifications and TTS through termux-api; ADB control of its own phone and paired phones with audit logging and pre-removal snapshots; an immutable supervisor that probes self-modified builds and rolls back. Served to the Runtime as the `caelza-body` MCP server. Formerly **Airframe Lite**. | [`caelza_body/`](caelza_body/), [`body/`](body/) |
+| **Body** | the device layer: camera, mic, location, notifications and TTS through termux-api; ADB control of its own phone and paired phones with audit logging and pre-removal snapshots; an immutable supervisor that probes self-modified builds and rolls back. Served to the Runtime as the `caelza-body` MCP server. | [`caelza_body/`](caelza_body/), [`body/`](body/) |
 
 Read [`docs/design/caelza-vision.md`](docs/design/caelza-vision.md) for the
 architecture, the roadmap, what we are borrowing from
@@ -101,11 +101,11 @@ service's sleep doing the forgetting. The two tool paths (the stdio `xanima`
 MCP server, the same service as an `http` MCP server) are for deliberate memory
 work and are described in [`mind/README.md`](mind/README.md).
 
-## Body (the Airframe Lite layer)
+## Body
 
 A supervised, self-modifying Python agent that treats a phone as its body.
 Target runtime: **Termux on non-root Android**, Python 3.11+. The reference
-agent is named **Niba** and runs on a T-Mobile REVVL 7 5G.
+device is a T-Mobile REVVL 7 5G.
 
 ```
 caelza_body/supervisor.py   immutable: git-commits → probes the new build → promotes it
@@ -139,9 +139,9 @@ cp caelza_body/agent/prompt.example.md caelza_body/agent/prompt.md   # name, own
 python scripts/setup.py                                  # walks every bring-up step
 ```
 
-Config lives in `~/.caelza-body/config.toml` (never committed). A phone that
-ran Airframe Lite needs one migration after pulling this: `python
-scripts/setup.py --migrate` moves `~/.niba` to `~/.caelza-body` and replaces
+Config lives in `~/.caelza-body/config.toml` (never committed). A phone set up
+before the Caelza rename needs one migration after pulling this: `python
+scripts/setup.py --migrate` moves the old `~/.niba` folder to `~/.caelza-body` and replaces
 the boot script. Until then the legacy paths still boot. Tests run on a dev box
 or on-device:
 
@@ -193,13 +193,13 @@ The wiring in TOML: [`runtime/caelza.local-model.example.toml`](runtime/caelza.l
 ## Design docs
 
 - [`docs/design/caelza-vision.md`](docs/design/caelza-vision.md) — Caelza: architecture, roadmap, borrow list, UI
-- [`docs/design/agent-design.md`](docs/design/agent-design.md) — Body spec (written as Airframe Lite / Niba)
+- [`docs/design/agent-design.md`](docs/design/agent-design.md) — Body spec (written before the Caelza rename)
 - [`docs/design/plan-1-core.md`](docs/design/plan-1-core.md), [`plan-2-device-tools.md`](docs/design/plan-2-device-tools.md) — Body implementation plans
 - [`docs/examples/revvl-7-debloat/`](docs/examples/revvl-7-debloat/) — worked example: debloating a carrier phone for an agent
 
 ## Status
 
-Reference Body ("Niba") is deployed and running. Runtime pipeline builds from
+The reference Body is deployed and running. Runtime pipeline builds from
 upstream `c473221` (v0.8.6). Public for testing: expect rough edges.
 
 ## License
