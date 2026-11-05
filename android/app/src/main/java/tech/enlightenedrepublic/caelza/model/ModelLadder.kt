@@ -9,8 +9,11 @@ import org.json.JSONObject
  * tiers come out of a pick: the agent model (the owner's agent when no
  * provider key is configured) and the guide model (Cael, always the 1.5B).
  * The GGUF pins (bartowski's conversions, MIT; sha256 is the Hugging Face LFS
- * oid) are the Python module's, and `export()` is compared against its
- * export in both test suites so the two cannot drift. Honest sizing: the
+ * oid, bytes the LFS size: `scripts/model_ladder.py --check-online` compares
+ * both with the files' headers) are the Python module's, and `export()` is
+ * compared against its export in both test suites so the two cannot drift. A
+ * byte count off by one is fatal here, where the Termux installer checks only
+ * the hash: the store refuses a size the server disagrees with. Honest sizing: the
  * notes say what a 7B on a phone is (tight) and what the 1.5B is for (chat
  * and explanation).
  */
@@ -34,12 +37,12 @@ object ModelLadder {
         "1.5b" to Gguf(
             "1.5b", "DeepSeek-R1-Distill-Qwen-1.5B-Q4_K_M", "DeepSeek-R1-Distill-Qwen-1.5B-Q4_K_M.gguf",
             "bartowski/DeepSeek-R1-Distill-Qwen-1.5B-GGUF",
-            "1741e5b2d062b07acf048bf0d2c514dadf2a48f94e2b4aa0cfe069af3838ee2f", 1_117_320_736L,
+            "1741e5b2d062b07acf048bf0d2c514dadf2a48f94e2b4aa0cfe069af3838ee2f", 1_117_320_800L,
         ),
         "7b" to Gguf(
             "7b", "DeepSeek-R1-Distill-Qwen-7B-Q4_K_M", "DeepSeek-R1-Distill-Qwen-7B-Q4_K_M.gguf",
             "bartowski/DeepSeek-R1-Distill-Qwen-7B-GGUF",
-            "731ece8d06dc7eda6f6572997feb9ee1258db0784827e642909d9b565641937b", 4_683_073_184L,
+            "731ece8d06dc7eda6f6572997feb9ee1258db0784827e642909d9b565641937b", 4_683_073_504L,
         ),
     )
 

@@ -9,6 +9,7 @@ import android.os.PowerManager
 import android.provider.Settings
 import android.view.View
 import android.view.ViewGroup
+import android.view.WindowManager
 import android.widget.NumberPicker
 import androidx.appcompat.app.AppCompatActivity
 import androidx.lifecycle.lifecycleScope
@@ -302,8 +303,14 @@ class FirstRunActivity : AppCompatActivity() {
         runOnUiThread { b.progress.text = getString(R.string.fr_progress, pct, done / 1024 / 1024, total / 1024 / 1024) }
     }
 
+    /** The installer's and the local door's lines go here too: the Logs screen's bug report carries what went wrong. */
+    private val installLog: File get() = File(store.logsDir, BugReport.INSTALL_LOG)
+
     private fun work(block: suspend () -> Unit) {
         busy = true
+        // A gigabyte over a phone's connection takes minutes: the screen stays on so the
+        // download is not left to Doze halfway (the work runs in this activity, not a service).
+        window.addFlags(WindowManager.LayoutParams.FLAG_KEEP_SCREEN_ON)
         render()
         lifecycleScope.launch {
             val error = try {
@@ -313,26 +320,28 @@ class FirstRunActivity : AppCompatActivity() {
                 e
             }
             busy = false
-            if (error != null) line(getString(R.string.fr_failed, error.message ?: error.javaClass.simpleName))
+            window.clearFlags(WindowManager.LayoutParams.FLAG_KEEP_SCREEN_ON)
+            if (error != null) {
+                val what = error.message ?: error.javaClass.simpleName
+                BugReport.append(installLog, "failed: $what")
+                line(getString(R.string.fr_failed, what))
+            }
             render()
         }
     }
 
     // --- the steps' actions ---------------------------------------------------------
 
+    /** A line for the owner and for the bug report. */
+    private fun say(text: String) {
+        line(text)
+        BugReport.append(installLog, text)
+    }
+
     private fun installRuntime() = work {
-        // The installer's lines go to logs/install.log as well (the Logs screen's bug report).
-        val installLog = File(store.logsDir, BugReport.INSTALL_LOG)
         BugReport.append(installLog, "== update from the first run")
-        val result = try {
-            ReleaseInstaller(store, prober = ProcessProber(home = filesDir), log = { line(it); BugReport.append(installLog, it) }).update()
-        } catch (e: Exception) {
-            BugReport.append(installLog, "failed: ${e.message ?: e.javaClass.simpleName}")
-            throw e
-        }
-        val outcome = if (result.promoted) getString(R.string.install_done, result.version) else "${result.version}: ${result.detail}"
-        BugReport.append(installLog, outcome)
-        line(outcome)
+        val result = ReleaseInstaller(store, prober = ProcessProber(home = filesDir), log = ::say).update()
+        say(if (result.promoted) getString(R.string.install_done, result.version) else "${result.version}: ${result.detail}")
     }
 
     /** The free, local door: llama.cpp's Android build, the pick's GGUFs, the Runtime pointed at them, Cael created. */
@@ -346,20 +355,21 @@ class FirstRunActivity : AppCompatActivity() {
             return
         }
         work {
+            BugReport.append(installLog, "== the local door from the first run (${pick.ramMb} MiB RAM: ${pick.agent.name})")
             val downloader = HttpDownloader()
             val llama = LlamaRuntime(filesDir)
-            line(getString(R.string.fr_getting, "llama.cpp ${LlamaPin.CURRENT.tag}", LlamaPin.CURRENT.bytes / 1024 / 1024))
+            say(getString(R.string.fr_getting, "llama.cpp ${LlamaPin.CURRENT.tag}", LlamaPin.CURRENT.bytes / 1024 / 1024))
             llama.install(downloader, ::progress)
             val models = ModelStore(File(store.configDir, ModelStore.DIR))
             for (g in pick.files) {
-                line(getString(R.string.fr_getting, g.file, g.mib))
+                say(getString(R.string.fr_getting, g.file, g.mib))
                 models.download(g, downloader, ::progress)
-                line(getString(R.string.fr_verified, g.file))
+                say(getString(R.string.fr_verified, g.file))
             }
             models.writeServe(ModelServe(pick.agent.file))
-            CaelzaCli(binary, filesDir, log = ::line).configure(FirstRun.localConfig(pick))
+            CaelzaCli(binary, filesDir, log = ::say).configure(FirstRun.localConfig(pick))
             CaelzaCli.writeCaelPersona(store.configDir, assets.open(CAEL_SOUL).bufferedReader().readText())
-            line(getString(R.string.fr_that_worked_local, pick.agent.name))
+            say(getString(R.string.fr_that_worked_local, pick.agent.name))
             runOnUiThread { advance() }
         }
     }
