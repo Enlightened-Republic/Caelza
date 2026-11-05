@@ -1,14 +1,14 @@
 {
   "gguf": {
     "1.5b": {
-      "bytes": 1117320736,
+      "bytes": 1117320800,
       "file": "DeepSeek-R1-Distill-Qwen-1.5B-Q4_K_M.gguf",
       "name": "DeepSeek-R1-Distill-Qwen-1.5B-Q4_K_M",
       "repo": "bartowski/DeepSeek-R1-Distill-Qwen-1.5B-GGUF",
       "sha256": "1741e5b2d062b07acf048bf0d2c514dadf2a48f94e2b4aa0cfe069af3838ee2f"
     },
     "7b": {
-      "bytes": 4683073184,
+      "bytes": 4683073504,
       "file": "DeepSeek-R1-Distill-Qwen-7B-Q4_K_M.gguf",
       "name": "DeepSeek-R1-Distill-Qwen-7B-Q4_K_M",
       "repo": "bartowski/DeepSeek-R1-Distill-Qwen-7B-GGUF",
@@ -26,7 +26,7 @@
   "picks": [
     {
       "agent": {
-        "bytes": 1117320736,
+        "bytes": 1117320800,
         "file": "DeepSeek-R1-Distill-Qwen-1.5B-Q4_K_M.gguf",
         "name": "DeepSeek-R1-Distill-Qwen-1.5B-Q4_K_M",
         "pull": "",
@@ -36,7 +36,7 @@
         "url": "https://huggingface.co/bartowski/DeepSeek-R1-Distill-Qwen-1.5B-GGUF/resolve/main/DeepSeek-R1-Distill-Qwen-1.5B-Q4_K_M.gguf"
       },
       "guide": {
-        "bytes": 1117320736,
+        "bytes": 1117320800,
         "file": "DeepSeek-R1-Distill-Qwen-1.5B-Q4_K_M.gguf",
         "name": "DeepSeek-R1-Distill-Qwen-1.5B-Q4_K_M",
         "pull": "",
@@ -56,7 +56,7 @@
     },
     {
       "agent": {
-        "bytes": 1117320736,
+        "bytes": 1117320800,
         "file": "DeepSeek-R1-Distill-Qwen-1.5B-Q4_K_M.gguf",
         "name": "DeepSeek-R1-Distill-Qwen-1.5B-Q4_K_M",
         "pull": "",
@@ -66,7 +66,7 @@
         "url": "https://huggingface.co/bartowski/DeepSeek-R1-Distill-Qwen-1.5B-GGUF/resolve/main/DeepSeek-R1-Distill-Qwen-1.5B-Q4_K_M.gguf"
       },
       "guide": {
-        "bytes": 1117320736,
+        "bytes": 1117320800,
         "file": "DeepSeek-R1-Distill-Qwen-1.5B-Q4_K_M.gguf",
         "name": "DeepSeek-R1-Distill-Qwen-1.5B-Q4_K_M",
         "pull": "",
@@ -86,7 +86,7 @@
     },
     {
       "agent": {
-        "bytes": 4683073184,
+        "bytes": 4683073504,
         "file": "DeepSeek-R1-Distill-Qwen-7B-Q4_K_M.gguf",
         "name": "DeepSeek-R1-Distill-Qwen-7B-Q4_K_M",
         "pull": "",
@@ -96,7 +96,7 @@
         "url": "https://huggingface.co/bartowski/DeepSeek-R1-Distill-Qwen-7B-GGUF/resolve/main/DeepSeek-R1-Distill-Qwen-7B-Q4_K_M.gguf"
       },
       "guide": {
-        "bytes": 1117320736,
+        "bytes": 1117320800,
         "file": "DeepSeek-R1-Distill-Qwen-1.5B-Q4_K_M.gguf",
         "name": "DeepSeek-R1-Distill-Qwen-1.5B-Q4_K_M",
         "pull": "",
@@ -117,7 +117,7 @@
     },
     {
       "agent": {
-        "bytes": 4683073184,
+        "bytes": 4683073504,
         "file": "DeepSeek-R1-Distill-Qwen-7B-Q4_K_M.gguf",
         "name": "DeepSeek-R1-Distill-Qwen-7B-Q4_K_M",
         "pull": "",
@@ -127,7 +127,7 @@
         "url": "https://huggingface.co/bartowski/DeepSeek-R1-Distill-Qwen-7B-GGUF/resolve/main/DeepSeek-R1-Distill-Qwen-7B-Q4_K_M.gguf"
       },
       "guide": {
-        "bytes": 1117320736,
+        "bytes": 1117320800,
         "file": "DeepSeek-R1-Distill-Qwen-1.5B-Q4_K_M.gguf",
         "name": "DeepSeek-R1-Distill-Qwen-1.5B-Q4_K_M",
         "pull": "",
@@ -148,7 +148,7 @@
     },
     {
       "agent": {
-        "bytes": 4683073184,
+        "bytes": 4683073504,
         "file": "DeepSeek-R1-Distill-Qwen-7B-Q4_K_M.gguf",
         "name": "DeepSeek-R1-Distill-Qwen-7B-Q4_K_M",
         "pull": "",
@@ -158,7 +158,7 @@
         "url": "https://huggingface.co/bartowski/DeepSeek-R1-Distill-Qwen-7B-GGUF/resolve/main/DeepSeek-R1-Distill-Qwen-7B-Q4_K_M.gguf"
       },
       "guide": {
-        "bytes": 1117320736,
+        "bytes": 1117320800,
         "file": "DeepSeek-R1-Distill-Qwen-1.5B-Q4_K_M.gguf",
         "name": "DeepSeek-R1-Distill-Qwen-1.5B-Q4_K_M",
         "pull": "",

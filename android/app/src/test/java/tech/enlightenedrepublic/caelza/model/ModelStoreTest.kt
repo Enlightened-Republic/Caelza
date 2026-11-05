@@ -121,6 +121,37 @@ class ModelStoreTest {
     }
 
     @Test
+    fun a_server_whose_size_disagrees_with_the_pin_is_refused_before_the_first_byte() {
+        // The app once pinned the 1.5B at 64 bytes under its real size: every attempt downloaded the
+        // whole gigabyte, threw it away as "short" and started over, five times, then gave up.
+        val s = store()
+        val stale = gguf.copy(bytes = payload.size.toLong() - 64)
+        val dl = FakeDownloader(payload)
+        val e = assertThrows(IllegalStateException::class.java) { s.download(stale, dl) }
+        assertTrue(e.message, e.message!!.contains("the server says ${payload.size} bytes") && e.message!!.contains("pin says ${payload.size - 64}"))
+        assertEquals("one request, no retries", listOf(0L), dl.opens)
+        assertFalse(s.file(stale).exists())
+        assertFalse(s.verified(stale))
+    }
+
+    @Test
+    fun more_bytes_than_pinned_from_a_server_that_names_no_size_is_a_stale_pin_not_a_retry() {
+        val s = store()
+        val stale = gguf.copy(bytes = payload.size.toLong() - 64)
+        var opens = 0
+        val silent = object : Downloader {
+            override fun open(url: String, from: Long): Download {
+                opens++
+                return Download(ByteArrayInputStream(payload.copyOfRange(from.toInt(), payload.size)), resumed = from > 0, total = null)
+            }
+        }
+        val e = assertThrows(IllegalStateException::class.java) { s.download(stale, silent) }
+        assertTrue(e.message, e.message!!.contains("${payload.size} bytes arrived") && e.message!!.contains("pin is stale"))
+        assertEquals(1, opens)
+        assertFalse("the long part is not kept for a resume that could never verify", File(s.dir, stale.file + ".part").exists())
+    }
+
+    @Test
     fun a_connection_that_keeps_dropping_gives_up_after_the_attempts() {
         val always = object : Downloader {
             override fun open(url: String, from: Long): Download = Download(object : InputStream() {

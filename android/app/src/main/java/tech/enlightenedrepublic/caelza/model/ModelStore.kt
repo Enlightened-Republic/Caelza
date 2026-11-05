@@ -106,6 +106,14 @@ object VerifiedDownload {
                 }
                 if (have > 0) hashInto(digest, part)
                 downloader.open(url, have).use { dl ->
+                    // The server's own size against the pin, before the first byte: a pin that is
+                    // off (the app once carried a count 64 bytes short of the file) would otherwise
+                    // download the whole thing, throw it away as "short" and try four more times.
+                    if (dl.total != null && dl.total != bytes) {
+                        throw IllegalStateException(
+                            "${dest.name}: the server says ${dl.total} bytes, the app's pin says $bytes; the pin is stale, update the app",
+                        )
+                    }
                     if (have > 0 && !dl.resumed) {
                         digest.reset()
                         have = 0
@@ -124,7 +132,14 @@ object VerifiedDownload {
                         }
                     }
                 }
-                if (part.length() != bytes) throw IOException("short download: ${part.length()} of $bytes bytes")
+                // Fewer bytes than pinned is a cut connection (retried, resumed); more is a pin that is
+                // wrong or a file that changed under its URL, and no retry can mend that.
+                val got = part.length()
+                if (got < bytes) throw IOException("short download: $got of $bytes bytes")
+                if (got > bytes) {
+                    part.delete()
+                    throw IllegalStateException("${dest.name}: $got bytes arrived, the app's pin says $bytes; the pin is stale, update the app")
+                }
                 val actual = hex(digest)
                 if (actual != sha256) {
                     part.delete()

@@ -73,6 +73,36 @@ def test_shell_output_is_evaluable_by_sh(tmp_path):
         assert key.isupper() and shlex.split(value) == [shlex.split(value)[0]]
 
 
+def _headers_for(tier: str, bytes_: int | None = None, sha: str | None = None) -> dict[str, str]:
+    g = ml.GGUF[tier]
+    return {"x-linked-size": str(bytes_ if bytes_ is not None else g["bytes"]),
+            "x-linked-etag": '"' + (sha if sha is not None else g["sha256"]) + '"'}
+
+
+def test_the_pins_are_checked_against_hugging_faces_headers():
+    # Right pins: nothing to say.
+    assert ml.check_pins({t: _headers_for(t) for t in ml.GGUF}) == []
+    # The 1.5B pinned 64 bytes short (the app's first phone run: five downloads of a gigabyte, then "short download").
+    off = ml.check_pins({"1.5b": _headers_for("1.5b", bytes_=ml.GGUF["1.5b"]["bytes"] + 64), "7b": _headers_for("7b")})
+    assert off == [f"1.5b: bytes pinned {ml.GGUF['1.5b']['bytes']}, Hugging Face says {ml.GGUF['1.5b']['bytes'] + 64} (off by +64)"]
+    # A wrong hash, a file that is not LFS, a tier that did not answer.
+    assert ml.check_pins({"1.5b": _headers_for("1.5b", sha="ab" * 32), "7b": _headers_for("7b")})[0].startswith("1.5b: sha256 pinned 1741e5b2d062…, Hugging Face says abababababab…")
+    assert "not an LFS file" in ml.check_pins({"1.5b": {"content-length": "1152"}, "7b": _headers_for("7b")})[0]
+    assert ml.check_pins({"7b": _headers_for("7b")}) == ["1.5b: no answer from Hugging Face"]
+    # The sizes agree with the hashes' source: the Kotlin ladder and the app's fixture carry the same numbers.
+    kt = (REPO_ROOT / "android/app/src/main/java/tech/enlightenedrepublic/caelza/model/ModelLadder.kt").read_text()
+    fixture = json.loads((REPO_ROOT / "android/app/src/test/fixtures/model-ladder.json").read_text())
+    for tier, g in ml.GGUF.items():
+        assert f"{g['bytes']:_}L" in kt, (tier, g["bytes"])
+        assert fixture["gguf"][tier]["bytes"] == g["bytes"]
+
+
+@pytest.mark.skipif(not __import__("os").environ.get("CAELZA_ONLINE_TESTS"), reason="CAELZA_ONLINE_TESTS=1 asks Hugging Face")
+def test_the_pins_match_hugging_face_right_now(capsys):
+    assert ml.main(["--check-online"]) == 0
+    assert "ok: 2 GGUF pins match Hugging Face" in capsys.readouterr().out
+
+
 def test_cli_json_and_detection(capsys):
     assert ml.main(["--ram-mb", "16384", "--platform", "linux"]) == 0
     out = json.loads(capsys.readouterr().out)

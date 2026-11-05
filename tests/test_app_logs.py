@@ -56,8 +56,11 @@ def test_the_viewer_shows_the_logs_the_app_writes_under_their_own_names():
     assert "BodyHome.AUDIT_LOG" in REPORT, "the Body's audit log under its own constant"
     assert 'const val INSTALL_LOG = "install.log"' in REPORT
     assert "BugReport.append(installLog, line)" in MAIN, "the shell's installer lines reach install.log"
-    assert "BugReport.append(installLog, it)" in FIRST_RUN, "the first run's installer lines reach install.log"
-    assert 'BugReport.append(installLog, "failed:' in MAIN and 'BugReport.append(installLog, "failed:' in FIRST_RUN
+    # The first run's installer and local-door lines reach install.log through `say`, its failures through `work`.
+    assert "BugReport.append(installLog, text)" in FIRST_RUN and "log = ::say).update()" in FIRST_RUN, "the first run's installer lines reach install.log"
+    assert "llama.install(downloader, ::progress)" in FIRST_RUN and 'say(getString(R.string.fr_getting, g.file, g.mib))' in FIRST_RUN, "the local door's downloads are logged too"
+    assert 'BugReport.append(installLog, "failed:' in MAIN and 'BugReport.append(installLog, "failed: $what")' in FIRST_RUN
+    assert "FLAG_KEEP_SCREEN_ON" in FIRST_RUN, "the screen stays on while a gigabyte downloads"
     assert "BugReport.scrub(BugReport.tail(file))" in LOGS, "the viewer blanks secrets too, not only the report"
     assert "BugReport.render(header(), sources)" in LOGS
     for key in ("app", "device", "runtime", "runtime state", "body", "model", "shizuku", "storage", "memory"):

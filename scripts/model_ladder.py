@@ -9,9 +9,17 @@ acts on the JSON; `bundle/manifest.toml` mirrors the names.
     python scripts/model_ladder.py --detect            # this machine, as JSON
     python scripts/model_ladder.py --ram-mb 7600 --platform termux
     python scripts/model_ladder.py --shell            # KEY=value lines for sh
+    python scripts/model_ladder.py --check-online     # the pins against Hugging Face's headers
 
 Honest sizing, not optimistic: a 7B Q4 on an 8 GB phone is tight and the
 1.5B is for chat and explanation only; both are said so in `notes`.
+
+The pins are a sha256 and a byte count per GGUF. The Termux installer
+(`model-setup.sh`) checks the hash alone; the Android app checks both, so a
+byte count that is off by one makes the app download a gigabyte, throw it
+away and try again. `--check-online` asks Hugging Face for each file's
+`x-linked-size` and `x-linked-etag` (the LFS oid, i.e. the sha256) and
+compares; run it whenever a pin changes.
 """
 from __future__ import annotations
 
@@ -19,27 +27,30 @@ import argparse
 import json
 import os
 import sys
+import urllib.error
+import urllib.request
 from dataclasses import asdict, dataclass
 
 HF = "https://huggingface.co"
 
 #: llama.cpp builds (phones). bartowski's GGUF conversions of the official
-#: DeepSeek-R1-Distill-Qwen weights, MIT. sha256 is the Hugging Face LFS oid,
-#: read from the repo tree on 2026-10-20.
+#: DeepSeek-R1-Distill-Qwen weights, MIT. sha256 is the Hugging Face LFS oid
+#: and bytes the LFS size, both read from the files' resolve headers
+#: (`--check-online`) on 2026-11-05.
 GGUF = {
     "1.5b": {
         "name": "DeepSeek-R1-Distill-Qwen-1.5B-Q4_K_M",
         "file": "DeepSeek-R1-Distill-Qwen-1.5B-Q4_K_M.gguf",
         "repo": "bartowski/DeepSeek-R1-Distill-Qwen-1.5B-GGUF",
         "sha256": "1741e5b2d062b07acf048bf0d2c514dadf2a48f94e2b4aa0cfe069af3838ee2f",
-        "bytes": 1_117_320_736,
+        "bytes": 1_117_320_800,
     },
     "7b": {
         "name": "DeepSeek-R1-Distill-Qwen-7B-Q4_K_M",
         "file": "DeepSeek-R1-Distill-Qwen-7B-Q4_K_M.gguf",
         "repo": "bartowski/DeepSeek-R1-Distill-Qwen-7B-GGUF",
         "sha256": "731ece8d06dc7eda6f6572997feb9ee1258db0784827e642909d9b565641937b",
-        "bytes": 4_683_073_184,
+        "bytes": 4_683_073_504,
     },
 }
 
@@ -161,6 +172,52 @@ def as_shell(p: Pick) -> str:
                      for k, v in rows.items())
 
 
+def check_pins(headers: dict[str, dict[str, str]]) -> list[str]:
+    """Compare the pins with what Hugging Face says about each file: `headers`
+    maps a tier to the resolve endpoint's response headers (lowercase names),
+    where `x-linked-size` is the LFS size and `x-linked-etag` the quoted LFS
+    oid. One problem line each; empty when every pin is right."""
+    problems: list[str] = []
+    for tier, g in GGUF.items():
+        h = headers.get(tier)
+        if h is None:
+            problems.append(f"{tier}: no answer from Hugging Face")
+            continue
+        size = h.get("x-linked-size")
+        etag = (h.get("x-linked-etag") or "").strip('"')
+        if size is None or etag == "":
+            problems.append(f"{tier}: the resolve headers carry no x-linked-size / x-linked-etag "
+                            f"(not an LFS file at {g['repo']}/{g['file']}?)")
+            continue
+        if int(size) != g["bytes"]:
+            problems.append(f"{tier}: bytes pinned {g['bytes']}, Hugging Face says {size} "
+                            f"(off by {int(size) - g['bytes']:+d})")
+        if etag != g["sha256"]:
+            problems.append(f"{tier}: sha256 pinned {g['sha256'][:12]}…, Hugging Face says {etag[:12]}…")
+    return problems
+
+
+def _head_without_redirect(url: str, timeout: float = 30.0) -> dict[str, str]:
+    """The resolve endpoint's own headers: a 302 to the CDN that already names the LFS size and oid."""
+    class NoRedirect(urllib.request.HTTPRedirectHandler):
+        def redirect_request(self, req, fp, code, msg, headers, newurl):  # noqa: D102
+            return None
+
+    opener = urllib.request.build_opener(NoRedirect)
+    req = urllib.request.Request(url, method="HEAD", headers={"User-Agent": "caelza model ladder"})
+    try:
+        with opener.open(req, timeout=timeout) as resp:
+            return {k.lower(): v for k, v in resp.headers.items()}
+    except urllib.error.HTTPError as e:
+        if e.code in (301, 302, 303, 307, 308):
+            return {k.lower(): v for k, v in e.headers.items()}
+        raise
+
+
+def fetch_headers(timeout: float = 30.0) -> dict[str, dict[str, str]]:
+    return {tier: _head_without_redirect(gguf(tier).url, timeout) for tier in GGUF}
+
+
 def main(argv: list[str] | None = None) -> int:
     ap = argparse.ArgumentParser(prog="model_ladder", description=__doc__.split("\n\n")[0])
     ap.add_argument("--ram-mb", type=int, default=None, help="override detected RAM")
@@ -168,7 +225,21 @@ def main(argv: list[str] | None = None) -> int:
                     help="override detected platform")
     ap.add_argument("--detect", action="store_true", help="(default) detect this machine")
     ap.add_argument("--shell", action="store_true", help="print KEY=value lines instead of JSON")
+    ap.add_argument("--check-online", action="store_true",
+                    help="compare every GGUF pin (bytes, sha256) with Hugging Face's headers; exit 1 on a mismatch")
     a = ap.parse_args(argv)
+    if a.check_online:
+        try:
+            headers = fetch_headers()
+        except (OSError, ValueError) as e:
+            print(f"could not reach Hugging Face: {e}", file=sys.stderr)
+            return 1
+        problems = check_pins(headers)
+        for line in problems:
+            print(line, file=sys.stderr)
+        if not problems:
+            print(f"ok: {len(GGUF)} GGUF pins match Hugging Face (bytes and sha256)")
+        return 1 if problems else 0
     ram = a.ram_mb if a.ram_mb is not None else detect_ram_mb()
     platform = a.platform or detect_platform()
     p = pick(ram, platform)
