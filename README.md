@@ -10,18 +10,29 @@ An agent that lives on your own hardware, remembers across months, and acts on t
 <p align="center"><sub><a href="https://www.enlightenedrepublic.tech"><img src="https://enlightenedrepublic.online/assets/er-profile-pic.png" alt="" width="20" align="absmiddle" /></a>&nbsp; Built by <a href="https://www.enlightenedrepublic.tech">Enlightened Republic</a>, the lab behind SharpWave and xanima. · EST. 2026</sub></p>
 
 <p align="center">
-  <a href="https://github.com/Enlightened-Republic/Caelza/releases/download/v0.1.0/caelza-app-0.1.0-debug-signed.apk"><img src="https://img.shields.io/badge/%E2%AC%87%EF%B8%8F_Install_the_Android_app-APK_v0.1.0-00d4ff?style=for-the-badge&logo=android&logoColor=white" alt="Install the Android app (APK v0.1.0)" /></a>
+  <a href="https://github.com/Enlightened-Republic/Caelza/releases/download/v0.2.0/caelza-app-0.2.0.apk"><img src="https://img.shields.io/badge/%E2%AC%87%EF%B8%8F_Install_the_Android_app-APK_v0.2.0-00d4ff?style=for-the-badge&logo=android&logoColor=white" alt="Install the Android app (APK v0.2.0)" /></a>
+  &nbsp;
+  <a href="https://github.com/Enlightened-Republic/Caelza/releases/download/v0.2.0/Caelza-Setup.exe"><img src="https://img.shields.io/badge/%E2%AC%87%EF%B8%8F_Install_on_Windows-Setup.exe_v0.2.0-7b6bff?style=for-the-badge" alt="Install on Windows (Caelza-Setup.exe v0.2.0)" /></a>
 </p>
 
 > [!WARNING]
-> **This is a testing build.** Caelza is early, unfinished software and is being tested right now. Expect bugs, rough edges and breaking changes. Don't rely on it for anything important, and don't give it access to anything you can't afford to lose. The APK is debug-signed, so it will not upgrade in place to a later release-signed build.
+> **This is a testing build.** Caelza is early, unfinished software and is being tested right now. Expect bugs, rough edges and breaking changes. Don't rely on it for anything important, and don't give it access to anything you can't afford to lose. The Windows installer is unsigned, so SmartScreen asks once before it runs. The APK is release-signed from v0.2.0 on, so later versions install over it; if you still have the v0.1.0 build, uninstall it first.
 
 ## Try it on your Android phone
 
-1. On your phone, tap the **Install the Android app** button above (or [download the APK](https://github.com/Enlightened-Republic/Caelza/releases/download/v0.1.0/caelza-app-0.1.0-debug-signed.apk)).
+1. On your phone, tap the **Install the Android app** button above (or [download the APK](https://github.com/Enlightened-Republic/Caelza/releases/download/v0.2.0/caelza-app-0.2.0.apk)).
 2. Open the downloaded file. If Android asks, allow your browser or Files app to **install unknown apps**, then tap **Install**.
 3. Open **Caelza** and follow Cael's first-run screens. The app downloads the runtime on first run, so connect to Wi-Fi first.
 4. Something broke? Use **Logs** in the app to share a bug report.
+
+## Try it on your Windows PC
+
+Experimental: the Windows build is new and has not had many real runs yet.
+
+1. Tap the **Install on Windows** button above (or [download Caelza-Setup.exe](https://github.com/Enlightened-Republic/Caelza/releases/download/v0.2.0/Caelza-Setup.exe)) and run it. SmartScreen will warn because the installer is unsigned: click **More info**, then **Run anyway**. No admin rights are needed; it installs for your user only.
+2. Open **Caelza** from the Start menu. The agent starts in a minimised window and your browser opens the dashboard.
+3. Click **Pair** on the first screen (the code is already filled in), then follow Cael's setup: a free local model (needs [Ollama](https://ollama.com) installed) or your own provider key.
+4. Something broke? The agent's minimised window shows what it is doing; copy its text into an [issue](https://github.com/Enlightened-Republic/Caelza/issues).
 
 ### What's coming
 
