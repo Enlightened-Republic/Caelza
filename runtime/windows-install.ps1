@@ -51,5 +51,6 @@ if (($userPath -split ';') -notcontains $dest) {
 
 Write-Host ""
 Write-Host "Installed Caelza $($rel.tag_name) to $dest"
-Write-Host "Next (in a new terminal):  caelza quickstart"
-Write-Host "Then chat:                 caelza agent -a main"
+Write-Host "Next (in a new terminal):  caelza daemon"
+Write-Host "Then open:                 http://127.0.0.1:42617   (Cael walks you through setup; click Pair on the first screen)"
+Write-Host "Prefer a Start menu entry? Caelza-Setup.exe on the same release does all of this with one click."
