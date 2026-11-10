@@ -12,7 +12,7 @@ An agent that lives on your own hardware, remembers across months, and acts on t
 <p align="center">
   <a href="https://github.com/Enlightened-Republic/Caelza/releases/download/v0.2.0/caelza-app-0.2.0.apk"><img src="https://img.shields.io/badge/%E2%AC%87%EF%B8%8F_Install_the_Android_app-APK_v0.2.0-00d4ff?style=for-the-badge&logo=android&logoColor=white" alt="Install the Android app (APK v0.2.0)" /></a>
   &nbsp;
-  <a href="https://github.com/Enlightened-Republic/Caelza/releases/download/v0.2.0/Caelza-Setup.exe"><img src="https://img.shields.io/badge/%E2%AC%87%EF%B8%8F_Install_on_Windows-Setup.exe_v0.2.0-7b6bff?style=for-the-badge" alt="Install on Windows (Caelza-Setup.exe v0.2.0)" /></a>
+  <a href="https://github.com/Enlightened-Republic/Caelza/releases/latest/download/Caelza-Setup.exe"><img src="https://img.shields.io/badge/%E2%AC%87%EF%B8%8F_Install_on_Windows-Setup.exe_latest-7b6bff?style=for-the-badge" alt="Install on Windows (Caelza-Setup.exe v0.2.0)" /></a>
 </p>
 
 > [!WARNING]
@@ -29,7 +29,7 @@ An agent that lives on your own hardware, remembers across months, and acts on t
 
 Experimental: the Windows build is new and has not had many real runs yet.
 
-1. Tap the **Install on Windows** button above (or [download Caelza-Setup.exe](https://github.com/Enlightened-Republic/Caelza/releases/download/v0.2.0/Caelza-Setup.exe)) and run it. SmartScreen will warn because the installer is unsigned: click **More info**, then **Run anyway**. No admin rights are needed; it installs for your user only.
+1. Tap the **Install on Windows** button above (or [download Caelza-Setup.exe](https://github.com/Enlightened-Republic/Caelza/releases/latest/download/Caelza-Setup.exe)) and run it. SmartScreen will warn because the installer is unsigned: click **More info**, then **Run anyway**. No admin rights are needed; it installs for your user only.
 2. Open **Caelza** from the Start menu. The agent starts in a minimised window and your browser opens the dashboard.
 3. Click **Pair** on the first screen (the code is already filled in), then follow Cael's setup: a free local model or your own provider key. The free model runs through [Ollama](https://ollama.com/download); Cael checks whether it is installed, points you to its download if not, and fetches the model for you (one click, a progress bar, a few GB).
 4. Want long-term memory (the Mind) on the PC too? With [Node.js](https://nodejs.org) 22 installed, run this once in PowerShell: `irm https://raw.githubusercontent.com/Enlightened-Republic/Caelza/main/mind/windows-install.ps1 | iex`. It installs the brain service, mints the tokens and points the Runtime at it; from then on the Start menu's **Caelza** starts both.
