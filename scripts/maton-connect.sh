@@ -4,11 +4,15 @@
 #   sh scripts/maton-connect.sh            # add Maton's MCP server and ask for the key
 #   sh scripts/maton-connect.sh --dry-run  # only show what it would write
 #
-# Maton keeps the OAuth to Gmail, Calendar, Drive, Notion, Slack, HubSpot and
-# about a hundred more; Caelza keeps one Maton API key. This writes the server
-# with `caelza config set` (the Runtime validates it) and then asks for the key
-# at a masked prompt, so the key is never on a command line, in shell history or
-# in a log. The config it produces is runtime/caelza.maton.example.toml.
+# The dashboard's Connect page does the same from a browser; this is the shell
+# way. Maton keeps the OAuth to Gmail, Calendar, Drive, Notion, Slack, HubSpot
+# and about a hundred more; Caelza keeps one Maton API key. The `[[mcp.servers]]`
+# row is a keyed list entry, which no `caelza config set` path can create
+# (`mcp.servers.maton.url` is "Unknown property" until the row exists), so the
+# row, its bundle and the agent's grant land in one `caelza config patch` (one
+# write, validated as a whole, the agent's other bundles kept); then the key is
+# asked at a masked prompt, so it is never on a command line, in shell history
+# or in a log. The config it produces is runtime/caelza.maton.example.toml.
 #
 # Env:
 #   CAELZA_CONFIG_DIR=...   the Runtime config dir (default ~/.caelza)
@@ -18,7 +22,9 @@ set -eu
 
 CFG="${CAELZA_CONFIG_DIR:-$HOME/.caelza}"
 AGENT="${CAELZA_AGENT:-main}"
+NAME="maton"
 URL="https://mcp.maton.ai"
+TIMEOUT=60
 DRY=0
 [ "${1:-}" = "--dry-run" ] && DRY=1
 
@@ -27,15 +33,18 @@ die() { printf '\033[1;31m[caelza] error:\033[0m %s\n' "$*" >&2; exit 1; }
 
 say "Maton MCP server: $URL  ->  agent '$AGENT'  (config $CFG)"
 if [ "$DRY" = 1 ]; then
-  say "would set mcp.servers.maton.{transport=http, url, tool_timeout_secs=60}"
-  say "would ask for mcp.servers.maton.headers.Authorization (masked) and add 'maton' to agents.$AGENT.mcp_bundles"
+  say "would patch mcp.servers.$NAME.{url, transport=http, tool_timeout_secs=$TIMEOUT}, mcp_bundles.$NAME.servers and agents.$AGENT.mcp_bundles in one write"
+  say "would ask for mcp.servers.$NAME.headers.Authorization (masked)"
   exit 0
 fi
 
-command -v caelza >/dev/null 2>&1 || die "caelza is not on PATH; install the Runtime first (the Caelza app does this), or merge runtime/caelza.maton.example.toml by hand"
+command -v caelza >/dev/null 2>&1 || die "caelza is not on PATH; install the Runtime first (the Caelza app does this), or use the dashboard's Connect page, or merge runtime/caelza.maton.example.toml by hand"
 [ -t 0 ] && [ -t 2 ] || die "the key prompt needs a terminal; run this in Termux or a shell, not from a pipe"
 
-cset() { caelza --config-dir "$CFG" config set "$1" "$2" >/dev/null || die "caelza config set $1 failed"; }
+# The agent's bundle list with this one added once: `config get` prints the
+# array as JSON (`[]`, `["mind", "body"]`), which is one line of names here.
+have=$(caelza --config-dir "$CFG" config get "agents.$AGENT.mcp_bundles" 2>/dev/null | tr -d '[]" \r' | tr ',' '\n' | grep -v '^$' || true)
+merged=$(printf '%s\n%s\n' "$have" "$NAME" | awk 'NF && !seen[$0]++ { printf "%s\"%s\"", (n++ ? "," : ""), $0 }')
 
 cat >&2 <<'EOF'
 
@@ -45,19 +54,17 @@ from your Maton account settings. At the prompt type:  Bearer <your key>
 
 EOF
 
-cset mcp.servers.maton.transport http
-cset mcp.servers.maton.url "$URL"
-cset mcp.servers.maton.tool_timeout_secs 60
-say "server written; now the key (masked)"
-caelza --config-dir "$CFG" config set mcp.servers.maton.headers.Authorization \
+caelza --config-dir "$CFG" config patch - >/dev/null <<EOF || die "caelza config patch failed; the config was not changed"
+[
+  {"op": "add", "path": "/mcp/servers/$NAME/url", "value": "$URL"},
+  {"op": "add", "path": "/mcp/servers/$NAME/transport", "value": "http"},
+  {"op": "add", "path": "/mcp/servers/$NAME/tool_timeout_secs", "value": $TIMEOUT},
+  {"op": "add", "path": "/mcp_bundles/$NAME/servers", "value": ["$NAME"]},
+  {"op": "add", "path": "/agents/$AGENT/mcp_bundles", "value": [$merged]}
+]
+EOF
+say "server, bundle and the grant to '$AGENT' written; now the key (masked)"
+caelza --config-dir "$CFG" config set "mcp.servers.$NAME.headers.Authorization" \
   || die "the key was not saved; re-run this script"
-
-# The bundle and the agent's list. Array values vary by Runtime version, so a
-# failure here is a hint, not a stop: the server and key are already in place.
-if cset mcp_bundles.maton.servers '["maton"]' 2>/dev/null; then
-  say "bundle 'maton' written"
-else
-  say "add this by hand (see runtime/caelza.maton.example.toml):  [mcp_bundles.maton]  servers = [\"maton\"]"
-fi
-say "last step: add \"maton\" to agents.$AGENT.mcp_bundles (the dashboard's Config page, Agents, does this), then restart: caelza daemon"
+say "done. Restart the Runtime (caelza daemon) so '$AGENT' picks it up."
 say "check: ask Cael or $AGENT \"what is on my calendar today?\" — a first, harmless read."

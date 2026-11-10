@@ -20,6 +20,7 @@ test("every route is a screen Cael can explain", () => {
   assert.equal(screenOf("/agent/main"), "agent");
   assert.equal(screenOf("/agent/main/workspace"), "agent");
   assert.equal(screenOf("/looks/cael"), "looks");
+  assert.equal(screenOf("/connect"), "connect");
   assert.equal(screenOf("/setup"), "setup");
   assert.equal(screenOf("/setup/providers"), "config", "the config explorer's deep link");
   assert.equal(screenOf("/config/agents/main"), "config");
@@ -28,7 +29,7 @@ test("every route is a screen Cael can explain", () => {
   assert.equal(screenOf("/sops/new"), "sops");
   assert.equal(screenOf("/nope"), "other");
   assert.deepEqual(screenKeys("bodies"), { text: "guide.screen_bodies", next: "guide.next_bodies" });
-  for (const s of ["home", "bodies", "memory", "procedures", "agents", "agent", "looks", "shop", "setup", "quickstart", "config", "tools", "skills", "sops", "runs", "integrations", "plugins", "cron", "dashboard", "logs", "pairing", "doctor", "canvas", "acp", "other"] as const) {
+  for (const s of ["home", "bodies", "memory", "procedures", "agents", "agent", "looks", "shop", "connect", "setup", "quickstart", "config", "tools", "skills", "sops", "runs", "integrations", "plugins", "cron", "dashboard", "logs", "pairing", "doctor", "canvas", "acp", "other"] as const) {
     assert.ok(nextRoute(s)?.startsWith("/"), s);
   }
 });

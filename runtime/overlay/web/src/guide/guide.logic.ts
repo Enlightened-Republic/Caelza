@@ -14,6 +14,7 @@ export type Screen =
   | "agent"
   | "looks"
   | "shop"
+  | "connect"
   | "setup"
   | "quickstart"
   | "config"
@@ -40,6 +41,7 @@ const BY_SEGMENT: Record<string, Screen> = {
   agent: "agent",
   looks: "looks",
   shop: "shop",
+  connect: "connect",
   setup: "setup",
   quickstart: "quickstart",
   config: "config",
@@ -83,6 +85,7 @@ export function nextRoute(screen: Screen): string | null {
     agent: "/looks",
     looks: "/shop",
     shop: "/looks",
+    connect: "/agents",
     setup: "/quickstart",
     quickstart: "/setup",
     config: "/setup",

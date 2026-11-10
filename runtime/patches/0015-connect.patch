@@ -1,0 +1,217 @@
+Caelza: the Connect page (vision §3.4, the Guide everywhere): your apps
+through Maton, your smart home through Home Assistant and a 3D printer on
+your Wi-Fi, each from one box or two on the dashboard, with no shell.
+
+The page (web/src/pages/connect/, an overlay) writes what the connect scripts
+write through the config API the dashboard already has: the `[[mcp.servers]]`
+row by name (`POST /api/config/map-key`, since it is a keyed list no property
+path can create), then one atomic `PATCH /api/config` for its url, transport,
+timeout and encrypted Authorization header, its bundle and the agent's grant;
+a printer allows its one address and keeps the OctoPrint key as a secret. What
+the config API cannot do is put a skill on disk, so the gateway's
+api_connect.rs (an overlay module; its SKILL.md copy is placed beside it by
+runtime/build.sh) answers /api/connect/skills. These hunks register the module
+and its routes, route the page, put Connect in the sidebar's Configure group
+and the title maps, add the API client functions, add the strings (English;
+the other locales fall back) and list the logic test beside the others.
+Applied after 0014 and the overlay copy.
+
+--- a/crates/caelza-gateway/src/lib.rs
++++ b/crates/caelza-gateway/src/lib.rs
+@@ -12,6 +12,7 @@
+ pub mod api_bodies;
+ pub mod api_browse;
+ pub mod api_config;
++pub mod api_connect;
+ pub mod api_logs;
+ pub mod api_looks;
+ pub mod api_mind;
+@@ -2378,6 +2379,9 @@
+             get(api_looks::handle_wardrobe_get).put(api_looks::handle_wardrobe_put),
+         )
+         .route("/api/looks/wardrobe/unlock", post(api_looks::handle_wardrobe_unlock))
++        // The Connect page: the skills the Runtime carries, put on disk for an agent.
++        .route("/api/connect/skills", get(api_connect::handle_skills_get))
++        .route("/api/connect/skills/{name}", post(api_connect::handle_skill_install))
+         .route(
+             "/api/looks/{alias}",
+             get(api_looks::handle_look_get)
+--- a/web/package.json
++++ b/web/package.json
+@@ -14,7 +14,7 @@
+     "typecheck": "npm run check:generated && tsc -b",
+     "build": "npm run check:generated && tsc -b && vite build",
+     "dev": "vite",
+-    "test": "node --experimental-strip-types --test src/pages/quickstart/runtime-selection.test.ts src/pages/quickstart/doors.logic.test.ts src/pages/setup/setup.logic.test.ts src/pages/setup/ollama.logic.test.ts src/looks/looks.logic.test.ts src/guide/guide.logic.test.ts src/pages/home.logic.test.ts src/pages/bodies.logic.test.ts src/pages/mind.logic.test.ts src/pages/quickstart/channel-fields.test.ts src/pages/acp-console/thought-stream.test.ts src/lib/contextBar.test.ts src/components/sections/secretMap.logic.test.ts src/pages/integrations.logic.test.ts src/lib/historyTrimNotice.test.ts src/components/runLogPresentation.test.ts src/pages/pluginCatalog.test.ts && npm run test:sops && npm run test:sop-editor && jiti src/pages/quickstart/channel-form.test.ts",
++    "test": "node --experimental-strip-types --test src/pages/quickstart/runtime-selection.test.ts src/pages/quickstart/doors.logic.test.ts src/pages/setup/setup.logic.test.ts src/pages/setup/ollama.logic.test.ts src/pages/connect/connect.logic.test.ts src/looks/looks.logic.test.ts src/guide/guide.logic.test.ts src/pages/home.logic.test.ts src/pages/bodies.logic.test.ts src/pages/mind.logic.test.ts src/pages/quickstart/channel-fields.test.ts src/pages/acp-console/thought-stream.test.ts src/lib/contextBar.test.ts src/components/sections/secretMap.logic.test.ts src/pages/integrations.logic.test.ts src/lib/historyTrimNotice.test.ts src/components/runLogPresentation.test.ts src/pages/pluginCatalog.test.ts && npm run test:sops && npm run test:sop-editor && jiti src/pages/quickstart/channel-form.test.ts",
+     "test:sops": "node --experimental-strip-types --test src/hooks/useRunOverlay.logic.test.ts src/pages/runs.logic.test.ts",
+     "test:sop-editor": "node --experimental-strip-types --test src/pages/sopSavePlan.test.ts",
+     "test:permissions": "jiti src/components/ToolPermissionGrid.logic.test.ts && jiti src/pages/Tools.logic.test.ts && jiti src/lib/toolCatalog.logic.test.ts && jiti src/components/ToolCatalogWarningPanel.test.ts && jiti src/lib/validationWarnings.test.ts && jiti src/components/UpgradeDialog.logic.test.ts && npm run test:navigation",
+--- a/web/src/components/layout/Header.tsx
++++ b/web/src/components/layout/Header.tsx
+@@ -27,6 +27,7 @@
+   agents: 'nav.agents',
+   looks: 'nav.looks',
+   shop: 'nav.shop',
++  connect: 'nav.connect',
+   tools: 'nav.tools',
+   skills: 'nav.skills',
+   cron: 'nav.cron',
+--- a/web/src/components/layout/Layout.tsx
++++ b/web/src/components/layout/Layout.tsx
+@@ -17,6 +17,7 @@
+   agents: 'nav.agents',
+   looks: 'nav.looks',
+   shop: 'nav.shop',
++  connect: 'nav.connect',
+   config: 'nav.config',
+   setup: 'nav.config',
+   tools: 'nav.tools',
+--- a/web/src/components/layout/Sidebar.tsx
++++ b/web/src/components/layout/Sidebar.tsx
+@@ -9,6 +9,7 @@
+   Blocks,
+   Bot,
+   Brain,
++  Cable,
+   ClipboardList,
+   Clock,
+   House,
+@@ -80,6 +81,8 @@
+     items: [
+       // The simplified setup (Cael's screens); the full wizard is its "Advanced setup".
+       { to: '/setup', icon: Rocket, labelKey: 'nav.setup' },
++      // The Connect page: your apps, your home, your printer, with no shell.
++      { to: '/connect', icon: Cable, labelKey: 'nav.connect' },
+       { to: '/config', icon: Settings, labelKey: 'nav.config' },
+       { to: '/config/agents', icon: Bot, labelKey: 'nav.agent' },
+       { to: '/tools', icon: Wrench, labelKey: 'nav.tools' },
+--- a/web/src/lib/api.ts
++++ b/web/src/lib/api.ts
+@@ -2429,3 +2429,30 @@
+     body: JSON.stringify({ code }),
+   });
+ }
++
++// ── Connect (Caelza): the skills the Runtime carries, put on disk for an agent ──
++
++export interface ConnectSkills {
++  agent: string;
++  dir: string;
++  skills: Record<string, { installed: boolean; path: string }>;
++}
++
++export function getConnectSkills(agent: string): Promise<ConnectSkills> {
++  return apiFetch<ConnectSkills>(`/api/connect/skills?agent=${encodeURIComponent(agent)}`);
++}
++
++export interface ConnectSkillInstalled {
++  agent: string;
++  name: string;
++  path: string;
++  installed: boolean;
++}
++
++export function installConnectSkill(name: string, agent: string): Promise<ConnectSkillInstalled> {
++  return apiFetch<ConnectSkillInstalled>(`/api/connect/skills/${encodeURIComponent(name)}`, {
++    method: "POST",
++    headers: { "Content-Type": "application/json" },
++    body: JSON.stringify({ agent }),
++  });
++}
+--- a/web/src/lib/i18n.ts
++++ b/web/src/lib/i18n.ts
+@@ -1039,6 +1039,43 @@
+     'setup.where_hub': "A computer",
+     'setup.where_phone': "This phone",
+     'setup.working': "Setting up\u2026",
++    'connect.apps_body': "Gmail, Calendar, Drive, Notion, Slack and about a hundred more, through Maton. Maton keeps the sign-in to each app; Caelza keeps one Maton key. Make a free account, connect the apps you want there, then paste your API key here. Anyone holding the key can reach every app you connected, so treat it like a password.",
++    'connect.apps_key': "Maton API key",
++    'connect.apps_link': "Get a Maton key",
++    'connect.apps_title': "Your apps",
++    'connect.apps_try': "Then ask: \"what is on my calendar today?\"",
++    'connect.bad_address': "That does not look like an address. Something like {example}.",
++    'connect.bad_key': "A key is one long word of at least eight characters, no spaces. Paste the whole thing.",
++    'connect.cael': "Each card asks for one or two things and I write the rest. Keys stay encrypted on this device and only ever go to the service they belong to. Reading is free; anything that sends, posts, pays, unlocks or cancels asks you first.",
++    'connect.connect': "Connect",
++    'connect.connected': "Connected",
++    'connect.description': "Your apps, your home, your printer. Nothing to type in a terminal.",
++    'connect.done': "Done. Caelza picks this up the next time it starts; then ask {agent} something harmless first.",
++    'connect.failed': "That did not work; nothing was changed.",
++    'connect.for_agent': "These go to {agent}, your main agent.",
++    'connect.home_address': "Home Assistant address",
++    'connect.home_body': "Lights, switches, thermostats and locks through Home Assistant (2025.2 or newer, on the same Wi-Fi). In Home Assistant: turn the Model Context Protocol Server on (Settings, System, AI), expose the devices Caelza may use to voice assistants (Settings, Voice assistants, Expose), then make a long-lived access token (your profile, Security). Caelza only sees what you exposed.",
++    'connect.home_title': "Smart home",
++    'connect.home_token': "Long-lived access token",
++    'connect.home_try': "Then ask: \"which lights are on?\" Locks and doors always ask first.",
++    'connect.home_unverified': "New and not yet tried against a real Home Assistant: tell us if the token is refused.",
++    'connect.loading': "Asking the Runtime what is connected…",
++    'connect.not_connected': "Not connected",
++    'connect.printer_address': "Printer address",
++    'connect.printer_allowed': "Allowed: {hosts}.",
++    'connect.printer_body': "A printer on your own Wi-Fi running Moonraker (Klipper, Mainsail, Fluidd) or OctoPrint; Bambu Lab is not supported yet. Caelza can tell you the state, progress, time left and temperatures and fetch a camera snapshot. It pauses or cancels only after you say yes, and never starts prints or sends G-code.",
++    'connect.printer_key': "OctoPrint API key",
++    'connect.printer_kind': "What it runs",
++    'connect.printer_moonraker': "Moonraker / Klipper",
++    'connect.printer_octoprint': "OctoPrint",
++    'connect.printer_skill_installed': "The printer skill is installed for {agent}.",
++    'connect.printer_title': "3D printer",
++    'connect.printer_try': "Then ask: \"how is the print going?\" Every request asks you first, reads included.",
++    'connect.printer_unverified': "New and not yet tried against a real printer.",
++    'connect.retry': "Try again",
++    'connect.title': "Connect",
++    'connect.update_key': "Update the key",
++    'connect.working': "Connecting…",
+     'sidebar.brand': "Caelza",
+     'sidebar.close_menu': "Close menu",
+     'sidebar.gateway': "Caelza Gateway",
+@@ -1489,6 +1526,7 @@
+     'nav.bodies': 'Bodies',
+     'nav.home': 'Home',
+     'nav.setup': 'Set up',
++    'nav.connect': 'Connect',
+     'guide.ask_placeholder': "Ask Cael about this screen\u2026",
+     'guide.close': "Close",
+     'guide.closed': "The connection closed before Cael answered. Is the Runtime running?",
+@@ -1515,6 +1553,7 @@
+     'guide.next_runs': "Start another from Procedures.",
+     'guide.next_setup': "The full wizard is under Advanced setup if you want every knob.",
+     'guide.next_shop': "Back to the customizer to try them on.",
++    'guide.next_connect': "Then talk to your agent about what you just connected.",
+     'guide.next_skills': "See which agent carries which under Agents.",
+     'guide.next_sops': "Run one from Procedures.",
+     'guide.next_tools': "The profiles themselves live in Config.",
+@@ -1542,6 +1581,7 @@
+     'guide.screen_runs': "Runs are what happened each time a procedure ran: which step, what the agent did, where it waited for you.",
+     'guide.screen_setup': "This is the simple setup: I ask one thing at a time. A brain for your agent, free and local or with a key you bring, then it's ready. Nothing here is a trick question.",
+     'guide.screen_shop': "The Shop holds packs of pieces for your agents' looks. Add a free pack and its pieces appear in every customizer; a priced pack opens with an unlock code pasted into its box, and the Runtime checks the code itself. Starter is always yours.",
++    'guide.screen_connect': "Connect is where your apps (through Maton), your smart home (Home Assistant) and a 3D printer join Caelza, each from one box or two. I write the config; keys stay encrypted on this device. Reading is free; anything that sends, posts, pays, unlocks or cancels asks you first.",
+     'guide.screen_skills': "Skills are bundles of instructions an agent can load: a way of doing a job, written down. Each is a SKILL.md the agent reads when it needs it.",
+     'guide.screen_sops': "SOPs are the written procedures: steps, triggers, gates. Procedures runs them; this page is where they are edited and validated.",
+     'guide.screen_tools': "Tools are what an agent may do: read a file, run a command, use the phone. The grid says which agent may use which, and the risk profile adds its own limits on top.",
+--- a/web/src/router/lazyPages.tsx
++++ b/web/src/router/lazyPages.tsx
+@@ -30,3 +30,4 @@
+ export const Setup = lazy(() => import('../pages/setup/Setup'));
+ export const Looks = lazy(() => import('../pages/Looks'));
+ export const Shop = lazy(() => import('../pages/Shop'));
++export const Connect = lazy(() => import('../pages/connect/Connect'));
+--- a/web/src/router/router.tsx
++++ b/web/src/router/router.tsx
+@@ -9,6 +9,7 @@
+   Bodies,
+   Canvas,
+   Config,
++  Connect,
+   Cron,
+   Dashboard,
+   Doctor,
+@@ -64,6 +65,8 @@
+         <Route path="/looks" element={<Looks />} />
+         <Route path="/looks/:alias" element={<Looks />} />
+         <Route path="/shop" element={<Shop />} />
++        {/* The Connect page: your apps, your home, your printer, from one box or two. */}
++        <Route path="/connect" element={<Connect />} />
+         <Route path="/tools" element={<Tools />} />
+         <Route path="/cron" element={<Cron />} />
+         <Route path="/skills" element={<Skills />} />

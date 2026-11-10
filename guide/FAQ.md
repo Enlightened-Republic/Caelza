@@ -203,13 +203,15 @@ run on their own.
 
 Through Maton, a service that keeps the sign-in to each app so Caelza does not
 have to. Make a free account at maton.ai, connect the apps you want there, and
-copy your Maton API key from its settings. Then run `sh scripts/maton-connect.sh`
-in Termux or a shell: it adds Maton's server to the Runtime and asks for the key
-at a masked prompt (type `Bearer ` and then the key). Add `maton` to your agent's
-bundles, restart `caelza daemon`, and ask something harmless first, such as what
-is on your calendar today. The key is encrypted and never shown again; anyone
-who holds it can reach every app you connected, so treat it like a password.
-Reading is free; sending, posting, paying and deleting always ask you first.
+copy your Maton API key from its settings. Then open the dashboard's Connect
+page, paste the key into the "Your apps" card and press Connect: Cael adds
+Maton's server to the Runtime, keeps the key encrypted, and grants it to your
+main agent. (The shell way is `sh scripts/maton-connect.sh`, which asks for the
+key at a masked prompt.) Caelza picks it up the next time it starts; then ask
+something harmless first, such as what is on your calendar today. The key is
+never shown again; anyone who holds it can reach every app you connected, so
+treat it like a password. Reading is free; sending, posting, paying and
+deleting always ask you first.
 
 ## How do I connect my smart home (Home Assistant)?
 
@@ -219,11 +221,14 @@ running Caelza. In Home Assistant: Settings > System > AI, turn the Model
 Context Protocol Server on; expose the devices Caelza may use to voice
 assistants (Settings > Voice assistants > Expose); then create a long-lived
 access token (your profile > Security). Caelza only sees what you exposed.
-Then run `sh scripts/home-connect.sh` (or `sh scripts/home-connect.sh
-http://your-address:8123`) and paste `Bearer <token>` at the masked prompt.
-Reading what is on is free; anything that acts on the house asks you first, and
-locks, doors and alarms always ask. This is new and has not been tried against
-a real Home Assistant yet, so tell us if the token is refused.
+Then open the dashboard's Connect page: the "Smart home" card takes Home
+Assistant's address (http://homeassistant.local:8123 unless yours differs) and
+the token, and Connect does the rest. (The shell way is `sh
+scripts/home-connect.sh http://your-address:8123`, which asks for the token at
+a masked prompt.) Reading what is on is free; anything that acts on the house
+asks you first, and locks, doors and alarms always ask. This is new and has not
+been tried against a real Home Assistant yet, so tell us if the token is
+refused.
 
 ## Can Caelza watch my 3D printer?
 
@@ -232,12 +237,13 @@ long as the printer is on the same Wi-Fi as the device running Caelza. Bambu Lab
 printers are not supported yet. Caelza can tell you the state, progress, time left
 and temperatures, and fetch a camera snapshot. It can pause or cancel a print only
 after you say yes; it never starts prints, sends G-code or hits the emergency stop.
-To set it up, copy `runtime/caelza.printer.example.toml` into your config with your
-printer's address (that one address is allowed, not your whole network), and for
-OctoPrint store its API key with `caelza config set http_request.secrets.octoprint`
-(type `Bearer ` and the key). Then install the 3d-printer skill from the `skills`
-folder. Every request asks you for approval, reads included. This is new and has
-not been tried against a real printer yet.
+To set it up, open the dashboard's Connect page: the "3D printer" card takes the
+printer's address (that one address is allowed, not your whole network), which
+software it runs, and for OctoPrint its API key (kept as a secret); Connect
+writes the config and installs the printer skill for your main agent. (By hand:
+`runtime/caelza.printer.example.toml` and the skill in the `skills` folder.)
+Every request asks you for approval, reads included. This is new and has not
+been tried against a real printer yet.
 
 ## Where do settings live?
 

@@ -5,17 +5,23 @@
 #   sh scripts/home-connect.sh --dry-run   # only show what it would write
 #
 # URL is your Home Assistant address (default http://homeassistant.local:8123).
-# Home Assistant's own MCP server decides what Caelza sees: only entities you
-# exposed to voice assistants. The token is asked at a masked prompt, so it is
-# never on a command line, in shell history or in a log. Config produced:
-# runtime/caelza.homeassistant.example.toml. UNVERIFIED against a live Home
-# Assistant: see that file's note about token auth.
+# The dashboard's Connect page does the same from a browser; this is the shell
+# way. Home Assistant's own MCP server decides what Caelza sees: only entities
+# you exposed to voice assistants. The `[[mcp.servers]]` row is a keyed list
+# entry, which no `caelza config set` path can create, so the row, its bundle
+# and the agent's grant land in one `caelza config patch` (one write, validated
+# as a whole, the agent's other bundles kept); the token is asked at a masked
+# prompt, so it is never on a command line, in shell history or in a log.
+# Config produced: runtime/caelza.homeassistant.example.toml. UNVERIFIED
+# against a live Home Assistant: see that file's note about token auth.
 #
 # Env:  CAELZA_CONFIG_DIR (default ~/.caelza), CAELZA_AGENT (default main)
 set -eu
 
 CFG="${CAELZA_CONFIG_DIR:-$HOME/.caelza}"
 AGENT="${CAELZA_AGENT:-main}"
+NAME="homeassistant"
+TIMEOUT=30
 DRY=0
 BASE="http://homeassistant.local:8123"
 for a in "$@"; do
@@ -32,15 +38,16 @@ die() { printf '\033[1;31m[caelza] error:\033[0m %s\n' "$*" >&2; exit 1; }
 
 say "Home Assistant MCP server: $URL  ->  agent '$AGENT'  (config $CFG)"
 if [ "$DRY" = 1 ]; then
-  say "would set mcp.servers.homeassistant.{transport=http, url, tool_timeout_secs=30}"
-  say "would ask for mcp.servers.homeassistant.headers.Authorization (masked) and add 'homeassistant' to agents.$AGENT.mcp_bundles"
+  say "would patch mcp.servers.$NAME.{url, transport=http, tool_timeout_secs=$TIMEOUT}, mcp_bundles.$NAME.servers and agents.$AGENT.mcp_bundles in one write"
+  say "would ask for mcp.servers.$NAME.headers.Authorization (masked)"
   exit 0
 fi
 
-command -v caelza >/dev/null 2>&1 || die "caelza is not on PATH; install the Runtime first, or merge runtime/caelza.homeassistant.example.toml by hand"
+command -v caelza >/dev/null 2>&1 || die "caelza is not on PATH; install the Runtime first, or use the dashboard's Connect page, or merge runtime/caelza.homeassistant.example.toml by hand"
 [ -t 0 ] && [ -t 2 ] || die "the token prompt needs a terminal; run this in Termux or a shell, not from a pipe"
 
-cset() { caelza --config-dir "$CFG" config set "$1" "$2" >/dev/null || die "caelza config set $1 failed"; }
+have=$(caelza --config-dir "$CFG" config get "agents.$AGENT.mcp_bundles" 2>/dev/null | tr -d '[]" \r' | tr ',' '\n' | grep -v '^$' || true)
+merged=$(printf '%s\n%s\n' "$have" "$NAME" | awk 'NF && !seen[$0]++ { printf "%s\"%s\"", (n++ ? "," : ""), $0 }')
 
 cat >&2 <<'EOF'
 
@@ -52,17 +59,17 @@ At the prompt type:  Bearer <your token>
 
 EOF
 
-cset mcp.servers.homeassistant.transport http
-cset mcp.servers.homeassistant.url "$URL"
-cset mcp.servers.homeassistant.tool_timeout_secs 30
-say "server written; now the token (masked)"
-caelza --config-dir "$CFG" config set mcp.servers.homeassistant.headers.Authorization \
+caelza --config-dir "$CFG" config patch - >/dev/null <<EOF || die "caelza config patch failed; the config was not changed"
+[
+  {"op": "add", "path": "/mcp/servers/$NAME/url", "value": "$URL"},
+  {"op": "add", "path": "/mcp/servers/$NAME/transport", "value": "http"},
+  {"op": "add", "path": "/mcp/servers/$NAME/tool_timeout_secs", "value": $TIMEOUT},
+  {"op": "add", "path": "/mcp_bundles/$NAME/servers", "value": ["$NAME"]},
+  {"op": "add", "path": "/agents/$AGENT/mcp_bundles", "value": [$merged]}
+]
+EOF
+say "server, bundle and the grant to '$AGENT' written; now the token (masked)"
+caelza --config-dir "$CFG" config set "mcp.servers.$NAME.headers.Authorization" \
   || die "the token was not saved; re-run this script"
-
-if cset mcp_bundles.homeassistant.servers '["homeassistant"]' 2>/dev/null; then
-  say "bundle 'homeassistant' written"
-else
-  say "add this by hand (see runtime/caelza.homeassistant.example.toml):  [mcp_bundles.homeassistant]  servers = [\"homeassistant\"]"
-fi
-say "last step: add \"homeassistant\" to agents.$AGENT.mcp_bundles, then restart: caelza daemon"
+say "done. Restart the Runtime (caelza daemon) so '$AGENT' picks it up."
 say "check: ask $AGENT \"which lights are on?\" — a first, harmless read. Locks and doors always ask first."

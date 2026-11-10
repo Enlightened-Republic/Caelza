@@ -445,6 +445,16 @@ main .surface-panel {
     grid-template-columns: 220px 1fr;
   }
 }
+/* The Connect page's cards: one service each, its words, a box or two, one button. */
+.cz-connect {
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+  padding: 14px;
+}
+.cz-connect .cz-chip-row {
+  max-width: 420px;
+}
 .cz-pack-sheet img {
   width: 100%;
   max-height: 180px;

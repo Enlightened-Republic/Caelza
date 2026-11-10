@@ -151,6 +151,11 @@ apply_overlay() {
   log "copying bundle/models.json beside the setup page"
   mkdir -p "$WORK/web/src/pages/setup"
   cp "$ROOT/bundle/models.json" "$WORK/web/src/pages/setup/models.json"
+  # The skills the Runtime carries built in, for the Connect page to put on disk
+  # (skills/<name>/SKILL.md is the one source; api_connect.rs embeds the copy).
+  log "copying skills/3d-printer/SKILL.md beside api_connect.rs"
+  mkdir -p "$WORK/crates/caelza-gateway/src"
+  cp "$ROOT/skills/3d-printer/SKILL.md" "$WORK/crates/caelza-gateway/src/connect_skill_3d_printer.md"
   # The pack catalog the looks' renderer and the shop read (looks/catalog.json is the one source).
   log "copying looks/catalog.json beside the Look renderer"
   mkdir -p "$WORK/web/src/looks"

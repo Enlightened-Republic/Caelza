@@ -39,6 +39,7 @@ const TITLE_KEYS: Record<ReturnType<typeof screenOf>, string> = {
   agent: "nav.agent",
   looks: "nav.looks",
   shop: "nav.shop",
+  connect: "nav.connect",
   setup: "nav.setup",
   quickstart: "nav.quickstart",
   config: "nav.config",

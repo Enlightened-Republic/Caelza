@@ -34,14 +34,14 @@ Experimental: the Windows build is new and has not had many real runs yet.
 3. Click **Pair** on the first screen (the code is already filled in), then follow Cael's setup: a free local model or your own provider key. The free model runs through [Ollama](https://ollama.com/download); Cael checks whether it is installed, points you to its download if not, and fetches the model for you (one click, a progress bar, a few GB).
 4. Something broke? The agent's minimised window shows what it is doing; copy its text into an [issue](https://github.com/Enlightened-Republic/Caelza/issues).
 
-### What's coming
+### What else it does
 
-Planned, not shipped yet. This build does not have any of it, and the order may change:
+Shipped and new; some of it has not met the real thing yet, so tell us what breaks:
 
-- **Your apps, connected.** Gmail, Calendar, Drive, Notion, Slack and more through [Maton](https://maton.ai), with Cael walking you through each sign-in. Reading is free; sending, posting, paying and deleting always ask you first.
-- **Smart home.** Lights, locks, cameras and thermostats through Home Assistant.
-- **3D printers.** Status, progress and a camera snapshot over Wi-Fi (Moonraker and OctoPrint first, Bambu after), with pause and cancel behind an approval.
-- **Updates that arrive by themselves.** Today a new version means installing the new APK over this one by hand. We're working on the app telling you when an update is ready and installing it for you.
+- **Your apps, connected.** Gmail, Calendar, Drive, Notion, Slack and about a hundred more through [Maton](https://maton.ai): make a free Maton account, connect your apps there, and paste one Maton key on the dashboard's **Connect** page. Reading is free; sending, posting, paying and deleting always ask you first.
+- **Smart home.** Lights, switches, thermostats and locks through Home Assistant's own MCP server (2025.2 or newer): its address and a long-lived token on the **Connect** page. Locks and doors always ask first. Not yet tried against a real Home Assistant.
+- **3D printers.** Status, progress, temperatures and a camera snapshot over Wi-Fi for Moonraker (Klipper, Mainsail, Fluidd) and OctoPrint, with pause and cancel behind your yes; Bambu Lab is not supported yet. The printer's address on the **Connect** page. Not yet tried against a real printer.
+- **Updates that arrive by themselves.** The app checks the releases every six hours, tells you when a newer Caelza is ready, downloads it, checks it against its published checksum and hands it to Android's installer, which asks you once. The Runtime inside updates through its guard.
 
 Want something else? Open an [issue](https://github.com/Enlightened-Republic/Caelza/issues).
 
