@@ -31,7 +31,7 @@ Experimental: the Windows build is new and has not had many real runs yet.
 
 1. Tap the **Install on Windows** button above (or [download Caelza-Setup.exe](https://github.com/Enlightened-Republic/Caelza/releases/download/v0.2.0/Caelza-Setup.exe)) and run it. SmartScreen will warn because the installer is unsigned: click **More info**, then **Run anyway**. No admin rights are needed; it installs for your user only.
 2. Open **Caelza** from the Start menu. The agent starts in a minimised window and your browser opens the dashboard.
-3. Click **Pair** on the first screen (the code is already filled in), then follow Cael's setup: a free local model (needs [Ollama](https://ollama.com) installed) or your own provider key.
+3. Click **Pair** on the first screen (the code is already filled in), then follow Cael's setup: a free local model or your own provider key. The free model runs through [Ollama](https://ollama.com/download); Cael checks whether it is installed, points you to its download if not, and fetches the model for you (one click, a progress bar, a few GB).
 4. Something broke? The agent's minimised window shows what it is doing; copy its text into an [issue](https://github.com/Enlightened-Republic/Caelza/issues).
 
 ### What's coming

@@ -24,6 +24,9 @@ PATCH = (REPO_ROOT / "runtime" / "patches" / "0009-simplified-setup.patch").read
 PAGE = (OVERLAY / "Setup.tsx").read_text()
 LOGIC = (OVERLAY / "setup.logic.ts").read_text()
 LOGIC_TEST = (OVERLAY / "setup.logic.test.ts").read_text()
+OLLAMA = (OVERLAY / "ollama.logic.ts").read_text()
+OLLAMA_TEST = (OVERLAY / "ollama.logic.test.ts").read_text()
+LOOKS_PATCH = (REPO_ROOT / "runtime" / "patches" / "0013-looks-in-conversation.patch").read_text()
 WHEEL = (OVERLAY / "WheelPicker.tsx").read_text()
 BRAND_CSS = (REPO_ROOT / "runtime" / "overlay" / "web" / "src" / "caelza-brand.css").read_text()
 BUILD_SH = (REPO_ROOT / "runtime" / "build.sh").read_text()
@@ -170,6 +173,36 @@ def test_the_page_stages_upstreams_shapes_and_the_wheel_is_a_listbox():
         assert f"export function {fn}(" in LOGIC, fn
     assert 'role="listbox"' in WHEEL and 'role="option"' in WHEEL and "scroll-snap-type: y mandatory" in BRAND_CSS
     assert "ArrowDown" in WHEEL and "ArrowUp" in WHEEL
+
+
+def test_the_local_door_on_a_pc_asks_ollama_itself():
+    # Ollama's default CORS list allows every localhost origin, so the page talks to it with no gateway route.
+    assert 'export const OLLAMA_URL = "http://127.0.0.1:11434";' in OLLAMA
+    assert 'export const OLLAMA_DOWNLOAD_PAGE = "https://ollama.com/download";' in OLLAMA
+    assert "fetch(`${base}/api/tags`" in OLLAMA and "fetch(`${base}/api/pull`" in OLLAMA
+    assert 'body: JSON.stringify({ name, stream: true })' in OLLAMA, "a streamed pull: the progress lines"
+    # Only a page open on the computer itself probes; elsewhere Cael gives the pull line.
+    assert "onThisComputer(window.location.hostname)" in PAGE
+    assert '"setup.ollama_remote"' in PAGE and "ollama pull {model}" in PATCH
+    # Missing: the download link and a re-check. Present but not pulled: one press downloads, then applies.
+    assert "href={OLLAMA_DOWNLOAD_PAGE}" in PAGE and 'target="_blank" rel="noreferrer"' in PAGE
+    assert "setProbe((p) => p + 1)" in PAGE
+    assert "await pullModel(name, (e) => setPull(at(e)), ctl.signal);" in PAGE
+    assert "await apply(stagedLocal(), pick.guide);" in PAGE, "the download ends in the same apply as Use this"
+    assert "pullAbort.current?.abort()" in PAGE, "the download can be stopped"
+    assert 'role="progressbar"' in PAGE and ".cz-progress {" in BRAND_CSS and ".cz-progress > span.is-busy {" in BRAND_CSS
+    # Every ladder tag has a size the button can promise, and Cael's model is pulled too when it differs.
+    sizes = OLLAMA.split("export const APPROX_GB")[1].split("};")[0]
+    for tag in ("deepseek-r1:1.5b", "deepseek-r1:7b", "deepseek-r1:8b", "deepseek-r1:14b"):
+        assert f'"{tag}": ' in sizes, tag
+    assert "pick.model === pick.guide ? [pick.model] : [pick.model, pick.guide]" in PAGE
+    # The five stage words the bar shows are strings the patch adds; the test runs with the others.
+    for stage in ("starting", "downloading", "checking", "finishing", "done"):
+        assert f'"setup.ollama_stage_{stage}"' in PAGE and f"'setup.ollama_stage_{stage}': " in PATCH, stage
+    assert "src/pages/setup/setup.logic.test.ts src/pages/setup/ollama.logic.test.ts" in LOOKS_PATCH
+    assert 'from "./ollama.logic.ts"' in OLLAMA_TEST and "fakeOllama" in OLLAMA_TEST
+    # The phone's door is unchanged: the app or the script fetched the model already.
+    assert 'runner !== "ollama"' in PAGE and '"setup.local_then"' in PAGE
 
 
 def test_manifest_points_at_the_setup():
