@@ -188,7 +188,9 @@ sessions, keeps what matters and forgets what stops mattering, and sleeps to
 consolidate. Ask the agent what it remembers, or tell it to forget something.
 The dashboard's Memory page shows the brains, what is waiting for review, and
 lets you recall or forget by hand. `caelza memory stats` is the command-line
-check.
+check. On a phone the app runs it; on a Linux hub `mind/install.sh` installs
+it; on a Windows PC `mind/windows-install.ps1` does, and the Start menu's
+Caelza starts it with the Runtime.
 
 ## What are procedures?
 
@@ -287,8 +289,12 @@ is new and has not been through real use yet. In PowerShell, run
 daemon` and open `http://127.0.0.1:42617` for Cael's setup (`Caelza-Setup.exe`
 on the same release does all of this with a Start menu entry). Settings live in
 `.caelza` in your user folder. If a release has no Windows build, the installer
-says so. The Android app is phone-only, and the Body works with a phone over
-ADB rather than on the PC itself. WSL2 with the Linux build is the fallback.
+says so. The Mind (long-term memory) has its own one-liner for Windows,
+`mind/windows-install.ps1` (needs Node.js 22): it installs the brain service,
+mints the tokens and points the Runtime at it, and the Start menu's Caelza
+then starts both. The Android app is phone-only, and the Body works with a
+phone over ADB rather than on the PC itself. WSL2 with the Linux build is the
+fallback.
 
 ## Cael says he can't see Ollama. What is it, and what do I do?
 

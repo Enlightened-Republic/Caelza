@@ -8,6 +8,12 @@ setlocal
 set "HERE=%~dp0"
 set "URL=http://127.0.0.1:42617"
 
+rem The Mind (long-term memory), when mind\windows-install.ps1 put its launcher here:
+rem started minimised before the agent unless its service already answers.
+if exist "%HERE%caelza-mind.cmd" (
+  curl.exe -s -f -o nul "http://127.0.0.1:18790/health" >nul 2>&1 || start "Caelza Mind" /min "%HERE%caelza-mind.cmd" serve
+)
+
 curl.exe -s -f -o nul "%URL%/health" >nul 2>&1 && goto open
 
 start "Caelza agent" /min "%HERE%caelza.exe" daemon
