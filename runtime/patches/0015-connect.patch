@@ -121,7 +121,7 @@ Applied after 0014 and the overlay copy.
 +}
 --- a/web/src/lib/i18n.ts
 +++ b/web/src/lib/i18n.ts
-@@ -1039,6 +1039,43 @@
+@@ -1039,6 +1039,47 @@
      'setup.where_hub': "A computer",
      'setup.where_phone': "This phone",
      'setup.working': "Setting up\u2026",
@@ -138,6 +138,8 @@ Applied after 0014 and the overlay copy.
 +    'connect.description': "Your apps, your home, your printer. Nothing to type in a terminal.",
 +    'connect.done': "Done. Caelza picks this up the next time it starts; then ask {agent} something harmless first.",
 +    'connect.failed': "That did not work; nothing was changed.",
++    'connect.failed_stuck': "That did not work, and the half-made {name} entry could not be removed again; the Config page's mcp section can delete it. The reason:",
++    'connect.failed_undone': "That did not work; the half-made entry was removed again, so nothing is left behind. The reason:",
 +    'connect.for_agent': "These go to {agent}, your main agent.",
 +    'connect.home_address': "Home Assistant address",
 +    'connect.home_body': "Lights, switches, thermostats and locks through Home Assistant (2025.2 or newer, on the same Wi-Fi). In Home Assistant: turn the Model Context Protocol Server on (Settings, System, AI), expose the devices Caelza may use to voice assistants (Settings, Voice assistants, Expose), then make a long-lived access token (your profile, Security). Caelza only sees what you exposed.",
@@ -145,7 +147,9 @@ Applied after 0014 and the overlay copy.
 +    'connect.home_token': "Long-lived access token",
 +    'connect.home_try': "Then ask: \"which lights are on?\" Locks and doors always ask first.",
 +    'connect.home_unverified': "New and not yet tried against a real Home Assistant: tell us if the token is refused.",
++    'connect.load_failed': "I can't read what is connected right now.",
 +    'connect.loading': "Asking the Runtime what is connected…",
++    'connect.no_agent': "There is no agent yet. Run Set up first, then come back here.",
 +    'connect.not_connected': "Not connected",
 +    'connect.printer_address': "Printer address",
 +    'connect.printer_allowed': "Allowed: {hosts}.",

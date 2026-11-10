@@ -20,8 +20,15 @@ timeout /t 1 /nobreak >nul
 goto wait
 
 :slow
-echo Caelza is taking a while to start. The dashboard opens at %URL% as soon as it answers;
-echo the agent's own window is minimised in the taskbar and says what it is doing.
+echo Caelza is taking a while to start. This window keeps waiting (up to two more minutes)
+echo and opens the dashboard at %URL% as soon as it answers; the agent's own window is
+echo minimised in the taskbar and says what it is doing.
+:wait2
+curl.exe -s -f -o nul "%URL%/health" >nul 2>&1 && goto open
+set /a tries+=1
+if %tries% geq 150 goto open
+timeout /t 1 /nobreak >nul
+goto wait2
 
 :open
 start "" "%URL%/"

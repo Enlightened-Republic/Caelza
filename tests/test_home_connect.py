@@ -34,6 +34,9 @@ def test_script_and_example_agree_and_never_take_the_token_on_a_command_line():
     assert '"path": "/agents/$AGENT/mcp_bundles", "value": [$merged]' in text
     assert 'config set "mcp.servers.$NAME.headers.Authorization"' in text
     assert "config set mcp.servers.homeassistant." not in text
+    assert '[ -S "$CFG/data/daemon.sock" ] && die' in text, "stopped first: the CLI refuses an agent patch while the daemon runs"
+    assert 'case "$AGENT" in ""|*[!A-Za-z0-9_-]*) die' in text
+    assert 'case "$BASE" in *[\\"\\\\]*|*[[:space:]]*) die' in text, "the address goes into JSON unescaped"
     assert "read -r" not in text
     assert "Authorization\" \"" not in text
 

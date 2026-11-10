@@ -9,10 +9,13 @@
 export const OLLAMA_URL = "http://127.0.0.1:11434";
 export const OLLAMA_DOWNLOAD_PAGE = "https://ollama.com/download";
 
-/** Only a page open on the computer itself can see that computer's Ollama. */
+/** Only a page open on the computer itself can see that computer's Ollama, and
+ * only from the two origins Ollama's default CORS list allows (`localhost` and
+ * `127.0.0.1` on any port; not `[::1]`, not `*.localhost`). Elsewhere the page
+ * says to open http://127.0.0.1:42617 instead of probing into a refusal. */
 export function onThisComputer(hostname: string): boolean {
-  const h = hostname.toLowerCase().replace(/^\[|\]$/g, "");
-  return h === "localhost" || h === "127.0.0.1" || h === "::1" || h.endsWith(".localhost");
+  const h = hostname.toLowerCase();
+  return h === "localhost" || h === "127.0.0.1";
 }
 
 /** The names /api/tags lists: `{ models: [{ name: "deepseek-r1:1.5b", … }] }`. */
@@ -149,7 +152,10 @@ export async function pullModel(
     body: JSON.stringify({ name, stream: true }),
     signal,
   });
-  if (!res.ok || !res.body) throw new Error(`Ollama answered ${res.status} to the download of ${name}.`);
+  if (!res.ok || !res.body) {
+    await res.body?.cancel().catch(() => {});
+    throw new Error(`Ollama answered ${res.status} to the download of ${name}.`);
+  }
   const reader = res.body.getReader();
   const decoder = new TextDecoder();
   let buffer = "";
@@ -160,7 +166,11 @@ export async function pullModel(
     const parsed = parsePullChunk(end ? `${buffer}\n` : buffer);
     buffer = parsed.rest;
     for (const e of parsed.events) {
-      if (e.error) throw new Error(e.error);
+      if (e.error) {
+        // Ollama's own refusal ends the pull: the stream is let go, not left open.
+        await reader.cancel().catch(() => {});
+        throw new Error(e.error);
+      }
       onEvent(e);
       if (e.status === "success") done = true;
     }

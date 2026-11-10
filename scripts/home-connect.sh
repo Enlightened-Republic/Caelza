@@ -45,6 +45,11 @@ fi
 
 command -v caelza >/dev/null 2>&1 || die "caelza is not on PATH; install the Runtime first, or use the dashboard's Connect page, or merge runtime/caelza.homeassistant.example.toml by hand"
 [ -t 0 ] && [ -t 2 ] || die "the token prompt needs a terminal; run this in Termux or a shell, not from a pipe"
+case "$AGENT" in ""|*[!A-Za-z0-9_-]*) die "CAELZA_AGENT must be one word of letters, digits, _ and - (got '$AGENT')" ;; esac
+case "$BASE" in *[\"\\]*|*[[:space:]]*) die "the address must not contain quotes, backslashes or spaces (got '$BASE')" ;; esac
+# While the Runtime runs it owns the config: the CLI refuses a patch that touches an
+# agent then, and a file written behind it drifts until a restart. So: stopped first.
+[ -S "$CFG/data/daemon.sock" ] && die "the Runtime is running ($CFG/data/daemon.sock answers). Stop it first (Ctrl+C in its window, or stop the app's service) and re-run; or use the dashboard's Connect page, which works while it runs"
 
 have=$(caelza --config-dir "$CFG" config get "agents.$AGENT.mcp_bundles" 2>/dev/null | tr -d '[]" \r' | tr ',' '\n' | grep -v '^$' || true)
 merged=$(printf '%s\n%s\n' "$have" "$NAME" | awk 'NF && !seen[$0]++ { printf "%s\"%s\"", (n++ ? "," : ""), $0 }')

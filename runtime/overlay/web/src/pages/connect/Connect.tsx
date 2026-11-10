@@ -7,11 +7,13 @@
 // printer skill on disk (/api/connect/skills). Keys never show again: the
 // list only says whether one is set.
 import { useEffect, useState } from "react";
+import { Link } from "react-router-dom";
 import { Check, ExternalLink, Eye, EyeOff, House, Printer, Sparkles } from "lucide-react";
 
 import { Badge, Button, PageHeader } from "@/components/ui";
 import {
   createMapKey,
+  deleteMapKey,
   getConnectSkills,
   getProp,
   getQuickstartState,
@@ -66,6 +68,8 @@ function errorText(e: unknown): string {
 /** What the Runtime says is connected, read once and after every change. */
 interface Known {
   agent: string;
+  /** Every agent the config has; none yet means Set up comes first. */
+  agents: string[];
   servers: ListedProp[];
   bundles: string[];
   hosts: string[];
@@ -81,7 +85,7 @@ async function readKnown(): Promise<Known> {
     getProp("http_request.allowed_private_hosts").then((r) => stringArray(r.value)).catch(() => [] as string[]),
     getConnectSkills(agent).catch(() => null),
   ]);
-  return { agent, servers, bundles, hosts, skillInstalled: skills?.skills[PRINTER_SKILL]?.installed === true };
+  return { agent, agents: state.agents, servers, bundles, hosts, skillInstalled: skills?.skills[PRINTER_SKILL]?.installed === true };
 }
 
 function SecretBox({
@@ -163,7 +167,7 @@ export default function Connect() {
         if (ha) setHaAddress(homeAssistantAddress(ha));
       })
       .catch((e: unknown) => {
-        if (!cancelled) setError(errorText(e));
+        if (!cancelled) setError(`${t("connect.load_failed")} ${errorText(e)}`);
       });
     return () => {
       cancelled = true;
@@ -171,24 +175,36 @@ export default function Connect() {
   }, [attempt]);
 
   const agent = known?.agent ?? "main";
+  // Before Set up there is no agent to grant anything to; a connect would make
+  // one with no model and fail. The cards wait and point at Set up.
+  const noAgent = known !== null && known.agents.length === 0;
   const matonOn = known ? serverConnected(known.servers, MATON.name) && known.bundles.includes(MATON.name) : false;
   const haOn = known ? serverConnected(known.servers, HOME_ASSISTANT.name) && known.bundles.includes(HOME_ASSISTANT.name) : false;
   const printerOn = known ? known.skillInstalled && known.hosts.length > 0 : false;
 
+  // The write landed: the key leaves its box and the word is Done, whatever
+  // the re-read says (a Runtime mid-restart answers nothing; the badges catch
+  // up on the next read).
   const finish = async (which: Which) => {
-    setNotice(fill(t("connect.done"), { agent }));
-    setKnown(await readKnown());
     if (which === "maton") setMatonKey("");
     if (which === "homeassistant") setHaToken("");
     if (which === "printer") setOctoKey("");
+    setNotice(fill(t("connect.done"), { agent }));
+    try {
+      setKnown(await readKnown());
+    } catch {
+      /* the next read shows it */
+    }
   };
 
   // A row in `[[mcp.servers]]` is a keyed list entry: made by name first (a
-  // second make of the same name is a no-op or a refusal; either way the row is
-  // there), then filled, bundled and granted in one patch the Runtime
-  // validates as a whole.
+  // second make of the same name is a no-op; either way the row is there),
+  // then filled, bundled and granted in one patch the Runtime validates as a
+  // whole. A row made a moment ago and never filled is stdio with no
+  // command, which fails the whole config's validation and with it every
+  // later write from any page, so when the fill fails the row goes again.
   const connectServer = async (which: "maton" | "homeassistant") => {
-    if (busy || !known) return;
+    if (busy || !known || noAgent) return;
     const spec =
       which === "maton"
         ? { name: MATON.name, url: MATON.url as string | null, timeout: MATON.timeout, secret: matonKey, example: MATON.url }
@@ -210,23 +226,35 @@ export default function Connect() {
       return;
     }
     setBusy(which);
+    let created = false;
     try {
       try {
-        await createMapKey("mcp.servers", spec.name);
+        created = (await createMapKey("mcp.servers", spec.name)).created;
       } catch (e) {
         if (!serverUrl(known.servers, spec.name)) throw e;
       }
-      await patchConfig(serverOps(spec.name, spec.url, spec.timeout, bearer(spec.secret), agent, known.bundles));
+      try {
+        await patchConfig(serverOps(spec.name, spec.url, spec.timeout, bearer(spec.secret), agent, known.bundles));
+      } catch (e) {
+        if (!created) throw e;
+        try {
+          await deleteMapKey("mcp.servers", spec.name);
+          setError(`${t("connect.failed_undone")} ${errorText(e)}`);
+        } catch {
+          setError(`${fill(t("connect.failed_stuck"), { name: spec.name })} ${errorText(e)}`);
+        }
+        return;
+      }
       await finish(which);
     } catch (e) {
-      setError(errorText(e));
+      setError(`${t("connect.failed")} ${errorText(e)}`);
     } finally {
       setBusy(null);
     }
   };
 
   const connectPrinter = async () => {
-    if (busy || !known) return;
+    if (busy || !known || noAgent) return;
     setError(null);
     setNotice(null);
     const host = printerHost(printerAddress);
@@ -244,13 +272,13 @@ export default function Connect() {
       await installConnectSkill(PRINTER_SKILL, agent);
       await finish("printer");
     } catch (e) {
-      setError(errorText(e));
+      setError(`${t("connect.failed")} ${errorText(e)}`);
     } finally {
       setBusy(null);
     }
   };
 
-  const ready = known !== null && busy === null;
+  const ready = known !== null && busy === null && !noAgent;
 
   return (
     <div className="p-6 space-y-4">
@@ -260,15 +288,21 @@ export default function Connect() {
         <div className="cz-kicker cz-kicker-violet">{t("setup.cael_says")}</div>
         <div className="cz-bubble-text">
           <p>{t("connect.cael")}</p>
-          <p className="cz-note">{known ? fill(t("connect.for_agent"), { agent }) : t("connect.loading")}</p>
+          {noAgent ? (
+            <p className="cz-note">
+              <Link to="/setup" className="cz-link">
+                {t("connect.no_agent")}
+              </Link>
+            </p>
+          ) : (
+            <p className="cz-note">{known ? fill(t("connect.for_agent"), { agent }) : t("connect.loading")}</p>
+          )}
         </div>
       </section>
 
       {error ? (
         <div className="text-sm flex items-center gap-3 flex-wrap" role="alert" style={{ color: "var(--color-status-error)" }}>
-          <span>
-            {t("connect.failed")} {error}
-          </span>
+          <span>{error}</span>
           {known === null ? (
             <button
               type="button"
