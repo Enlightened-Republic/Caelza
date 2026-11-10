@@ -38,6 +38,10 @@ def test_script_and_example_agree_on_the_server():
     assert '"path": "/agents/$AGENT/mcp_bundles", "value": [$merged]' in text, "the agent keeps its other bundles"
     assert 'config set "mcp.servers.$NAME.headers.Authorization"' in text
     assert "config set mcp.servers.maton." not in text, "no property path creates the row"
+    # The CLI refuses an agent-targeting patch while the daemon answers at its socket, and a file
+    # written behind a running daemon drifts: the script insists the Runtime is stopped first.
+    assert '[ -S "$CFG/data/daemon.sock" ] && die' in text
+    assert 'case "$AGENT" in ""|*[!A-Za-z0-9_-]*) die' in text, "the agent goes into JSON unescaped, so it is one plain word"
 
 
 def test_script_never_takes_the_key_on_a_command_line():

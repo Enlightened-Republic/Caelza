@@ -20,6 +20,15 @@ def test_installer_verifies_checksum_and_needs_no_admin():
     ps1 = (ROOT / "runtime" / "windows-install.ps1").read_text(encoding="utf-8")
     assert "Get-FileHash" in ps1 and "Checksum mismatch" in ps1
     assert "'User'" in ps1 and "'Machine'" not in ps1
+    # A profile with no user Path yet answers $null; .TrimEnd on it would stop the script after the install.
+    assert "[string][Environment]::GetEnvironmentVariable('Path', 'User')" in ps1
+
+
+def test_a_slow_start_keeps_waiting_before_the_browser_opens():
+    cmd = (ROOT / "runtime" / "windows" / "caelza-launch.cmd").read_text(encoding="utf-8")
+    slow = cmd.split(":slow", 1)[1].split(":open", 1)[0]
+    assert '"%URL%/health"' in slow and "goto wait2" in slow and "if %tries% geq 150 goto open" in slow
+    assert "keeps waiting" in slow
 
 
 def test_the_launcher_opens_caels_setup_in_the_browser_not_the_console_wizard():

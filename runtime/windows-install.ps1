@@ -43,7 +43,8 @@ try {
     Remove-Item -Recurse -Force $tmp -ErrorAction SilentlyContinue
 }
 
-$userPath = [Environment]::GetEnvironmentVariable('Path', 'User')
+# A profile with no user Path yet answers $null; as a string it is just empty.
+$userPath = [string][Environment]::GetEnvironmentVariable('Path', 'User')
 if (($userPath -split ';') -notcontains $dest) {
     [Environment]::SetEnvironmentVariable('Path', ($userPath.TrimEnd(';') + ';' + $dest), 'User')
     Write-Host "Added $dest to your PATH. Open a new terminal to use it."

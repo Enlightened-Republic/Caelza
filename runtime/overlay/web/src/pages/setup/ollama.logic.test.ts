@@ -22,9 +22,10 @@ import {
 } from "./ollama.logic.ts";
 import { LADDER } from "../quickstart/doors.logic.ts";
 
-test("only a page open on the computer itself probes its Ollama", () => {
-  for (const h of ["127.0.0.1", "localhost", "LOCALHOST", "::1", "[::1]", "caelza.localhost"]) assert.ok(onThisComputer(h), h);
-  for (const h of ["192.168.1.20", "hub.local", "caelza.example.com", "127.0.0.1.nip.io", ""]) assert.ok(!onThisComputer(h), h);
+test("only a page open on the computer itself, at an origin Ollama's CORS allows, probes its Ollama", () => {
+  for (const h of ["127.0.0.1", "localhost", "LOCALHOST"]) assert.ok(onThisComputer(h), h);
+  // Ollama's default origins are localhost and 127.0.0.1 only: [::1] and *.localhost would probe into a refusal.
+  for (const h of ["::1", "[::1]", "caelza.localhost", "192.168.1.20", "hub.local", "caelza.example.com", "127.0.0.1.nip.io", ""]) assert.ok(!onThisComputer(h), h);
   assert.equal(OLLAMA_URL, "http://127.0.0.1:11434");
   assert.equal(OLLAMA_DOWNLOAD_PAGE, "https://ollama.com/download");
 });

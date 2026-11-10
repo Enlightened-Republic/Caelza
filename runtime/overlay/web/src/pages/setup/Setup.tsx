@@ -339,8 +339,9 @@ export default function Setup() {
         const at = (event: PullEvent | null): Pull => ({ name, n: i + 1, total: missing.length, event });
         setPull(at(null));
         await pullModel(name, (e) => setPull(at(e)), ctl.signal);
+        // Each one counts as soon as it is in: a failure on the second leaves the first pulled.
+        setPulled((prev) => (prev.includes(name) ? prev : [...prev, name]));
       }
-      setPulled((prev) => [...prev, ...missing]);
       setPull(null);
       await apply(stagedLocal(), pick.guide);
     } catch (e) {

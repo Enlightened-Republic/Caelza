@@ -40,6 +40,10 @@ fi
 
 command -v caelza >/dev/null 2>&1 || die "caelza is not on PATH; install the Runtime first (the Caelza app does this), or use the dashboard's Connect page, or merge runtime/caelza.maton.example.toml by hand"
 [ -t 0 ] && [ -t 2 ] || die "the key prompt needs a terminal; run this in Termux or a shell, not from a pipe"
+case "$AGENT" in ""|*[!A-Za-z0-9_-]*) die "CAELZA_AGENT must be one word of letters, digits, _ and - (got '$AGENT')" ;; esac
+# While the Runtime runs it owns the config: the CLI refuses a patch that touches an
+# agent then, and a file written behind it drifts until a restart. So: stopped first.
+[ -S "$CFG/data/daemon.sock" ] && die "the Runtime is running ($CFG/data/daemon.sock answers). Stop it first (Ctrl+C in its window, or stop the app's service) and re-run; or use the dashboard's Connect page, which works while it runs"
 
 # The agent's bundle list with this one added once: `config get` prints the
 # array as JSON (`[]`, `["mind", "body"]`), which is one line of names here.

@@ -38,7 +38,6 @@ FAQ = (REPO_ROOT / "guide" / "FAQ.md").read_text()
 
 
 def test_the_page_makes_the_row_by_name_then_fills_it_in_one_patch():
-    assert 'await createMapKey("mcp.servers", spec.name);' in PAGE
     assert "await patchConfig(serverOps(spec.name, spec.url, spec.timeout, bearer(spec.secret), agent, known.bundles));" in PAGE
     assert "await patchConfig(printerOps(host, printerKind, octoKey, known.hosts));" in PAGE
     assert "await installConnectSkill(PRINTER_SKILL, agent);" in PAGE
@@ -51,6 +50,17 @@ def test_the_page_makes_the_row_by_name_then_fills_it_in_one_patch():
     # A secret never shows again: connected means the list says the header is populated.
     assert "auth?.populated === true" in LOGIC
     assert 'type={shown ? "text" : "password"}' in PAGE
+    # A row made and never filled (stdio, no command) fails the whole config's validation and
+    # every later write with it: when the fill fails, a row this press made goes again.
+    assert 'created = (await createMapKey("mcp.servers", spec.name)).created;' in PAGE
+    assert 'await deleteMapKey("mcp.servers", spec.name);' in PAGE
+    assert "  deleteMapKey,\n" in PAGE.split('} from "@/lib/api";')[0], "upstream's own DELETE /api/config/map-key client"
+    # Before Set up there is no agent to grant to: the cards wait and point at Set up.
+    assert "const noAgent = known !== null && known.agents.length === 0;" in PAGE
+    assert 'if (busy || !known || noAgent) return;' in PAGE
+    assert '<Link to="/setup" className="cz-link">' in PAGE
+    # A write that landed stays Done even when the re-read fails; the key leaves its box first.
+    assert "setKnown(await readKnown());\n    } catch {" in PAGE
 
 
 def test_the_logic_agrees_with_the_example_configs_and_the_skill():
