@@ -69,7 +69,13 @@ release carries it built as `caelza-mind-<version>.tgz`, and `sh mind/install.sh
 under `~/.local/share/caelza/mind` with `npm install --omit=dev` (the two native
 sqlite modules come prebuilt for Linux and are built on Termux) and writes the
 `caelza-mind` launcher; `CAELZA_SERVICE=1` adds the Termux:Boot script or the
-systemd user unit that starts it after a reboot. `mind/pack.sh` makes the same
+systemd user unit that starts it after a reboot. On Windows,
+`mind/windows-install.ps1` (`irm … | iex`, Node.js 22) does the same into
+`%LOCALAPPDATA%\Caelza\mind` with a `caelza-mind.cmd` launcher beside
+`caelza.exe`, mints the Runtime's tokens into `%USERPROFILE%\.xanima\tokens`
+and sets `memory.backend = "xanima"` when the Runtime is installed and not
+running; `CAELZA_SERVICE=1` adds a Startup-folder shortcut, and the Start
+menu's Caelza starts the Mind before the Runtime once the launcher exists. `mind/pack.sh` makes the same
 tarball from the commit the manifest pins (`service_commit`; while the xanima
 repo is private the fetch needs `CAELZA_MIND_TOKEN`, a token with read access
 to it, which release.yml takes from the `XANIMA_READ_TOKEN` secret). This is exactly the endpoint xanima's **remote brain

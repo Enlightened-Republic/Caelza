@@ -32,7 +32,8 @@ Experimental: the Windows build is new and has not had many real runs yet.
 1. Tap the **Install on Windows** button above (or [download Caelza-Setup.exe](https://github.com/Enlightened-Republic/Caelza/releases/download/v0.2.0/Caelza-Setup.exe)) and run it. SmartScreen will warn because the installer is unsigned: click **More info**, then **Run anyway**. No admin rights are needed; it installs for your user only.
 2. Open **Caelza** from the Start menu. The agent starts in a minimised window and your browser opens the dashboard.
 3. Click **Pair** on the first screen (the code is already filled in), then follow Cael's setup: a free local model or your own provider key. The free model runs through [Ollama](https://ollama.com/download); Cael checks whether it is installed, points you to its download if not, and fetches the model for you (one click, a progress bar, a few GB).
-4. Something broke? The agent's minimised window shows what it is doing; copy its text into an [issue](https://github.com/Enlightened-Republic/Caelza/issues).
+4. Want long-term memory (the Mind) on the PC too? With [Node.js](https://nodejs.org) 22 installed, run this once in PowerShell: `irm https://raw.githubusercontent.com/Enlightened-Republic/Caelza/main/mind/windows-install.ps1 | iex`. It installs the brain service, mints the tokens and points the Runtime at it; from then on the Start menu's **Caelza** starts both.
+5. Something broke? The agent's minimised window shows what it is doing; copy its text into an [issue](https://github.com/Enlightened-Republic/Caelza/issues).
 
 ### What else it does
 
