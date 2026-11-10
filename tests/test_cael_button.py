@@ -18,6 +18,8 @@ OVERLAY = REPO_ROOT / "runtime" / "overlay" / "web" / "src"
 LOGIC = (OVERLAY / "guide" / "guide.logic.ts").read_text()
 BUTTON = (OVERLAY / "guide" / "CaelButton.tsx").read_text()
 PATCH = (REPO_ROOT / "runtime" / "patches" / "0012-cael-explain.patch").read_text()
+# A later page brings its own screen words in its own patch (0015's Connect, for one).
+ALL_PATCHES = "".join(p.read_text() for p in sorted((REPO_ROOT / "runtime" / "patches").glob("*.patch")))
 BRAND_CSS = (OVERLAY / "caelza-brand.css").read_text()
 MANIFEST = tomllib.loads((REPO_ROOT / "bundle" / "manifest.toml").read_text())
 SOUL = (REPO_ROOT / "guide" / "cael.system.md").read_text()
@@ -27,7 +29,7 @@ SCREENS = re.findall(r'^  \| "([a-z-]+)"$', LOGIC.split("export type Screen =")[
 
 def test_every_screen_has_its_words_and_a_next_step():
     assert len(SCREENS) >= 25 and "home" in SCREENS and "other" in SCREENS
-    added = dict(re.findall(r"^\+    '(guide\.[a-z_]+)': (.*),$", PATCH, re.M))
+    added = dict(re.findall(r"^\+    '(guide\.[a-z_]+)': (.*),$", ALL_PATCHES, re.M))
     for screen in SCREENS:
         key = screen.replace("-", "_")
         for prefix in ("guide.screen_", "guide.next_"):

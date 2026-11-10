@@ -25,8 +25,15 @@ def test_example_is_an_http_mcp_server_with_no_token_in_it():
 
 def test_script_and_example_agree_and_never_take_the_token_on_a_command_line():
     text = SCRIPT.read_text(encoding="utf-8")
+    (server,) = EXAMPLE["mcp"]["servers"]
     assert '/api/mcp/assist"' in text
-    assert "mcp.servers.homeassistant.headers.Authorization" in text
+    assert f'TIMEOUT={server["tool_timeout_secs"]}' in text
+    # The row is a keyed list entry: made through `config patch`, the token through the masked prompt.
+    assert "config patch -" in text
+    assert '"path": "/mcp/servers/$NAME/transport", "value": "http"' in text
+    assert '"path": "/agents/$AGENT/mcp_bundles", "value": [$merged]' in text
+    assert 'config set "mcp.servers.$NAME.headers.Authorization"' in text
+    assert "config set mcp.servers.homeassistant." not in text
     assert "read -r" not in text
     assert "Authorization\" \"" not in text
 

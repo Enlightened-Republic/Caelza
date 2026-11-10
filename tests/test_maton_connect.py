@@ -27,9 +27,17 @@ def test_script_and_example_agree_on_the_server():
     text = SCRIPT.read_text()
     (server,) = EXAMPLE["mcp"]["servers"]
     assert f'URL="{server["url"]}"' in text
-    assert "mcp.servers.maton.headers.Authorization" in text
-    assert "mcp.servers.maton.transport http" in text
-    assert f"tool_timeout_secs {server['tool_timeout_secs']}" in text
+    assert f'TIMEOUT={server["tool_timeout_secs"]}' in text
+    # `[[mcp.servers]]` is a keyed list: `config set mcp.servers.maton.transport` is "Unknown
+    # property" until the row exists, so the row goes in through `config patch` (which creates
+    # list rows by their natural key), the secret through the masked prompt once it is there.
+    assert "config patch -" in text
+    assert '"path": "/mcp/servers/$NAME/transport", "value": "http"' in text
+    assert '"path": "/mcp/servers/$NAME/url", "value": "$URL"' in text
+    assert '"path": "/mcp_bundles/$NAME/servers", "value": ["$NAME"]' in text
+    assert '"path": "/agents/$AGENT/mcp_bundles", "value": [$merged]' in text, "the agent keeps its other bundles"
+    assert 'config set "mcp.servers.$NAME.headers.Authorization"' in text
+    assert "config set mcp.servers.maton." not in text, "no property path creates the row"
 
 
 def test_script_never_takes_the_key_on_a_command_line():
