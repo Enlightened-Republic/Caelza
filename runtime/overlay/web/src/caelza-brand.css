@@ -707,6 +707,39 @@ main .surface-panel {
   cursor: not-allowed;
 }
 
+/* The download bar of the local door: Ollama pulling the model, in our gradient. */
+.cz-progress {
+  height: 10px;
+  border-radius: 999px;
+  border: 1px solid var(--pc-border);
+  background: var(--pc-bg-input);
+  overflow: hidden;
+}
+.cz-progress > span {
+  display: block;
+  height: 100%;
+  width: 0;
+  border-radius: 999px;
+  background: linear-gradient(90deg, #22e6ff 0%, #7b6bff 100%);
+  transition: width 300ms;
+}
+.cz-progress > span.is-busy {
+  width: 30%;
+  animation: cz-progress-busy 1.4s ease-in-out infinite;
+}
+@keyframes cz-progress-busy {
+  from {
+    transform: translateX(-100%);
+  }
+  to {
+    transform: translateX(340%);
+  }
+}
+.cz-progress-line {
+  text-align: center;
+  font-variant-numeric: tabular-nums;
+}
+
 /* Inputs: one box, 48 px, the key with its show/hide eye. */
 .cz-input {
   width: 100%;

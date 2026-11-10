@@ -7,9 +7,12 @@
 // whole thing goes through upstream's /api/quickstart/apply, so the result
 // is exactly what the full wizard (still at /quickstart, "Advanced setup")
 // would have written. Phone-first: one column, 52 px buttons, 390 px wide.
-import { useEffect, useMemo, useState, type KeyboardEvent, type ReactNode } from "react";
+// On a PC the local door goes all the way: the page asks the computer's own
+// Ollama what it has (ollama.logic), offers its download page when it is not
+// there, pulls the missing model with a progress bar, then applies.
+import { useEffect, useMemo, useRef, useState, type KeyboardEvent, type ReactNode } from "react";
 import { Link, useNavigate } from "react-router-dom";
-import { ArrowLeft, Eye, EyeOff, ExternalLink, KeyRound, Sparkles } from "lucide-react";
+import { ArrowLeft, Download, Eye, EyeOff, ExternalLink, KeyRound, Sparkles } from "lucide-react";
 
 import {
   getCatalogModels,
@@ -54,6 +57,19 @@ import {
   type StagedProvider,
   type Tag,
 } from "./setup.logic";
+import {
+  OLLAMA_DOWNLOAD_PAGE,
+  approxGb,
+  gbOf,
+  listModels,
+  missingModels,
+  onThisComputer,
+  percent,
+  pullModel,
+  stage,
+  type PullEvent,
+  type PullStage,
+} from "./ollama.logic";
 import { WheelPicker } from "./WheelPicker";
 import catalogJson from "./models.json";
 
@@ -71,6 +87,24 @@ const BAND_KEYS: Record<RamBand, string> = {
   medium: "quickstart.door_ram_medium",
   large: "quickstart.door_ram_large",
 };
+const STAGE_KEYS: Record<PullStage, string> = {
+  starting: "setup.ollama_stage_starting",
+  downloading: "setup.ollama_stage_downloading",
+  checking: "setup.ollama_stage_checking",
+  finishing: "setup.ollama_stage_finishing",
+  done: "setup.ollama_stage_done",
+};
+
+/** What the page knows about the computer's Ollama: not asked yet, asking, nothing at its port, or what it has. */
+type OllamaProbe = "idle" | "checking" | "missing" | "ready";
+
+/** One model's download, as the progress bar shows it. */
+interface Pull {
+  name: string;
+  n: number;
+  total: number;
+  event: PullEvent | null;
+}
 
 /** What the daemon would answer before it has: enough for the defaults. */
 const EMPTY_STATE = {
@@ -119,6 +153,35 @@ export default function Setup() {
   const [band, setBand] = useState<RamBand>(guess.band);
   const [localSeed, setLocalSeed] = useState<Record<string, string>>({});
   const pick = useMemo(() => localPick(runner, bandMb(band)), [runner, band]);
+
+  // Ollama, asked directly when this page is open on the computer itself.
+  const here = useMemo(() => typeof window !== "undefined" && onThisComputer(window.location.hostname), []);
+  const [ollama, setOllama] = useState<OllamaProbe>("idle");
+  const [pulled, setPulled] = useState<string[]>([]);
+  const [probe, setProbe] = useState(0);
+  const [pull, setPull] = useState<Pull | null>(null);
+  const pullAbort = useRef<AbortController | null>(null);
+  const asksOllama = here && runner === "ollama";
+  const wanted = useMemo(() => (pick.model === pick.guide ? [pick.model] : [pick.model, pick.guide]), [pick]);
+  const missing = useMemo(() => missingModels(pulled, wanted), [pulled, wanted]);
+  const missingGb = useMemo(() => approxGb(missing), [missing]);
+
+  useEffect(() => {
+    if (!asksOllama || screen !== "local") return;
+    let cancelled = false;
+    setOllama("checking");
+    void listModels().then((names) => {
+      if (cancelled) return;
+      setPulled(names ?? []);
+      setOllama(names === null ? "missing" : "ready");
+    });
+    return () => {
+      cancelled = true;
+    };
+  }, [asksOllama, screen, probe]);
+
+  // Leaving the page stops a download; Ollama keeps the layers it got and resumes next time.
+  useEffect(() => () => pullAbort.current?.abort(), []);
 
   useEffect(() => {
     let cancelled = false;
@@ -256,12 +319,42 @@ export default function Setup() {
     );
   };
 
+  const stagedLocal = () =>
+    stagedLocalProvider(runner, pick.model, nonEmptyFields(localSeed), providerAlias(aliases, runner, LOCAL_ALIAS));
+
   const useLocal = () => {
     if (busy) return;
-    void apply(stagedLocalProvider(runner, pick.model, nonEmptyFields(localSeed), providerAlias(aliases, runner, LOCAL_ALIAS)), pick.guide);
+    void apply(stagedLocal(), pick.guide);
   };
 
+  // One press on a PC: pull what Ollama lacks (the agent's model, then Cael's),
+  // each with its own bar, then set everything up as "Use this" would have.
+  const downloadAndUse = async () => {
+    if (busy || pull !== null || missing.length === 0) return;
+    setErrors([]);
+    const ctl = new AbortController();
+    pullAbort.current = ctl;
+    try {
+      for (const [i, name] of missing.entries()) {
+        const at = (event: PullEvent | null): Pull => ({ name, n: i + 1, total: missing.length, event });
+        setPull(at(null));
+        await pullModel(name, (e) => setPull(at(e)), ctl.signal);
+      }
+      setPulled((prev) => [...prev, ...missing]);
+      setPull(null);
+      await apply(stagedLocal(), pick.guide);
+    } catch (e) {
+      setPull(null);
+      if (!ctl.signal.aborted) setErrors([e instanceof Error ? e.message : String(e)]);
+    } finally {
+      pullAbort.current = null;
+    }
+  };
+
+  const stopPull = () => pullAbort.current?.abort();
+
   const go = (next: Screen) => {
+    stopPull();
     setErrors([]);
     setScreen(next);
   };
@@ -303,6 +396,36 @@ export default function Setup() {
     case "local": {
       const listed = (kind: Runner) => state === null || state.model_provider_types.some((p) => p.kind === kind);
       title = t("setup.title_local");
+      // What happens after "Use this": on a phone the app or the script fetched the
+      // model already; on a PC this page asks Ollama itself, so Cael says what he found.
+      let then: ReactNode;
+      if (runner !== "ollama") {
+        then = <p className="cz-note">{t("setup.local_then")}</p>;
+      } else if (!here) {
+        then = <p className="cz-note">{fill(t("setup.ollama_remote"), { model: pick.model })}</p>;
+      } else if (ollama === "missing") {
+        then = (
+          <>
+            <p className="cz-note">{t("setup.ollama_missing")}</p>
+            <a className="cz-link" href={OLLAMA_DOWNLOAD_PAGE} target="_blank" rel="noreferrer">
+              {t("setup.ollama_get")} <ExternalLink className="h-3.5 w-3.5" aria-hidden="true" />
+            </a>
+          </>
+        );
+      } else if (ollama === "ready") {
+        const sized = missingGb === null ? "" : fill(t("setup.ollama_about"), { gb: missingGb });
+        then = (
+          <p className="cz-note">
+            {missing.length === 0
+              ? fill(t("setup.ollama_ready"), { model: pick.model })
+              : missing.length === 1
+                ? fill(t("setup.ollama_need_one"), { model: missing[0]!, about: sized })
+                : fill(t("setup.ollama_need_two"), { model: pick.model, guide: pick.guide, about: sized })}
+          </p>
+        );
+      } else {
+        then = <p className="cz-note">{t("setup.ollama_checking")}</p>;
+      }
       body = (
         <>
           <p>{fill(t("setup.body_local"), { model: pick.model, guide: pick.guide })}</p>
@@ -311,43 +434,106 @@ export default function Setup() {
               {n}
             </p>
           ))}
-          <p className="cz-note">{t("setup.local_then")}</p>
+          {then}
         </>
       );
-      control = (
-        <>
-          <div className="cz-kicker">{t("setup.where")}</div>
-          <div className="cz-chip-row" role="radiogroup" aria-label={t("setup.where")}>
-            {(["llamacpp", "ollama"] as Runner[]).map((r) => (
-              <button
-                key={r}
-                type="button"
-                role="radio"
-                aria-checked={runner === r}
-                disabled={!listed(r)}
-                className={`cz-chip${runner === r ? " is-on" : ""}`}
-                onClick={() => setRunner(r)}
-              >
-                {t(r === "llamacpp" ? "setup.where_phone" : "setup.where_hub")}
-              </button>
-            ))}
-          </div>
-          <div className="cz-kicker">{t("setup.ram")}</div>
-          <WheelPicker
-            id="ram"
-            label={t("setup.ram")}
-            visible={3}
-            rows={RAM_BANDS.map((b) => ({ id: b.id, label: t(BAND_KEYS[b.id]) }))}
-            value={band}
-            onChange={(v) => setBand(v as RamBand)}
-          />
-        </>
-      );
-      actions = (
-        <button type="button" className="cz-btn cz-btn-primary" disabled={busy || !listed(runner)} onClick={useLocal}>
-          {busy ? t("setup.working") : t("setup.use_this")}
-        </button>
-      );
+      if (pull !== null) {
+        const pct = percent(pull.event);
+        const stageText = t(STAGE_KEYS[stage(pull.event)]);
+        control = (
+          <>
+            {pull.total > 1 ? <div className="cz-kicker">{fill(t("setup.ollama_model_n"), { n: pull.n, total: pull.total })}</div> : null}
+            <div className="cz-mono">{pull.name}</div>
+            <div
+              className="cz-progress"
+              role="progressbar"
+              aria-label={pull.name}
+              aria-valuemin={0}
+              aria-valuemax={100}
+              aria-valuenow={pct ?? undefined}
+              aria-valuetext={stageText}
+            >
+              <span className={pct === null ? "is-busy" : undefined} style={pct === null ? undefined : { width: `${pct}%` }} />
+            </div>
+            <p className="cz-note cz-progress-line">
+              {pct === null || pull.event?.total === undefined
+                ? stageText
+                : fill(t("setup.ollama_progress"), { pct, done: gbOf(pull.event.completed ?? 0), total: gbOf(pull.event.total) })}
+            </p>
+          </>
+        );
+      } else {
+        control = (
+          <>
+            <div className="cz-kicker">{t("setup.where")}</div>
+            <div className="cz-chip-row" role="radiogroup" aria-label={t("setup.where")}>
+              {(["llamacpp", "ollama"] as Runner[]).map((r) => (
+                <button
+                  key={r}
+                  type="button"
+                  role="radio"
+                  aria-checked={runner === r}
+                  disabled={!listed(r)}
+                  className={`cz-chip${runner === r ? " is-on" : ""}`}
+                  onClick={() => setRunner(r)}
+                >
+                  {t(r === "llamacpp" ? "setup.where_phone" : "setup.where_hub")}
+                </button>
+              ))}
+            </div>
+            <div className="cz-kicker">{t("setup.ram")}</div>
+            <WheelPicker
+              id="ram"
+              label={t("setup.ram")}
+              visible={3}
+              rows={RAM_BANDS.map((b) => ({ id: b.id, label: t(BAND_KEYS[b.id]) }))}
+              value={band}
+              onChange={(v) => setBand(v as RamBand)}
+            />
+          </>
+        );
+      }
+      if (pull !== null) {
+        actions = (
+          <>
+            <button type="button" className="cz-btn cz-btn-primary" disabled>
+              {t("setup.ollama_pulling")}
+            </button>
+            <button type="button" className="cz-btn-text" onClick={stopPull}>
+              {t("setup.ollama_stop")}
+            </button>
+          </>
+        );
+      } else if (asksOllama && ollama === "missing") {
+        actions = (
+          <>
+            <button type="button" className="cz-btn cz-btn-primary" onClick={() => setProbe((p) => p + 1)}>
+              {t("setup.ollama_check_again")}
+            </button>
+            <button type="button" className="cz-btn-text" disabled={busy || !listed(runner)} onClick={useLocal}>
+              {busy ? t("setup.working") : t("setup.ollama_anyway")}
+            </button>
+          </>
+        );
+      } else if (asksOllama && ollama === "ready" && missing.length > 0) {
+        actions = (
+          <button type="button" className="cz-btn cz-btn-primary" disabled={busy || !listed(runner)} onClick={() => void downloadAndUse()}>
+            <Download className="h-5 w-5" aria-hidden="true" />
+            {missingGb === null ? t("setup.ollama_download_unsized") : fill(t("setup.ollama_download"), { gb: missingGb })}
+          </button>
+        );
+      } else {
+        actions = (
+          <button
+            type="button"
+            className="cz-btn cz-btn-primary"
+            disabled={busy || !listed(runner) || (asksOllama && ollama === "checking")}
+            onClick={useLocal}
+          >
+            {busy ? t("setup.working") : t("setup.use_this")}
+          </button>
+        );
+      }
       break;
     }
 

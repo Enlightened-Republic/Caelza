@@ -278,7 +278,22 @@ is new and has not been through real use yet. In PowerShell, run
 `irm https://raw.githubusercontent.com/Enlightened-Republic/Caelza/main/runtime/windows-install.ps1 | iex`
 (`runtime/windows-install.ps1`). It checks the download, installs to
 `%LOCALAPPDATA%\Caelza`, and puts `caelza` on your PATH. Then run `caelza
-quickstart`. Settings live in `.caelza` in your user folder. If a release has
-no Windows build, the installer says so. The Android app is phone-only, and
-the Body works with a phone over ADB rather than on the PC itself. WSL2 with
-the Linux build is the fallback.
+daemon` and open `http://127.0.0.1:42617` for Cael's setup (`Caelza-Setup.exe`
+on the same release does all of this with a Start menu entry). Settings live in
+`.caelza` in your user folder. If a release has no Windows build, the installer
+says so. The Android app is phone-only, and the Body works with a phone over
+ADB rather than on the PC itself. WSL2 with the Linux build is the fallback.
+
+## Cael says he can't see Ollama. What is it, and what do I do?
+
+Ollama is the free program that runs the local model on a computer (a phone
+uses llama.cpp inside the app instead). On a PC the "free and local" door
+needs it: Cael's setup page asks Ollama on the same computer what it has
+(`http://127.0.0.1:11434`), and when nothing answers he shows a **Get Ollama**
+link to `https://ollama.com/download`. Install it, leave it running (it sits in
+the tray), and press **Check again**. Once it answers, the button becomes
+**Download N GB and use this**: Cael pulls the model the ladder picked for your
+memory (and his own 1.5B when it differs) with a progress bar, then sets the
+agent up as "Use this" would. Only a page open on the computer itself can do
+this; from another device Cael says so and gives the `ollama pull` line to run
+there. The download can be stopped and picks up where it left off next time.
