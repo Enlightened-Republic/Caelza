@@ -4,7 +4,7 @@
 
 [caelza]
 name = "Caelza"
-version = "0.2.0"   # the release tag is v<version>; release.yml stamps it into the Runtime's crates (runtime/lib/stamp_version.py)
+version = "0.3.0"   # the release tag is v<version>; release.yml stamps it into the Runtime's crates (runtime/lib/stamp_version.py)
 tagline = "The embodied agent runtime."
 repo = "https://github.com/Enlightened-Republic/caelza"
 license = "MIT OR Apache-2.0"   # runtime; Mind and Body are MIT
