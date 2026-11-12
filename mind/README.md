@@ -174,8 +174,18 @@ and cron turns never become memories.
   `[storage.xanima.default]` (`url`, `token` encrypted at rest, `agent`,
   provisioning off) and `memory.backend = "xanima"` through the config API;
   the service's own address needs one restart, the joined Runtime one
-  restart. Gateway routes `GET|POST|DELETE /api/mind/share` and
-  `POST /api/mind/probe` in `runtime/overlay/crates/caelza-gateway/src/api_mind_share.rs`.
+  restart (or the dashboard's *Reload daemon*). Gateway routes
+  `GET|POST|DELETE /api/mind/share` and `POST /api/mind/probe` in
+  `runtime/overlay/crates/caelza-gateway/src/api_mind_share.rs`. The rules
+  it keeps: the service's files are found the way the service finds them
+  (`$XANIMA_SERVICE_ROOT`, else `~/.xanima/service`, else an un-migrated
+  `~/.sharpwave/service`; `tokensFile` honoured) and sharing never creates a
+  root; only this machine's own addresses are written, never a public one;
+  a code that names a public address or a name instead of an address is
+  refused by the probe; Stop sharing revokes the codes before it clears the
+  address. The link on a home network is plain HTTP (the service speaks no
+  TLS), so the docs say to share only on a trusted network and prefer
+  Tailscale, which encrypts it.
 - **The fleet shape.** One service, many named agents (the phone's, a hub's,
   a Pi's): private brains per agent, the shared brain and rooms for what the
   fleet knows together. The service already models this (`brain_room`,

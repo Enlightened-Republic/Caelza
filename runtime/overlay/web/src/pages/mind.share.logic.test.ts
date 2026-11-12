@@ -11,6 +11,7 @@ import {
   joinOps,
   leaveBackendOps,
   listenerOf,
+  parseListener,
   preferredCandidate,
   restartNote,
 } from './mind.share.logic.ts';
@@ -55,6 +56,12 @@ test('a listener is matched the way the service prints it', () => {
   assert.equal(isListening(['127.0.0.1:18790', '192.168.1.5:18790'], '192.168.1.5', 18790), true);
   assert.equal(isListening(['127.0.0.1:18790'], '192.168.1.5', 18790), false);
   assert.equal(isListening(undefined, '192.168.1.5', 18790), false);
+  // IPv6 the way the service prints it (no brackets), and the bracketed form.
+  assert.deepEqual(parseListener('fd12::1:18790'), { host: 'fd12::1', port: 18790 });
+  assert.deepEqual(parseListener('[FD12::1]:18790'), { host: 'fd12::1', port: 18790 });
+  assert.equal(parseListener('nonsense'), null);
+  assert.equal(isListening(['127.0.0.1:18790', 'fd12::1:18790'], 'fd12::1', 18790), true);
+  assert.equal(isListening(['fd12::1:18790'], 'fd12::1', 18791), false);
 });
 
 test('joining writes the row, the encrypted token, the agent, no provisioning, then the backend', () => {

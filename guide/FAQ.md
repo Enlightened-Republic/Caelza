@@ -206,9 +206,12 @@ another device** and tap **Join**. The page shows the shared brain straight
 away; for the agent's next turn to use it, tap **Reload daemon** in the
 yellow bar at the top of the dashboard, or restart Caelza once (Stop, then
 Start on the phone). Both devices have to be on the same Wi-Fi or both on
-Tailscale, and the Mind only ever listens on that one address, never on the
-open internet. Every code is new, devices already joined keep theirs, and
-**Stop sharing** closes the address and cancels every code at once. **Use
+Tailscale. The Mind listens on that address besides its own 127.0.0.1, never
+on the open internet, and a code that points at an internet address is
+refused. On home Wi-Fi the link is not encrypted, so share only on a network
+you trust; Tailscale encrypts it. Every code is new, devices already joined
+keep theirs, and **Stop sharing** cancels every code at once (the address
+closes when the Mind next restarts; without a code nothing can use it). **Use
 this device's own memory** on the joined device undoes the join.
 
 ## What are procedures?

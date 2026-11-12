@@ -322,13 +322,25 @@ function ShareCard({ onAction }: { onAction: () => void }) {
         <div className="space-y-2 text-sm">
           <p className="text-pc-text">
             Cael can remember on your phone too, the same memory as here. Share this Mind, then paste the code into the other
-            device's Memory page. Only devices with a code can reach it, and only on your own network.
+            device's Memory page. Only devices with a code can use it. On home Wi-Fi the link is not encrypted, so share only
+            on a network you trust; Tailscale encrypts it.
           </p>
           {share?.config_error && <p className="text-status-warning">{share.config_error}</p>}
         </div>
       </div>
 
       {error && <Notice tone="error">{error}</Notice>}
+
+      {share && !share.sharing && (share.share_tokens ?? 0) > 0 && (
+        <div className="mt-3 flex flex-wrap items-center gap-2 text-sm text-pc-text-secondary">
+          <span>
+            {share.share_tokens} device code{share.share_tokens === 1 ? '' : 's'} still live from before.
+          </span>
+          <Button size="sm" variant="danger" disabled={busy} onClick={() => void stop()} data-mind-share="revoke">
+            Revoke all codes
+          </Button>
+        </div>
+      )}
 
       {share && !share.sharing && (
         <div className="mt-3 flex flex-wrap items-center gap-2">
@@ -372,13 +384,18 @@ function ShareCard({ onAction }: { onAction: () => void }) {
               </span>
             )}
           </p>
-          {!share.reachable && <Notice tone="warn">{restartNote('host')}</Notice>}
+          {!share.reachable && (
+            <Notice tone="warn">
+              {restartNote('host')}
+              {share.unbound && share.unbound.length > 0 ? ` Not listening yet on ${share.unbound.join(', ')}.` : ''}
+            </Notice>
+          )}
           <div className="flex flex-wrap gap-2">
             <Button size="sm" disabled={busy} onClick={() => void start(configured[0] ?? preferred?.host ?? '')} data-mind-share="new-code">
               New code
             </Button>
             <Button size="sm" variant="danger" disabled={busy} onClick={() => void stop()} data-mind-share="stop">
-              Stop sharing
+              Stop sharing{(share.share_tokens ?? 0) > 0 ? ` · revoke ${share.share_tokens} code${share.share_tokens === 1 ? '' : 's'}` : ''}
             </Button>
           </div>
         </div>
@@ -395,8 +412,8 @@ function ShareCard({ onAction }: { onAction: () => void }) {
 
       {stopped && (
         <Notice tone="ok">
-          Stopped. {stopped.revoked} device code{stopped.revoked === 1 ? '' : 's'} revoked; joined devices lose the Mind on their next
-          turn.{stopped.restart ? ' The address stays open until the Mind restarts.' : ''}
+          {stopped.revoked} device code{stopped.revoked === 1 ? '' : 's'} revoked; joined devices lose the Mind on their next turn.
+          {stopped.restart ? ' The address stays open until the Mind restarts; nothing can use it without a code.' : ''}
         </Notice>
       )}
     </Card>
@@ -490,8 +507,10 @@ function JoinedCard({
     setError(null);
     try {
       const localMind = share?.local_mind === true;
-      await deleteMapKey(STORAGE_PATH, STORAGE_KEY);
+      // The backend first: if the row's delete then fails, the device is already
+      // off the shared Mind (the row just holds a token nothing uses).
       await patchConfig(leaveBackendOps(localMind));
+      await deleteMapKey(STORAGE_PATH, STORAGE_KEY);
       onNote(
         `${localMind ? "Back to this device's own Mind." : "Back to this device's own memory (the Runtime's store)."} ${restartNote('joined')}`,
       );

@@ -62,14 +62,32 @@ export function preferredCandidate(list: readonly MindShareCandidate[] | undefin
   return list.find((c) => c.kind === 'tailnet') ?? list[0] ?? null;
 }
 
-/** `host:port` as the service lists its listeners. */
+/** `host:port` with IPv6 in brackets (the URL form). */
 export function listenerOf(host: string, port: number): string {
   return host.includes(':') ? `[${host}]:${port}` : `${host}:${port}`;
 }
 
+/**
+ * One of the service's listener entries taken apart: `127.0.0.1:18790`,
+ * `[fd12::1]:18790`, or the raw `fd12::1:18790` it prints for IPv6.
+ */
+export function parseListener(entry: string): { host: string; port: number } | null {
+  const s = entry.trim();
+  const colon = s.lastIndexOf(':');
+  if (colon <= 0) return null;
+  const port = Number(s.slice(colon + 1));
+  if (!Number.isInteger(port) || port <= 0) return null;
+  const host = s.slice(0, colon).replace(/^\[|\]$/g, '').toLowerCase();
+  return host ? { host, port } : null;
+}
+
 /** Whether the service already listens on `host` (so no restart is needed). */
 export function isListening(listening: readonly string[] | undefined, host: string, port: number): boolean {
-  return (listening ?? []).includes(listenerOf(host, port));
+  const want = host.replace(/^\[|\]$/g, '').toLowerCase();
+  return (listening ?? []).some((entry) => {
+    const got = parseListener(entry);
+    return got !== null && got.host === want && got.port === port;
+  });
 }
 
 /**
