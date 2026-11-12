@@ -224,10 +224,12 @@ function InstallCard({ onNote, onChanged }: { onNote: (note: string | null) => v
     try {
       setInfo(await startMindInstall());
     } catch (reason) {
+      // A job started elsewhere (another tab) answers 409: show it rather than the error alone.
       setError(errorText(reason));
       setBusy(false);
+      void load();
     }
-  }, []);
+  }, [load]);
 
   if (!info) return null;
   if (!info.can_install) {

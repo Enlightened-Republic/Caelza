@@ -1270,11 +1270,33 @@ fn snippet(s: &str) -> String {
     truncate(&one_line, 240)
 }
 
+/// `~` the way the service resolves it: `XANIMA_HOME_OVERRIDE` when set,
+/// else the user's home (USERPROFILE first on Windows, where HOME is
+/// usually unset; HOME first elsewhere). The installers mint the token
+/// files under that `~/.xanima/tokens`, so this is where they are read.
 fn expand_home(path: &str) -> PathBuf {
-    if let Some(rest) = path.strip_prefix("~/")
-        && let Some(home) = std::env::var_os("HOME")
+    let home = std::env::var_os("XANIMA_HOME_OVERRIDE")
+        .filter(|h| !h.is_empty())
+        .or_else(|| {
+            let order: [&str; 2] = if cfg!(windows) {
+                ["USERPROFILE", "HOME"]
+            } else {
+                ["HOME", "USERPROFILE"]
+            };
+            order
+                .iter()
+                .find_map(|key| std::env::var_os(key).filter(|h| !h.is_empty()))
+        })
+        .map(PathBuf::from);
+    expand_home_in(path, home.as_deref())
+}
+
+/// `~/` (or `~\`) replaced by `home`; anything else is left as given.
+fn expand_home_in(path: &str, home: Option<&Path>) -> PathBuf {
+    if let Some(rest) = path.strip_prefix("~/").or_else(|| path.strip_prefix("~\\"))
+        && let Some(home) = home
     {
-        return PathBuf::from(home).join(rest);
+        return home.join(rest);
     }
     PathBuf::from(path)
 }
@@ -1285,6 +1307,17 @@ mod tests {
     use std::io::{Read, Write};
     use std::net::{TcpListener, TcpStream};
     use std::thread;
+
+    #[test]
+    fn a_tilde_is_the_home_it_is_given_and_nothing_else_moves() {
+        let home = Path::new("/home/u");
+        assert_eq!(expand_home_in("~/.xanima/tokens/main.token", Some(home)), PathBuf::from("/home/u/.xanima/tokens/main.token"));
+        assert_eq!(expand_home_in("~\\.xanima\\tokens\\main.token", Some(home)), PathBuf::from("/home/u").join(".xanima\\tokens\\main.token"));
+        assert_eq!(expand_home_in("/abs/main.token", Some(home)), PathBuf::from("/abs/main.token"));
+        assert_eq!(expand_home_in("~user/x", Some(home)), PathBuf::from("~user/x"));
+        // No home at all: the path stays as given rather than becoming a relative mystery.
+        assert_eq!(expand_home_in("~/.xanima/tokens/main.token", None), PathBuf::from("~/.xanima/tokens/main.token"));
+    }
 
     struct Recorded {
         request_line: String,

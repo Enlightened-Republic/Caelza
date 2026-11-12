@@ -199,8 +199,10 @@ Mind up on that PC itself: it downloads the Mind and a small Node runtime
 it runs on (about 60 MB, once; each file checked against its published
 sum), installs it under your user folder (`%LOCALAPPDATA%\Caelza\mind` on
 Windows, `~/.local/share/caelza/mind` elsewhere), makes the agent's keys,
-starts the Mind and sets it to start with the PC. Then tap **Reload
-daemon** in the yellow bar at the top so the agent's next turn uses it.
+starts the Mind and sets it to start with the PC (a Startup entry on
+Windows; a user service on a Linux hub with systemd, which the card says
+when it could not). Then tap **Reload daemon** in the yellow bar at the top
+so the agent's next turn uses it.
 No account, and nothing leaves the PC. If something fails, the card shows
 the last lines of what happened and a **Try again** button. The PowerShell
 one-liner (`mind/windows-install.ps1`) and `mind/install.sh` do the same
