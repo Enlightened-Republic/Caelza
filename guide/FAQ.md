@@ -192,6 +192,25 @@ check. On a phone the app runs it; on a Linux hub `mind/install.sh` installs
 it; on a Windows PC `mind/windows-install.ps1` does, and the Start menu's
 Caelza starts it with the Runtime.
 
+## Can Cael remember on my PC and my phone?
+
+Yes: one Mind can serve both, so what Cael learns on one device he knows on
+the other. On the device that runs the Mind (usually the PC), open the
+dashboard's Memory page, find **Your other devices** and tap **Share on
+Home network** (or **Share on Tailscale** when you have it). The page shows
+a join code; copy it. If it says to, restart the Mind once (on Windows close
+the Caelza Mind window and open Caelza from the Start menu again), and say
+yes if Windows asks whether Node.js may use your private network. On the
+other device, open its Memory page, paste the code under **Join a Mind on
+another device** and tap **Join**. The page shows the shared brain straight
+away; for the agent's next turn to use it, tap **Reload daemon** in the
+yellow bar at the top of the dashboard, or restart Caelza once (Stop, then
+Start on the phone). Both devices have to be on the same Wi-Fi or both on
+Tailscale, and the Mind only ever listens on that one address, never on the
+open internet. Every code is new, devices already joined keep theirs, and
+**Stop sharing** closes the address and cancels every code at once. **Use
+this device's own memory** on the joined device undoes the join.
+
 ## What are procedures?
 
 Procedures are step-by-step playbooks the agent runs with a gate before the

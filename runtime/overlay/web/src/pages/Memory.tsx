@@ -3,20 +3,39 @@
 // 390 px, cards stack. Everything goes through the gateway (`/api/mind/*`),
 // which holds the per-agent tokens.
 import { useCallback, useEffect, useState } from 'react';
-import { Brain, RefreshCw, Search, Trash2 } from 'lucide-react';
+import { Brain, Check, Copy, Link2, RefreshCw, Search, Smartphone, Trash2 } from 'lucide-react';
 
 import { Badge, Button, Card, ConfirmDialog, PageHeader, Select, StatCard } from '@/components/ui';
+import { createMapKey, deleteMapKey, patchConfig } from '@/lib/api';
 import {
   decideMindReview,
   getMindReview,
+  getMindShare,
   getMindStatus,
   mindForget,
   mindRecall,
+  probeMindCode,
+  startMindShare,
+  stopMindShare,
   type MindRecallHit,
   type MindReviewItem,
+  type MindShareResult,
+  type MindShareState,
   type MindStatus,
 } from '@/lib/mind';
 import { brainTone, brainTotals, preview, scoreLabel, serviceLine, statusHighlights } from './mind.logic';
+import {
+  STORAGE_KEY,
+  STORAGE_PATH,
+  candidateLabel,
+  cleanCode,
+  devicesRole,
+  isListening,
+  joinOps,
+  leaveBackendOps,
+  preferredCandidate,
+  restartNote,
+} from './mind.share.logic';
 
 function errorText(reason: unknown): string {
   return reason instanceof Error ? reason.message : String(reason);
@@ -44,6 +63,9 @@ export default function Memory() {
   }, [agent, reload]);
 
   const refresh = useCallback(() => setReload((n) => n + 1), []);
+  // What the last devices action said (joined, left); kept here because the
+  // card that said it is replaced the moment the status re-reads.
+  const [devicesNote, setDevicesNote] = useState<string | null>(null);
 
   if (statusError) {
     return (
@@ -94,7 +116,10 @@ export default function Memory() {
       />
 
       {!status.enabled ? (
-        <NotEnabled status={status} />
+        <>
+          <NotEnabled status={status} />
+          <Devices status={status} note={devicesNote} onNote={setDevicesNote} onChanged={refresh} />
+        </>
       ) : (
         <>
           <div className="flex flex-wrap items-center gap-3">
@@ -133,9 +158,379 @@ export default function Memory() {
               <ReviewQueue agent={currentAgent} key={`${currentAgent}:${reload}`} />
             </>
           )}
+
+          <Devices status={status} note={devicesNote} onNote={setDevicesNote} onChanged={refresh} />
         </>
       )}
     </div>
+  );
+}
+
+// --- one Mind for every device -------------------------------------------------------
+
+/** The devices card for this device's role: share the Mind it hosts, show the one it joined, or join one. */
+function Devices({
+  status,
+  note,
+  onNote,
+  onChanged,
+}: {
+  status: MindStatus;
+  note: string | null;
+  onNote: (note: string | null) => void;
+  onChanged: () => void;
+}) {
+  const role = devicesRole(status);
+  const card =
+    role === 'host' ? (
+      <ShareCard onAction={() => onNote(null)} />
+    ) : role === 'joined' ? (
+      <JoinedCard url={status.url ?? ''} onNote={onNote} onChanged={onChanged} />
+    ) : (
+      <JoinCard onNote={onNote} onChanged={onChanged} />
+    );
+  return (
+    <div className="space-y-3" data-mind-devices={role}>
+      {note && (
+        <Notice tone="ok">
+          <span data-mind-share="note">{note}</span>
+        </Notice>
+      )}
+      {card}
+    </div>
+  );
+}
+
+function Notice({ tone, children }: { tone: 'ok' | 'warn' | 'error'; children: React.ReactNode }) {
+  const cls =
+    tone === 'error'
+      ? 'border-status-error/25 bg-status-error/10 text-status-error'
+      : tone === 'warn'
+        ? 'border-status-warning/25 bg-status-warning/10 text-status-warning'
+        : 'border-status-success/25 bg-status-success/10 text-status-success';
+  return (
+    <div role={tone === 'ok' ? 'status' : 'alert'} className={`mt-3 rounded-[var(--radius-md)] border p-3 text-xs ${cls}`}>
+      {children}
+    </div>
+  );
+}
+
+/** A join code with a copy button; the owner pastes it on the other device. */
+function CodeBox({ code }: { code: string }) {
+  const [copied, setCopied] = useState(false);
+  const copy = useCallback(async () => {
+    try {
+      await navigator.clipboard.writeText(code);
+      setCopied(true);
+      window.setTimeout(() => setCopied(false), 2000);
+    } catch {
+      setCopied(false);
+    }
+  }, [code]);
+  return (
+    <div className="mt-3">
+      <textarea
+        readOnly
+        value={code}
+        rows={3}
+        aria-label="Join code"
+        data-mind-share="code"
+        className="input-electric w-full break-all font-mono text-xs"
+        onFocus={(e) => e.currentTarget.select()}
+      />
+      <div className="mt-2 flex flex-wrap items-center gap-2">
+        <Button size="sm" onClick={() => void copy()} data-mind-share="copy">
+          {copied ? <Check size={14} aria-hidden="true" /> : <Copy size={14} aria-hidden="true" />}
+          <span className="ml-1.5">{copied ? 'Copied' : 'Copy the code'}</span>
+        </Button>
+        <span className="text-xs text-pc-text-faint">
+          On the other device, open Memory and paste it under <em>Join a Mind on another device</em>. Every code is new; devices
+          already joined keep theirs.
+        </span>
+      </div>
+    </div>
+  );
+}
+
+/** This device hosts the Mind: share it with the owner's other devices. */
+function ShareCard({ onAction }: { onAction: () => void }) {
+  const [share, setShare] = useState<MindShareState | null>(null);
+  const [error, setError] = useState<string | null>(null);
+  const [busy, setBusy] = useState(false);
+  const [result, setResult] = useState<MindShareResult | null>(null);
+  const [stopped, setStopped] = useState<{ revoked: number; restart: boolean } | null>(null);
+
+  const load = useCallback(() => {
+    setError(null);
+    getMindShare()
+      .then(setShare)
+      .catch((reason: unknown) => setError(errorText(reason)));
+  }, []);
+
+  useEffect(() => {
+    load();
+  }, [load]);
+
+  const start = useCallback(
+    async (host: string) => {
+      setBusy(true);
+      setError(null);
+      setStopped(null);
+      onAction();
+      try {
+        const r = await startMindShare(host);
+        setResult(r);
+        setShare(r);
+      } catch (reason) {
+        setError(errorText(reason));
+      } finally {
+        setBusy(false);
+      }
+    },
+    [onAction],
+  );
+
+  const stop = useCallback(async () => {
+    setBusy(true);
+    setError(null);
+    setResult(null);
+    onAction();
+    try {
+      const r = await stopMindShare();
+      setShare(r);
+      setStopped({ revoked: r.revoked, restart: r.restart_needed });
+    } catch (reason) {
+      setError(errorText(reason));
+    } finally {
+      setBusy(false);
+    }
+  }, [onAction]);
+
+  const candidates = share?.candidates ?? [];
+  const preferred = preferredCandidate(candidates);
+  const configured = share?.configured ?? [];
+  const port = share?.port ?? 18790;
+
+  return (
+    <Card data-mind-share="host">
+      <div className="mb-1 flex items-center justify-between gap-2">
+        <div className="cz-eyebrow">Your other devices</div>
+        {share?.sharing && <Badge tone={share.reachable ? 'ok' : 'warn'}>{share.reachable ? 'shared' : 'shared · restart the Mind'}</Badge>}
+      </div>
+      <div className="flex items-start gap-3">
+        <Smartphone className="mt-0.5 h-5 w-5 shrink-0 text-pc-accent" aria-hidden="true" />
+        <div className="space-y-2 text-sm">
+          <p className="text-pc-text">
+            Cael can remember on your phone too, the same memory as here. Share this Mind, then paste the code into the other
+            device's Memory page. Only devices with a code can reach it, and only on your own network.
+          </p>
+          {share?.config_error && <p className="text-status-warning">{share.config_error}</p>}
+        </div>
+      </div>
+
+      {error && <Notice tone="error">{error}</Notice>}
+
+      {share && !share.sharing && (
+        <div className="mt-3 flex flex-wrap items-center gap-2">
+          {candidates.length === 0 ? (
+            <span className="text-xs text-pc-text-muted">
+              No network address found on this machine. Connect it to Wi-Fi or Ethernet (or start Tailscale), then refresh.
+            </span>
+          ) : (
+            candidates.map((c) => (
+              <Button
+                key={c.host}
+                size="sm"
+                variant={c.host === preferred?.host ? 'primary' : 'ghost'}
+                disabled={busy}
+                onClick={() => void start(c.host)}
+                data-mind-share={`share:${c.kind}`}
+              >
+                <Link2 size={14} aria-hidden="true" />
+                <span className="ml-1.5">Share on {candidateLabel(c)}</span>
+              </Button>
+            ))
+          )}
+          <Button variant="ghost" size="sm" onClick={load} aria-label="Refresh addresses">
+            <RefreshCw size={14} aria-hidden="true" />
+          </Button>
+        </div>
+      )}
+
+      {share?.sharing && (
+        <div className="mt-3 space-y-2 text-sm">
+          <p className="text-pc-text-secondary">
+            Shared on{' '}
+            {configured.map((h) => (
+              <code key={h} className="font-mono text-pc-text">
+                {h}:{port}{' '}
+              </code>
+            ))}
+            {share.share_tokens !== undefined && (
+              <span className="text-pc-text-faint">
+                · {share.share_tokens} device code{share.share_tokens === 1 ? '' : 's'} live
+              </span>
+            )}
+          </p>
+          {!share.reachable && <Notice tone="warn">{restartNote('host')}</Notice>}
+          <div className="flex flex-wrap gap-2">
+            <Button size="sm" disabled={busy} onClick={() => void start(configured[0] ?? preferred?.host ?? '')} data-mind-share="new-code">
+              New code
+            </Button>
+            <Button size="sm" variant="danger" disabled={busy} onClick={() => void stop()} data-mind-share="stop">
+              Stop sharing
+            </Button>
+          </div>
+        </div>
+      )}
+
+      {result && (
+        <>
+          <Notice tone="ok">
+            Shared on {result.share_url}. {result.restart_needed || !isListening(result.listening, result.host, port) ? '' : 'The Mind already listens there.'}
+          </Notice>
+          <CodeBox code={result.code} />
+        </>
+      )}
+
+      {stopped && (
+        <Notice tone="ok">
+          Stopped. {stopped.revoked} device code{stopped.revoked === 1 ? '' : 's'} revoked; joined devices lose the Mind on their next
+          turn.{stopped.restart ? ' The address stays open until the Mind restarts.' : ''}
+        </Notice>
+      )}
+    </Card>
+  );
+}
+
+/** This device has no Mind: join one on another device with its code. */
+function JoinCard({ onNote, onChanged }: { onNote: (note: string | null) => void; onChanged: () => void }) {
+  const [code, setCode] = useState('');
+  const [busy, setBusy] = useState(false);
+  const [error, setError] = useState<string | null>(null);
+
+  const join = useCallback(async () => {
+    const clean = cleanCode(code);
+    if (!clean) return;
+    setBusy(true);
+    setError(null);
+    try {
+      const probe = await probeMindCode(clean);
+      await createMapKey(STORAGE_PATH, STORAGE_KEY);
+      await patchConfig(joinOps(probe.url, probe.token, probe.agent));
+      setCode('');
+      onNote(`Joined the Mind at ${probe.url}${probe.version ? ` (xanima ${probe.version})` : ''}. ${restartNote('joined')}`);
+      onChanged();
+    } catch (reason) {
+      setError(errorText(reason));
+    } finally {
+      setBusy(false);
+    }
+  }, [code, onChanged, onNote]);
+
+  return (
+    <Card data-mind-share="join">
+      <div className="mb-1 cz-eyebrow">Join a Mind on another device</div>
+      <div className="flex items-start gap-3">
+        <Smartphone className="mt-0.5 h-5 w-5 shrink-0 text-pc-accent" aria-hidden="true" />
+        <p className="text-sm text-pc-text">
+          Is Caelza on your PC already? Open its Memory page, tap <em>Share</em> under <em>Your other devices</em>, and paste the code
+          here. Cael then remembers the same things on both. The two devices need to be on the same network (or both on Tailscale).
+        </p>
+      </div>
+      <form
+        className="mt-3 flex flex-col gap-2 sm:flex-row"
+        onSubmit={(e) => {
+          e.preventDefault();
+          void join();
+        }}
+      >
+        <input
+          className="input-electric flex-1 font-mono text-xs"
+          value={code}
+          onChange={(e) => setCode(e.target.value)}
+          placeholder="caelza-mind:…"
+          aria-label="Join code"
+          autoComplete="off"
+          spellCheck={false}
+          data-mind-share="code-input"
+        />
+        <Button type="submit" disabled={busy || !cleanCode(code)} data-mind-share="join-button">
+          <Link2 size={14} aria-hidden="true" />
+          <span className="ml-1.5">{busy ? 'Checking…' : 'Join'}</span>
+        </Button>
+      </form>
+      {error && <Notice tone="error">{error}</Notice>}
+    </Card>
+  );
+}
+
+/** This device uses another device's Mind. */
+function JoinedCard({
+  url,
+  onNote,
+  onChanged,
+}: {
+  url: string;
+  onNote: (note: string | null) => void;
+  onChanged: () => void;
+}) {
+  const [share, setShare] = useState<MindShareState | null>(null);
+  const [busy, setBusy] = useState(false);
+  const [error, setError] = useState<string | null>(null);
+
+  useEffect(() => {
+    getMindShare()
+      .then(setShare)
+      .catch(() => setShare(null));
+  }, [url]);
+
+  const leave = useCallback(async () => {
+    setBusy(true);
+    setError(null);
+    try {
+      const localMind = share?.local_mind === true;
+      await deleteMapKey(STORAGE_PATH, STORAGE_KEY);
+      await patchConfig(leaveBackendOps(localMind));
+      onNote(
+        `${localMind ? "Back to this device's own Mind." : "Back to this device's own memory (the Runtime's store)."} ${restartNote('joined')}`,
+      );
+      onChanged();
+    } catch (reason) {
+      setError(errorText(reason));
+    } finally {
+      setBusy(false);
+    }
+  }, [onChanged, onNote, share]);
+
+  return (
+    <Card data-mind-share="joined">
+      <div className="mb-1 flex items-center justify-between gap-2">
+        <div className="cz-eyebrow">Your other devices</div>
+        <Badge tone={share?.healthy === false ? 'warn' : 'ok'}>{share?.healthy === false ? 'not answering' : 'joined'}</Badge>
+      </div>
+      <div className="flex items-start gap-3">
+        <Smartphone className="mt-0.5 h-5 w-5 shrink-0 text-pc-accent" aria-hidden="true" />
+        <div className="space-y-2 text-sm">
+          <p className="text-pc-text">
+            This device uses the Mind at <code className="font-mono">{url}</code>
+            {share?.version ? ` (xanima ${share.version})` : ''}. What Cael learns here, he knows there too.
+          </p>
+          {share?.healthy === false && (
+            <p className="text-status-warning">
+              It is not answering right now: is the other device on and on the same network? Cael keeps going without memory until
+              it is back.
+            </p>
+          )}
+        </div>
+      </div>
+      <div className="mt-3">
+        <Button size="sm" variant="ghost" disabled={busy} onClick={() => void leave()} data-mind-share="leave">
+          Use this device's own memory
+        </Button>
+      </div>
+      {error && <Notice tone="error">{error}</Notice>}
+    </Card>
   );
 }
 

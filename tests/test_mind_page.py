@@ -11,6 +11,7 @@ OVERLAY = REPO_ROOT / "runtime" / "overlay"
 PATCH = (REPO_ROOT / "runtime" / "patches" / "0003-mind-page.patch").read_text()
 # Phase 3a (Home) added the digest route to the same module; its wiring lives in patch 0005.
 PATCH_HOME = (REPO_ROOT / "runtime" / "patches" / "0005-home-procedures.patch").read_text()
+PATCH_SHARE = (REPO_ROOT / "runtime" / "patches" / "0016-mind-share.patch").read_text()
 API_MIND = (OVERLAY / "crates" / "caelza-gateway" / "src" / "api_mind.rs").read_text()
 CLIENT = (OVERLAY / "web" / "src" / "lib" / "mind.ts").read_text()
 PAGE = (OVERLAY / "web" / "src" / "pages" / "Memory.tsx").read_text()
@@ -31,9 +32,10 @@ def test_patch_touches_only_the_files_it_claims():
 
 
 def test_the_page_calls_only_routes_the_gateway_mounts():
-    mounted = set(re.findall(r'"(/api/mind/[a-z]+)"', PATCH)) | set(re.findall(r'"(/api/mind/[a-z]+)"', PATCH_HOME))
+    mounted = {route for patch in (PATCH, PATCH_HOME, PATCH_SHARE) for route in re.findall(r'"(/api/mind/[a-z]+)"', patch)}
     called = set(re.findall(r"(/api/mind/[a-z]+)", CLIENT))
-    assert mounted == called == {"/api/mind/status", "/api/mind/recall", "/api/mind/forget", "/api/mind/review", "/api/mind/digest"}
+    assert mounted == called == {"/api/mind/status", "/api/mind/recall", "/api/mind/forget", "/api/mind/review", "/api/mind/digest",
+                                 "/api/mind/share", "/api/mind/probe"}
     for handler in ("handle_mind_status", "handle_mind_recall", "handle_mind_forget",
                     "handle_mind_review_list", "handle_mind_review_decide"):
         assert f"pub async fn {handler}" in API_MIND, handler
@@ -43,9 +45,16 @@ def test_the_page_calls_only_routes_the_gateway_mounts():
 
 def test_tokens_stay_on_the_host():
     # The page never sees a bearer token for the brain service: it only reads
-    # whether one exists and where the gateway expects it.
-    code = "\n".join(line for line in CLIENT.splitlines() if not line.strip().startswith("//"))
-    assert "token" not in code.replace("has_token", "").replace("token_file", "").lower()
+    # whether one exists and where the gateway expects it. The one exception is
+    # the join code's token on the device that joins another device's Mind: the
+    # probe hands it back to the page that pasted the code, for the one config
+    # write that stores it encrypted (tests/test_mind_share.py pins that path).
+    code = "\n".join(line for line in CLIENT.splitlines() if not line.strip().startswith("//") and not line.strip().startswith("/**"))
+    probe_field = "  /** The code's token, back from the gateway for the config write. */\n  token: string;\n"
+    assert probe_field in CLIENT.split("export interface MindProbeResult")[1].split("}")[0] + "}"
+    # token_id is the entry's public handle (what `token list` prints), share_tokens a count.
+    scrubbed = code.replace("has_token", "").replace("token_file", "").replace("share_tokens", "").replace("token_id", "").replace("  token: string;\n", "", 1)
+    assert "token" not in scrubbed.lower()
     assert "Authorization" not in CLIENT and "Bearer" not in CLIENT
     assert "require_auth(&state, &headers)" in API_MIND
     assert API_MIND.count("require_auth(&state, &headers)") == 6, "every route (digest included) is behind the dashboard's auth"
