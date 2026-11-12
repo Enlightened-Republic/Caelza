@@ -197,6 +197,11 @@ export interface MindShareState {
   sharing?: boolean;
   /** Every configured address is one the service currently listens on. */
   reachable?: boolean;
+  /** The configured addresses the service does not list yet (a restart away). */
+  unbound?: string[];
+  tokens_path?: string;
+  /** A Mind is set up at the service root (sharing never creates one). */
+  installed?: boolean;
   healthy?: boolean;
   version?: string | null;
   /** `host:port` for every listener the service reports. */

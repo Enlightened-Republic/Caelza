@@ -22,7 +22,14 @@
 //! - `POST   /api/mind/probe`  `{code}` → the other device checks the code before
 //!   joining: `/health` on the service, then `brain_stats` with the code's token
 //!
-//! A join code is `caelza-mind:` + base64url of `{"v":1,"url","agent","token"}`.
+//! A join code is `caelza-mind:` + base64url of `{"v":1,"url","agent","token"}`;
+//! one that names a public address, or a name instead of an address, is
+//! refused on the joining side (Share never makes one). The service's files
+//! are found exactly the way the service finds them (`service_root_for`), and
+//! sharing never creates a root: a machine with no Mind set up gets an error,
+//! not a second, empty Mind on its next restart. Stop sharing revokes the
+//! codes before it clears the address, so a failure half-way never leaves
+//! valid codes behind an address the page no longer shows.
 //! The page on the joining device writes the config itself through the upstream
 //! config API (the `storage.xanima.default` row, `url`, `token` encrypted at
 //! rest, `agent`, `memory.backend = "xanima"`); this module only probes.
@@ -64,23 +71,91 @@ fn error_response(status: StatusCode, message: impl Into<String>) -> Response {
 
 // --- where the service keeps its files --------------------------------------------
 
+/// The home directory the way Node's `os.homedir()` finds it: USERPROFILE
+/// first on Windows, HOME first elsewhere.
 fn home_dir() -> Option<PathBuf> {
-    std::env::var_os("HOME")
-        .or_else(|| std::env::var_os("USERPROFILE"))
-        .filter(|h| !h.is_empty())
+    let order: [&str; 2] = if cfg!(windows) {
+        ["USERPROFILE", "HOME"]
+    } else {
+        ["HOME", "USERPROFILE"]
+    };
+    order
+        .iter()
+        .find_map(|key| std::env::var_os(key).filter(|h| !h.is_empty()))
         .map(PathBuf::from)
 }
 
-/// The service root (`config.json`, `tokens.json`): `$XANIMA_SERVICE_ROOT`,
-/// else `~/.xanima/service`, as xanima-server's `defaultRoot()` resolves it.
-pub fn service_root() -> PathBuf {
-    if let Some(root) = std::env::var_os("XANIMA_SERVICE_ROOT").filter(|r| !r.is_empty()) {
+/// The service's files.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct ServicePaths {
+    pub root: PathBuf,
+    pub config: PathBuf,
+    pub tokens: PathBuf,
+}
+
+/// The service root as xanima-server's `defaultRoot()` resolves it:
+/// `env_root` (`$XANIMA_SERVICE_ROOT`) when set, else `<data home>/service`
+/// where the data home is `~/.xanima` when it exists, else an un-migrated
+/// `~/.sharpwave` when that exists, else `~/.xanima` (`defaultDataHome()` in
+/// xanima-core). Following the service exactly matters: a root of our own
+/// would make the next restart come up on a second, empty Mind.
+pub fn service_root_for(env_root: Option<&str>, home: Option<&Path>) -> PathBuf {
+    if let Some(root) = env_root.map(str::trim).filter(|r| !r.is_empty()) {
         return PathBuf::from(root);
     }
-    home_dir()
-        .unwrap_or_else(|| PathBuf::from("."))
-        .join(".xanima")
-        .join("service")
+    let home = home.map(Path::to_path_buf).unwrap_or_else(|| PathBuf::from("."));
+    let neu = home.join(".xanima");
+    let old = home.join(".sharpwave");
+    let data = if neu.is_dir() {
+        neu
+    } else if old.is_dir() {
+        old
+    } else {
+        neu
+    };
+    data.join("service")
+}
+
+/// `service_root_for` on this process's environment; `~` is
+/// `XANIMA_HOME_OVERRIDE` when set, the service's own override.
+pub fn service_root() -> PathBuf {
+    let env_root = std::env::var("XANIMA_SERVICE_ROOT").ok();
+    let home = std::env::var_os("XANIMA_HOME_OVERRIDE")
+        .filter(|h| !h.is_empty())
+        .map(PathBuf::from)
+        .or_else(home_dir);
+    service_root_for(env_root.as_deref(), home.as_deref())
+}
+
+/// A leading `~/` (or `~\`) expanded, as the service's `expandHome` does
+/// for `tokensFile`.
+fn expand_tilde(path: &str) -> PathBuf {
+    if let Some(rest) = path.strip_prefix("~/").or_else(|| path.strip_prefix("~\\"))
+        && let Some(home) = home_dir()
+    {
+        return home.join(rest);
+    }
+    PathBuf::from(path)
+}
+
+/// The root, its `config.json`, and `tokens.json` where that config's
+/// `tokensFile` says (else beside the config, the service's default).
+pub fn service_paths() -> ServicePaths {
+    let root = service_root();
+    let config = root.join("config.json");
+    let tokens = read_json(&config)
+        .ok()
+        .and_then(|c| c.get("tokensFile").and_then(Value::as_str).map(|t| t.trim().to_string()))
+        .filter(|t| !t.is_empty())
+        .map(|t| expand_tilde(&t))
+        .unwrap_or_else(|| root.join("tokens.json"));
+    ServicePaths { root, config, tokens }
+}
+
+/// Whether a Mind has been set up at `root`: its config, its tokens or its
+/// audit log is there. Sharing never creates a root of its own.
+pub fn mind_installed(paths: &ServicePaths) -> bool {
+    paths.config.is_file() || paths.tokens.is_file() || paths.root.join("audit").is_dir()
 }
 
 /// A JSON file, or an empty object when it is not there yet.
@@ -263,12 +338,51 @@ pub fn validate_host(host: &str) -> Result<IpAddr, String> {
     Ok(ip)
 }
 
-/// `host:port` the way the service lists its listeners (IPv6 in brackets).
+/// `host:port` with IPv6 in brackets (the URL form).
 pub fn listener(ip: IpAddr, port: u16) -> String {
     match ip {
         IpAddr::V4(v4) => format!("{v4}:{port}"),
         IpAddr::V6(v6) => format!("[{v6}]:{port}"),
     }
+}
+
+/// One of the service's `addresses()` entries taken apart: `127.0.0.1:18790`,
+/// `[fd12::1]:18790`, or the raw `fd12::1:18790` it prints for IPv6.
+pub fn parse_listener(entry: &str) -> Option<(IpAddr, u16)> {
+    let entry = entry.trim();
+    if let Ok(sa) = entry.parse::<std::net::SocketAddr>() {
+        return Some((sa.ip(), sa.port()));
+    }
+    let (host, port) = entry.rsplit_once(':')?;
+    let ip = host
+        .trim_start_matches('[')
+        .trim_end_matches(']')
+        .parse::<IpAddr>()
+        .ok()?;
+    Some((ip, port.parse().ok()?))
+}
+
+/// Whether the service lists a listener on `ip`:`port`.
+pub fn bound(addresses: &[String], ip: IpAddr, port: u16) -> bool {
+    addresses
+        .iter()
+        .filter_map(|a| parse_listener(a))
+        .any(|(i, p)| i == ip && p == port)
+}
+
+/// An address this machine can bind: any loopback address, or one of
+/// `candidates()` (what the page offers). The service would retry a bind on
+/// any other address forever.
+pub fn own_address(ip: IpAddr, mine: &[Candidate]) -> Result<(), String> {
+    if ip.is_loopback() || mine.iter().any(|c| c.host == ip.to_string()) {
+        return Ok(());
+    }
+    let offered = if mine.is_empty() {
+        "none was found".to_string()
+    } else {
+        mine.iter().map(|c| c.host.as_str()).collect::<Vec<_>>().join(", ")
+    };
+    Err(format!("{ip} is not one of this machine's addresses ({offered})"))
 }
 
 /// The base URL of the service at `ip`.
@@ -341,11 +455,33 @@ pub fn token_hash(token: &str) -> String {
     format!("sha256:{}", hex::encode(Sha256::digest(token.as_bytes())))
 }
 
+/// `validateAgentId` in the service's tokens.ts: letters, digits and `. _ -`,
+/// 1 to 64 long, letters or digits at both ends, and not a reserved brain
+/// name. The service silently drops entries that fail it, so a token for
+/// such a name would never work.
+pub fn agent_id_ok(agent: &str) -> Result<(), String> {
+    let bytes = agent.as_bytes();
+    let alnum = |b: u8| b.is_ascii_alphanumeric();
+    let shape = !bytes.is_empty()
+        && bytes.len() <= 64
+        && alnum(bytes[0])
+        && alnum(bytes[bytes.len() - 1])
+        && bytes.iter().all(|&b| alnum(b) || matches!(b, b'.' | b'_' | b'-'));
+    if !shape {
+        return Err(format!("the Mind refuses the agent name {agent:?} (letters, digits, . _ -; up to 64)"));
+    }
+    if matches!(agent.to_ascii_lowercase().as_str(), "shared" | "_system" | "backups" | "audit") {
+        return Err(format!("the Mind reserves the name {agent:?}; the default agent needs another name"));
+    }
+    Ok(())
+}
+
 /// Mint a `caelza-share` token for `agent` (read, write) into the service's
 /// `tokens.json`, the way `xanima-server token mint` does: the hash is stored,
 /// the plaintext is returned once. The service reloads the file on its next
 /// request. Returns the token and the entry's public id.
 pub fn mint_share_token(tokens_path: &Path, agent: &str) -> Result<(String, String), String> {
+    agent_id_ok(agent)?;
     let mut file = read_json(tokens_path)?;
     let entries = token_entries(&mut file)?;
     for t in entries.iter() {
@@ -365,6 +501,14 @@ pub fn mint_share_token(tokens_path: &Path, agent: &str) -> Result<(String, Stri
         "createdAt": chrono::Utc::now().to_rfc3339_opts(chrono::SecondsFormat::Millis, true),
     }));
     write_json(tokens_path, &file, true)?;
+    // The service's own provisioning writes this file too: make sure the entry landed.
+    let landed = read_json(tokens_path)?
+        .get("tokens")
+        .and_then(Value::as_array)
+        .is_some_and(|list| list.iter().any(|t| t.get("id").and_then(Value::as_str) == Some(id.as_str())));
+    if !landed {
+        return Err("tokens.json changed while the code was made; try again".to_string());
+    }
     Ok((token, id))
 }
 
@@ -432,12 +576,12 @@ pub fn decode_code(code: &str) -> Result<JoinCode, String> {
     if trimmed.is_empty() {
         return Err("paste the code from the other device's Memory page".to_string());
     }
+    // `get` rather than `split_at`: a full-width colon from a phone keyboard
+    // puts a char boundary past byte 12, and that must be an error, not a panic.
     let body = trimmed
-        .strip_prefix(CODE_PREFIX)
-        .or_else(|| {
-            let (head, rest) = trimmed.split_at(trimmed.len().min(CODE_PREFIX.len()));
-            head.eq_ignore_ascii_case(CODE_PREFIX).then_some(rest)
-        })
+        .get(..CODE_PREFIX.len())
+        .filter(|head| head.eq_ignore_ascii_case(CODE_PREFIX))
+        .map(|_| &trimmed[CODE_PREFIX.len()..])
         .ok_or_else(|| format!("that is not a join code (it starts with {CODE_PREFIX})"))?;
     let body = body.trim();
     let bytes = URL_SAFE_NO_PAD
@@ -452,6 +596,17 @@ pub fn decode_code(code: &str) -> Result<JoinCode, String> {
     let url = parsed.url.trim().trim_end_matches('/').to_string();
     if !(url.starts_with("http://") || url.starts_with("https://")) || host_of(&url).is_empty() {
         return Err("that code names no service address".to_string());
+    }
+    // Share writes addresses, never names, and never public ones: a code that
+    // points elsewhere was not made by Share, and following it would send
+    // every turn's memory to whoever is there.
+    let ip: IpAddr = host_of(&url)
+        .trim_start_matches('[')
+        .trim_end_matches(']')
+        .parse()
+        .map_err(|_| "that code names the Mind by a name, not an address; Share makes codes with the address".to_string())?;
+    if ip.is_unspecified() || ip.is_multicast() || kind_of(ip) == "public" {
+        return Err("that code points at an internet address; a Mind is shared on a home network or Tailscale only".to_string());
     }
     let agent = parsed.agent.trim().to_string();
     if agent.is_empty() || !super::api_looks::alias_ok(&agent) {
@@ -518,34 +673,37 @@ fn hosting(state: &AppState) -> Result<XanimaSettings, Response> {
     }
 }
 
-fn state_report(settings: &XanimaSettings, root: &Path, cfg: Result<Value, String>, live: Listening) -> Value {
+fn state_report(settings: &XanimaSettings, paths: &ServicePaths, cfg: Result<Value, String>, live: Listening) -> Value {
     let port = port_of(&settings.url);
     let (configured, config_error) = match cfg {
         Ok(cfg) => (tailnet_hosts(&cfg), None),
         Err(e) => (Vec::new(), Some(e)),
     };
-    let reachable = !configured.is_empty()
-        && configured.iter().all(|h| {
-            h.parse::<IpAddr>()
-                .ok()
-                .is_some_and(|ip| live.addresses.iter().any(|a| a == &listener(ip, port)))
-        });
+    // The configured addresses the service does not list yet (a restart away).
+    let unbound: Vec<String> = configured
+        .iter()
+        .filter(|h| !h.parse::<IpAddr>().ok().is_some_and(|ip| bound(&live.addresses, ip, port)))
+        .cloned()
+        .collect();
     json!({
         "enabled": true,
         "hosted_here": true,
         "url": settings.url,
         "agent": settings.agent,
         "port": port,
-        "config_path": root.join("config.json").display().to_string(),
+        "config_path": paths.config.display().to_string(),
+        "tokens_path": paths.tokens.display().to_string(),
+        "installed": mind_installed(paths),
         "config_error": config_error,
         "configured": configured,
         "sharing": !configured.is_empty(),
-        "reachable": reachable,
+        "reachable": !configured.is_empty() && unbound.is_empty(),
+        "unbound": unbound,
         "healthy": live.healthy,
         "version": live.version,
         "listening": live.addresses,
         "candidates": candidates(),
-        "share_tokens": live_share_tokens(&root.join("tokens.json")),
+        "share_tokens": live_share_tokens(&paths.tokens),
     })
 }
 
@@ -586,16 +744,17 @@ pub async fn handle_share_get(State(state): State<AppState>, headers: HeaderMap)
                 "port": port,
                 "healthy": live.healthy,
                 "version": live.version,
-                "local_mind": local_mind_up(port).await,
+                // Leaving falls back to the row's defaults, which point at the default port.
+                "local_mind": local_mind_up(DEFAULT_PORT).await,
             }))
             .into_response();
         }
         Ok(MindWiring::Enabled(settings)) => settings,
     };
-    let root = service_root();
-    let cfg = read_json(&root.join("config.json"));
+    let paths = service_paths();
+    let cfg = read_json(&paths.config);
     let live = listening(&settings).await;
-    Json(state_report(&settings, &root, cfg, live)).into_response()
+    Json(state_report(&settings, &paths, cfg, live)).into_response()
 }
 
 #[derive(Debug, Deserialize)]
@@ -616,29 +775,40 @@ pub async fn handle_share_post(
         Ok(s) => s,
         Err(r) => return r,
     };
-    let ip = match validate_host(&body.host) {
+    let ip = match validate_host(&body.host).and_then(|ip| own_address(ip, &candidates()).map(|()| ip)) {
         Ok(ip) => ip,
         Err(e) => return error_response(StatusCode::BAD_REQUEST, e),
     };
-    let root = service_root();
-    let config_path = root.join("config.json");
-    let mut cfg = match read_json(&config_path) {
+    let paths = service_paths();
+    if !mind_installed(&paths) {
+        return error_response(
+            StatusCode::CONFLICT,
+            format!(
+                "No Mind is set up at {} (no config.json, tokens.json or audit log there); install it first, then share",
+                paths.root.display()
+            ),
+        );
+    }
+    let mut cfg = match read_json(&paths.config) {
         Ok(c) => c,
         Err(e) => return error_response(StatusCode::INTERNAL_SERVER_ERROR, e),
     };
-    let added = with_host(&mut cfg, &ip.to_string());
-    if added && let Err(e) = write_json(&config_path, &cfg, false) {
-        return error_response(StatusCode::INTERNAL_SERVER_ERROR, e);
-    }
-    let (token, token_id) = match mint_share_token(&root.join("tokens.json"), &settings.agent) {
+    // The token first: a code is only ever handed out for an address that is written.
+    let (token, token_id) = match mint_share_token(&paths.tokens, &settings.agent) {
         Ok(t) => t,
         Err(e) => return error_response(StatusCode::INTERNAL_SERVER_ERROR, e),
     };
+    let added = with_host(&mut cfg, &ip.to_string());
+    if added && let Err(e) = write_json(&paths.config, &cfg, false) {
+        // The address did not land: the token minted a moment ago goes again.
+        let _ = revoke_share_tokens(&paths.tokens);
+        return error_response(StatusCode::INTERNAL_SERVER_ERROR, e);
+    }
     let port = port_of(&settings.url);
     let url = service_url(ip, port);
     let live = listening(&settings).await;
-    let restart_needed = !live.addresses.iter().any(|a| a == &listener(ip, port));
-    let mut report = state_report(&settings, &root, Ok(cfg), live);
+    let restart_needed = !bound(&live.addresses, ip, port);
+    let mut report = state_report(&settings, &paths, Ok(cfg), live);
     if let Some(obj) = report.as_object_mut() {
         obj.insert("host".to_string(), json!(ip.to_string()));
         obj.insert("kind".to_string(), json!(kind_of(ip)));
@@ -660,29 +830,32 @@ pub async fn handle_share_delete(State(state): State<AppState>, headers: HeaderM
         Ok(s) => s,
         Err(r) => return r,
     };
-    let root = service_root();
-    let config_path = root.join("config.json");
-    let mut cfg = match read_json(&config_path) {
+    let paths = service_paths();
+    let mut cfg = match read_json(&paths.config) {
         Ok(c) => c,
         Err(e) => return error_response(StatusCode::INTERNAL_SERVER_ERROR, e),
     };
-    let removed = without_hosts(&mut cfg);
-    if !removed.is_empty() && let Err(e) = write_json(&config_path, &cfg, false) {
-        return error_response(StatusCode::INTERNAL_SERVER_ERROR, e);
-    }
-    let revoked = match revoke_share_tokens(&root.join("tokens.json")) {
+    // The codes first: an address that stays open a while longer is a restart
+    // away, codes that stay valid behind a cleared address would be invisible.
+    let revoked = match revoke_share_tokens(&paths.tokens) {
         Ok(n) => n,
-        Err(e) => return error_response(StatusCode::INTERNAL_SERVER_ERROR, e),
+        Err(e) => return error_response(StatusCode::INTERNAL_SERVER_ERROR, format!("the codes were not revoked: {e}")),
     };
+    let removed = without_hosts(&mut cfg);
+    if !removed.is_empty() && let Err(e) = write_json(&paths.config, &cfg, false) {
+        return (
+            StatusCode::INTERNAL_SERVER_ERROR,
+            Json(json!({"error": format!("the codes are revoked ({revoked}), but the address stayed in config.json: {e}"), "revoked": revoked})),
+        )
+            .into_response();
+    }
     let port = port_of(&settings.url);
     let live = listening(&settings).await;
     // Still bound until the service restarts: say so.
-    let restart_needed = removed.iter().any(|h| {
-        h.parse::<IpAddr>()
-            .ok()
-            .is_some_and(|ip| live.addresses.iter().any(|a| a == &listener(ip, port)))
-    });
-    let mut report = state_report(&settings, &root, Ok(cfg), live);
+    let restart_needed = removed
+        .iter()
+        .any(|h| h.parse::<IpAddr>().ok().is_some_and(|ip| bound(&live.addresses, ip, port)));
+    let mut report = state_report(&settings, &paths, Ok(cfg), live);
     if let Some(obj) = report.as_object_mut() {
         obj.insert("removed".to_string(), json!(removed));
         obj.insert("revoked".to_string(), json!(revoked));
@@ -792,14 +965,26 @@ mod tests {
         assert!(decode_code("caelza-mind:!!!").unwrap_err().contains("incomplete"));
         let truncated = encode_code("http://10.0.0.2:18790", "main", "swt_abc");
         assert!(decode_code(&truncated[..truncated.len() - 12]).unwrap_err().contains("incomplete"));
-        let newer = format!("{CODE_PREFIX}{}", URL_SAFE_NO_PAD.encode(br#"{"v":2,"url":"http://x:1","agent":"main","token":"t"}"#));
+        let newer = format!("{CODE_PREFIX}{}", URL_SAFE_NO_PAD.encode(br#"{"v":2,"url":"http://10.0.0.2:1","agent":"main","token":"t"}"#));
         assert!(decode_code(&newer).unwrap_err().contains("newer Caelza"));
         let no_url = format!("{CODE_PREFIX}{}", URL_SAFE_NO_PAD.encode(br#"{"v":1,"url":"ftp://x","agent":"main","token":"t"}"#));
         assert!(decode_code(&no_url).unwrap_err().contains("no service address"));
-        let no_token = format!("{CODE_PREFIX}{}", URL_SAFE_NO_PAD.encode(br#"{"v":1,"url":"http://x:1","agent":"main","token":" "}"#));
+        let no_token = format!("{CODE_PREFIX}{}", URL_SAFE_NO_PAD.encode(br#"{"v":1,"url":"http://10.0.0.2:1","agent":"main","token":" "}"#));
         assert!(decode_code(&no_token).unwrap_err().contains("no token"));
-        let bad_agent = format!("{CODE_PREFIX}{}", URL_SAFE_NO_PAD.encode(br#"{"v":1,"url":"http://x:1","agent":"../x","token":"t"}"#));
+        let bad_agent = format!("{CODE_PREFIX}{}", URL_SAFE_NO_PAD.encode(br#"{"v":1,"url":"http://10.0.0.2:1","agent":"../x","token":"t"}"#));
         assert!(decode_code(&bad_agent).unwrap_err().contains("no agent"));
+        // A phone keyboard's full-width colon, or any non-ASCII text: an error, never a panic.
+        assert!(decode_code("caelza-mind\u{ff1a}abc").unwrap_err().contains("not a join code"));
+        assert!(decode_code("a\u{e9}\u{e9}\u{e9}\u{e9}\u{e9}\u{e9}\u{e9}").unwrap_err().contains("not a join code"));
+        // Share makes codes with addresses on the home network or Tailscale; nothing else is followed.
+        let by_name = format!("{CODE_PREFIX}{}", URL_SAFE_NO_PAD.encode(br#"{"v":1,"url":"http://my-pc.local:18790","agent":"main","token":"t"}"#));
+        assert!(decode_code(&by_name).unwrap_err().contains("by a name"));
+        let public = format!("{CODE_PREFIX}{}", URL_SAFE_NO_PAD.encode(br#"{"v":1,"url":"http://8.8.8.8:18790","agent":"main","token":"t"}"#));
+        assert!(decode_code(&public).unwrap_err().contains("internet address"));
+        let tail = format!("{CODE_PREFIX}{}", URL_SAFE_NO_PAD.encode(br#"{"v":1,"url":"http://100.101.102.103:18790/","agent":"main","token":"t"}"#));
+        assert_eq!(decode_code(&tail).unwrap().url, "http://100.101.102.103:18790");
+        let v6 = format!("{CODE_PREFIX}{}", URL_SAFE_NO_PAD.encode(br#"{"v":1,"url":"http://[fd12::1]:18790","agent":"main","token":"t"}"#));
+        assert_eq!(decode_code(&v6).unwrap().url, "http://[fd12::1]:18790");
     }
 
     #[test]
@@ -843,6 +1028,41 @@ mod tests {
         assert_eq!(listener("192.168.1.5".parse().unwrap(), 18790), "192.168.1.5:18790");
         assert_eq!(listener("fd12::1".parse().unwrap(), 18790), "[fd12::1]:18790");
         assert_eq!(service_url("192.168.1.5".parse().unwrap(), 18790), "http://192.168.1.5:18790");
+        // The service prints `${host}:${port}` with the raw host: IPv6 arrives without brackets.
+        let v6: IpAddr = "fd12::1".parse().unwrap();
+        assert_eq!(parse_listener("fd12::1:18790"), Some((v6, 18790)));
+        assert_eq!(parse_listener("[fd12::1]:18790"), Some((v6, 18790)));
+        assert_eq!(parse_listener("127.0.0.1:18790"), Some(("127.0.0.1".parse().unwrap(), 18790)));
+        assert_eq!(parse_listener("nonsense"), None);
+        let listed = vec!["127.0.0.1:18790".to_string(), "fd12::1:18790".to_string()];
+        assert!(bound(&listed, v6, 18790));
+        assert!(!bound(&listed, v6, 18791));
+        assert!(!bound(&listed, "192.168.1.5".parse().unwrap(), 18790));
+    }
+
+    #[test]
+    fn only_this_machines_addresses_are_shared() {
+        let mine = vec![Candidate { host: "192.168.1.5".into(), kind: "lan" }];
+        assert!(own_address("192.168.1.5".parse().unwrap(), &mine).is_ok());
+        assert!(own_address("127.0.0.2".parse().unwrap(), &mine).is_ok(), "loopback is always this machine");
+        let err = own_address("192.168.1.9".parse().unwrap(), &mine).unwrap_err();
+        assert!(err.contains("not one of this machine's addresses") && err.contains("192.168.1.5"));
+        assert!(own_address("10.0.0.9".parse().unwrap(), &[]).unwrap_err().contains("none was found"));
+    }
+
+    #[test]
+    fn agent_names_follow_the_services_rule() {
+        for ok in ["main", "cael", "a", "my-agent.v2_x"] {
+            assert!(agent_id_ok(ok).is_ok(), "{ok}");
+        }
+        for bad in ["", "-main", "main-", "ma in", "a/b", &"x".repeat(65)] {
+            assert!(agent_id_ok(bad).unwrap_err().contains("refuses"), "{bad:?}");
+        }
+        for reserved in ["shared", "Audit", "backups"] {
+            assert!(agent_id_ok(reserved).unwrap_err().contains("reserves"), "{reserved}");
+        }
+        // `_system` is reserved too, but its underscore fails the shape rule first (as in the service).
+        assert!(agent_id_ok("_system").is_err());
     }
 
     #[test]
@@ -910,6 +1130,9 @@ mod tests {
         let file = read_json(&fresh).unwrap();
         assert_eq!(file["version"], json!(1));
         assert_eq!(live_share_tokens(&fresh), 1);
+        // A reserved agent name would mint a token the service drops on load.
+        assert!(mint_share_token(&fresh, "audit").unwrap_err().contains("reserves"));
+        assert_eq!(live_share_tokens(&fresh), 1);
         // A file with a plaintext token is never touched.
         std::fs::write(&path, r#"{"version":1,"tokens":[{"id":"x","hash":"sha256:00","token":"swt_leak","agentId":"main","scopes":["read"]}]}"#).unwrap();
         assert!(mint_share_token(&path, "main").unwrap_err().contains("plaintext"));
@@ -924,8 +1147,25 @@ mod tests {
 
     #[test]
     fn the_service_root_follows_the_services_own_rules() {
-        let root = service_root();
-        assert!(root.ends_with(PathBuf::from(".xanima").join("service")) || std::env::var_os("XANIMA_SERVICE_ROOT").is_some());
+        let home = tmp("home");
+        // Nothing yet: the new name.
+        assert_eq!(service_root_for(None, Some(&home)), home.join(".xanima").join("service"));
+        // An un-migrated install: the old name, as the service would pick it.
+        std::fs::create_dir_all(home.join(".sharpwave")).unwrap();
+        assert_eq!(service_root_for(None, Some(&home)), home.join(".sharpwave").join("service"));
+        // Once ~/.xanima exists it wins.
+        std::fs::create_dir_all(home.join(".xanima")).unwrap();
+        assert_eq!(service_root_for(None, Some(&home)), home.join(".xanima").join("service"));
+        // The service's own override wins over everything.
+        assert_eq!(service_root_for(Some("/srv/mind"), Some(&home)), PathBuf::from("/srv/mind"));
+        assert_eq!(service_root_for(Some("  "), Some(&home)), home.join(".xanima").join("service"));
+        // Sharing never creates a root: a bare one is "no Mind here".
+        let paths = ServicePaths { root: home.join("bare"), config: home.join("bare/config.json"), tokens: home.join("bare/tokens.json") };
+        assert!(!mind_installed(&paths));
+        std::fs::create_dir_all(&paths.root).unwrap();
+        std::fs::write(&paths.tokens, "{\"version\":1,\"tokens\":[]}").unwrap();
+        assert!(mind_installed(&paths));
+        let _ = std::fs::remove_dir_all(&home);
     }
 
     #[test]

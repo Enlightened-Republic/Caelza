@@ -63,8 +63,8 @@ def test_the_patch_registers_the_module_its_routes_the_test_and_caels_sentence()
 
 def test_the_gateway_follows_the_services_own_rules():
     # The service's files, found the way the service finds them.
-    assert 'std::env::var_os("XANIMA_SERVICE_ROOT")' in GATEWAY
-    assert '.join(".xanima")\n        .join("service")' in GATEWAY
+    assert 'std::env::var("XANIMA_SERVICE_ROOT")' in GATEWAY
+    assert 'let neu = home.join(".xanima");' in GATEWAY and 'data.join("service")' in GATEWAY
     # tailnetHosts is the service's one non-wildcard way to add a listener; 127.0.0.1 is always there.
     assert 'cfg.get("tailnetHosts")' in GATEWAY
     assert "the Mind already listens on 127.0.0.1" in GATEWAY
@@ -97,6 +97,32 @@ def test_the_gateway_follows_the_services_own_rules():
     # Share and stop only from the device that hosts the Mind.
     assert "share from the device that runs it" in GATEWAY
     assert "pub(crate) fn mind_wiring" in API_MIND and "use super::api_mind::{MindWiring, mind_wiring};" in GATEWAY
+
+
+def test_the_bug_check_fixes_hold():
+    # A non-ASCII prefix is an error, not a panic (no split_at on a byte index).
+    assert "split_at(" not in GATEWAY and ".get(..CODE_PREFIX.len())" in GATEWAY
+    # Stop sharing revokes before it clears the address.
+    delete = GATEWAY.split("pub async fn handle_share_delete")[1].split("pub struct ProbeBody")[0]
+    assert delete.index("revoke_share_tokens(&paths.tokens)") < delete.index("without_hosts(&mut cfg)")
+    # The service's files the way the service finds them; sharing never creates a root.
+    assert "pub fn service_root_for(env_root: Option<&str>, home: Option<&Path>) -> PathBuf" in GATEWAY
+    assert '.join(".sharpwave")' in GATEWAY and 'std::env::var_os("XANIMA_HOME_OVERRIDE")' in GATEWAY
+    assert 'c.get("tokensFile")' in GATEWAY and "if !mind_installed(&paths) {" in GATEWAY
+    # Only this machine's addresses; IPv6 listeners matched by (ip, port); reserved agent names refused.
+    assert "own_address(ip, &candidates())" in GATEWAY and "pub fn parse_listener(entry: &str)" in GATEWAY
+    assert 'matches!(agent.to_ascii_lowercase().as_str(), "shared" | "_system" | "backups" | "audit")' in GATEWAY
+    # The probe follows no code that points off the home network.
+    assert "that code points at an internet address" in GATEWAY and "by a name, not an address" in GATEWAY
+    # The joined device leaves backend-first and probes the default port for its own Mind.
+    assert PAGE.index("await patchConfig(leaveBackendOps(localMind));") < PAGE.index("await deleteMapKey(STORAGE_PATH, STORAGE_KEY);")
+    assert '"local_mind": local_mind_up(DEFAULT_PORT).await' in GATEWAY
+    # Live codes are shown, and revocable, whether or not an address is shared.
+    assert 'data-mind-share="revoke"' in PAGE
+    assert "export function parseListener(entry: string)" in LOGIC
+    # The copy says what plain HTTP on home Wi-Fi means.
+    assert "On home Wi-Fi the link is not encrypted" in PAGE and "not encrypted" in squash(FAQ)
+    assert "a code that points at an internet address is\nrefused" in FAQ or "internet address is refused" in squash(FAQ)
 
 
 def test_the_join_code_is_one_string_with_a_prefix():
@@ -134,7 +160,7 @@ def test_the_page_shows_one_card_per_role_and_writes_the_config_the_upstream_way
     assert PAGE.count("onNote(") >= 2 and 'data-mind-share="note"' in PAGE
     # The code box selects on focus and copies; the page never shows a token anywhere else.
     assert 'data-mind-share="code"' in PAGE and "navigator.clipboard.writeText(code)" in PAGE
-    assert "probe.token" in PAGE and PAGE.count("token") < 12
+    assert "probe.token" in PAGE and PAGE.replace("share_tokens", "").count("token") < 12
 
 
 def test_the_client_matches_the_routes():
@@ -156,7 +182,7 @@ def test_the_docs_tell_the_owner_the_same_story():
     assert "## Can Cael remember on my PC and my phone?" in FAQ
     assert "Your other devices" in faq and "Join a Mind on another device" in faq
     assert "Stop sharing" in faq and "Use this device's own memory" in faq
-    assert "never on the open internet" in faq
+    assert "never on the open internet" in faq and "Tailscale encrypts it" in faq
     assert "Share** the Mind under *Your other devices*" in README
     assert "One Mind for every device: shipped" in MIND_README
     assert "tailnetHosts" in MIND_README and "caelza-share" in MIND_README

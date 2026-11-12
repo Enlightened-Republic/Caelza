@@ -53,7 +53,7 @@ def test_tokens_stay_on_the_host():
     probe_field = "  /** The code's token, back from the gateway for the config write. */\n  token: string;\n"
     assert probe_field in CLIENT.split("export interface MindProbeResult")[1].split("}")[0] + "}"
     # token_id is the entry's public handle (what `token list` prints), share_tokens a count.
-    scrubbed = code.replace("has_token", "").replace("token_file", "").replace("share_tokens", "").replace("token_id", "").replace("  token: string;\n", "", 1)
+    scrubbed = code.replace("has_token", "").replace("token_file", "").replace("share_tokens", "").replace("tokens_path", "").replace("token_id", "").replace("  token: string;\n", "", 1)
     assert "token" not in scrubbed.lower()
     assert "Authorization" not in CLIENT and "Bearer" not in CLIENT
     assert "require_auth(&state, &headers)" in API_MIND
