@@ -1,0 +1,33 @@
+Caelza: the Android app's Runtime could not pair, so the gateway and Cael
+never came up. The upstream key writer publishes `.secret_key` by hard-linking
+a staged temp file into place, and Android's SELinux policy denies link(2) to
+an untrusted app (`avc: denied { link }`), so every pairing answered HTTP 500
+"Failed to persist paired tokens" and then 429. On Android only, when the link
+is denied the writer now refuses an existing key (the same no-replace
+guarantee) and renames the staged file into place instead.
+
+diff --git a/crates/caelza-config/src/secrets.rs b/crates/caelza-config/src/secrets.rs
+index 76befca..2c46459 100644
+--- a/crates/caelza-config/src/secrets.rs
++++ b/crates/caelza-config/src/secrets.rs
+@@ -749,6 +749,20 @@ where
+                 return Err(e)
+                     .context("Key file already exists — another process created it concurrently");
+             }
++            // Android's SELinux policy denies link(2) to untrusted apps, so
++            // the no-replace hard link is unavailable there: refuse an
++            // existing key, then rename the staged file into place.
++            #[cfg(target_os = "android")]
++            Err(e) if e.kind() == std::io::ErrorKind::PermissionDenied => {
++                if std::fs::symlink_metadata(key_path).is_ok() {
++                    anyhow::bail!("Key file already exists — another process created it concurrently");
++                }
++                std::fs::rename(&temp_path, key_path)
++                    .context("Failed to publish key file (rename fallback)")?;
++                temp_guard.disarm();
++                sync_parent_dir(key_path)?;
++                return Ok(());
++            }
+             Err(e) => return Err(e).context("Failed to atomically publish key file"),
+         }
+         // Persist the final link before removing the temp inode's other name.
