@@ -12,6 +12,7 @@ PATCH = (REPO_ROOT / "runtime" / "patches" / "0003-mind-page.patch").read_text()
 # Phase 3a (Home) added the digest route to the same module; its wiring lives in patch 0005.
 PATCH_HOME = (REPO_ROOT / "runtime" / "patches" / "0005-home-procedures.patch").read_text()
 PATCH_SHARE = (REPO_ROOT / "runtime" / "patches" / "0016-mind-share.patch").read_text()
+PATCH_INSTALL = (REPO_ROOT / "runtime" / "patches" / "0017-mind-install.patch").read_text()
 API_MIND = (OVERLAY / "crates" / "caelza-gateway" / "src" / "api_mind.rs").read_text()
 CLIENT = (OVERLAY / "web" / "src" / "lib" / "mind.ts").read_text()
 PAGE = (OVERLAY / "web" / "src" / "pages" / "Memory.tsx").read_text()
@@ -32,10 +33,10 @@ def test_patch_touches_only_the_files_it_claims():
 
 
 def test_the_page_calls_only_routes_the_gateway_mounts():
-    mounted = {route for patch in (PATCH, PATCH_HOME, PATCH_SHARE) for route in re.findall(r'"(/api/mind/[a-z]+)"', patch)}
+    mounted = {route for patch in (PATCH, PATCH_HOME, PATCH_SHARE, PATCH_INSTALL) for route in re.findall(r'"(/api/mind/[a-z]+)"', patch)}
     called = set(re.findall(r"(/api/mind/[a-z]+)", CLIENT))
     assert mounted == called == {"/api/mind/status", "/api/mind/recall", "/api/mind/forget", "/api/mind/review", "/api/mind/digest",
-                                 "/api/mind/share", "/api/mind/probe"}
+                                 "/api/mind/share", "/api/mind/probe", "/api/mind/install"}
     for handler in ("handle_mind_status", "handle_mind_recall", "handle_mind_forget",
                     "handle_mind_review_list", "handle_mind_review_decide"):
         assert f"pub async fn {handler}" in API_MIND, handler
@@ -53,7 +54,7 @@ def test_tokens_stay_on_the_host():
     probe_field = "  /** The code's token, back from the gateway for the config write. */\n  token: string;\n"
     assert probe_field in CLIENT.split("export interface MindProbeResult")[1].split("}")[0] + "}"
     # token_id is the entry's public handle (what `token list` prints), share_tokens a count.
-    scrubbed = code.replace("has_token", "").replace("token_file", "").replace("share_tokens", "").replace("tokens_path", "").replace("token_id", "").replace("  token: string;\n", "", 1)
+    scrubbed = code.replace("has_token", "").replace("token_file", "").replace("share_tokens", "").replace("tokens_path", "").replace("tokens_dir", "").replace("token_id", "").replace("  token: string;\n", "", 1)
     assert "token" not in scrubbed.lower()
     assert "Authorization" not in CLIENT and "Bearer" not in CLIENT
     assert "require_auth(&state, &headers)" in API_MIND
