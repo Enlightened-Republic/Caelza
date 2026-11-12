@@ -125,6 +125,8 @@ service_commit = "0869836b4b25c3c7e25a3698e98a3fa3e01980b3"   # engine_repo main
 service_asset = "caelza-mind-<version>.tgz"   # on every release beside the Runtime tarballs and the APK, its .sha256 beside it: npm pack of the built xanima-server workspace (mind/pack.sh, run by release.yml's mind job)
 service_pack = "mind/pack.sh"
 service_install = "mind/install.sh"           # Termux or a Linux hub: ~/.local/share/caelza/mind, the `caelza-mind` launcher; CAELZA_SERVICE=1 adds the Termux:Boot script or the systemd user unit
+service_install_page = "runtime/overlay/crates/caelza-gateway/src/api_mind_install.rs"   # the Memory page's Turn on memory: the same install done by the gateway, with a portable Node from nodejs.org when none >= 22 is on PATH
+node_version = "22.23.5"          # the portable Node the page's install fetches (nodejs.org/dist, checked against SHASUMS256.txt); NODE_VERSION in api_mind_install.rs is the same number
 mcp_server = "xanima"             # published 2026-10-19; keeps a `sharpwave` alias bin
 brain_dir = "~/.xanima/<agent>/brain.db"   # ~/.sharpwave is read until `xanima-server migrate`
 token_env = "XANIMA_BRAIN_TOKEN"  # OPENWAVE_BRAIN_TOKEN still accepted with a warning

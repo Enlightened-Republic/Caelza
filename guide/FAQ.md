@@ -192,6 +192,21 @@ check. On a phone the app runs it; on a Linux hub `mind/install.sh` installs
 it; on a Windows PC `mind/windows-install.ps1` does, and the Start menu's
 Caelza starts it with the Runtime.
 
+## How do I turn on long-term memory on the PC?
+
+On the dashboard's Memory page, tap **Turn on memory**. Caelza sets the
+Mind up on that PC itself: it downloads the Mind and a small Node runtime
+it runs on (about 60 MB, once; each file checked against its published
+sum), installs it under your user folder (`%LOCALAPPDATA%\Caelza\mind` on
+Windows, `~/.local/share/caelza/mind` elsewhere), makes the agent's keys,
+starts the Mind and sets it to start with the PC. Then tap **Reload
+daemon** in the yellow bar at the top so the agent's next turn uses it.
+No account, and nothing leaves the PC. If something fails, the card shows
+the last lines of what happened and a **Try again** button. The PowerShell
+one-liner (`mind/windows-install.ps1`) and `mind/install.sh` do the same
+thing and can still be used instead; they share the directories. The phone
+app does not install a Mind of its own; it joins the PC's.
+
 ## Can Cael remember on my PC and my phone?
 
 Yes: one Mind can serve both, so what Cael learns on one device he knows on
@@ -311,10 +326,10 @@ is new and has not been through real use yet. In PowerShell, run
 daemon` and open `http://127.0.0.1:42617` for Cael's setup (`Caelza-Setup.exe`
 on the same release does all of this with a Start menu entry). Settings live in
 `.caelza` in your user folder. If a release has no Windows build, the installer
-says so. The Mind (long-term memory) has its own one-liner for Windows,
-`mind/windows-install.ps1` (needs Node.js 22): it installs the brain service,
-mints the tokens and points the Runtime at it, and the Start menu's Caelza
-then starts both. The Android app is phone-only, and the Body works with a
+says so. The Mind (long-term memory) is one tap on the Memory page (**Turn
+on memory**; nothing to install first); the PowerShell one-liner
+`mind/windows-install.ps1` (needs Node.js 22) does the same. Either way the
+Start menu's Caelza then starts both. The Android app is phone-only, and the Body works with a
 phone over ADB rather than on the PC itself. WSL2 with the Linux build is the
 fallback.
 

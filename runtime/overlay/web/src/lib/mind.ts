@@ -260,3 +260,40 @@ export function stopMindShare(): Promise<MindUnshareResult> {
 export function probeMindCode(code: string): Promise<MindProbeResult> {
   return apiFetch<MindProbeResult>('/api/mind/probe', { method: 'POST', body: JSON.stringify({ code }) });
 }
+
+// --- the Mind turned on from the page (`/api/mind/install`) ------------------------------
+
+/** `GET /api/mind/install`: whether this device can install, what is there, and the job. */
+export interface MindInstall {
+  can_install: boolean;
+  reason: string;
+  installed: boolean;
+  healthy?: boolean;
+  mind_dir: string;
+  launcher: string;
+  launcher_present: boolean;
+  tokens_dir: string;
+  node_version: string;
+  caelza_version: string;
+  port: number;
+  running: boolean;
+  finished: boolean;
+  ok: boolean;
+  /** release · node · install · launcher · tokens · start · startup · done */
+  stage: string;
+  detail: string;
+  done: number;
+  total: number;
+  log: string[];
+  error: string | null;
+  started_at: string | null;
+  finished_at: string | null;
+}
+
+export function getMindInstall(): Promise<MindInstall> {
+  return apiFetch<MindInstall>('/api/mind/install');
+}
+
+export function startMindInstall(): Promise<MindInstall> {
+  return apiFetch<MindInstall>('/api/mind/install', { method: 'POST' });
+}

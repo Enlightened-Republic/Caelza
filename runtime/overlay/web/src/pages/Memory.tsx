@@ -3,20 +3,23 @@
 // 390 px, cards stack. Everything goes through the gateway (`/api/mind/*`),
 // which holds the per-agent tokens.
 import { useCallback, useEffect, useState } from 'react';
-import { Brain, Check, Copy, Link2, RefreshCw, Search, Smartphone, Trash2 } from 'lucide-react';
+import { Brain, Check, Copy, Download, Link2, RefreshCw, Search, Smartphone, Trash2 } from 'lucide-react';
 
 import { Badge, Button, Card, ConfirmDialog, PageHeader, Select, StatCard } from '@/components/ui';
 import { createMapKey, deleteMapKey, patchConfig } from '@/lib/api';
 import {
   decideMindReview,
+  getMindInstall,
   getMindReview,
   getMindShare,
   getMindStatus,
   mindForget,
   mindRecall,
   probeMindCode,
+  startMindInstall,
   startMindShare,
   stopMindShare,
+  type MindInstall,
   type MindRecallHit,
   type MindReviewItem,
   type MindShareResult,
@@ -24,6 +27,7 @@ import {
   type MindStatus,
 } from '@/lib/mind';
 import { brainTone, brainTotals, preview, scoreLabel, serviceLine, statusHighlights } from './mind.logic';
+import { POLL_MS, installBackendOps, megabytes, percent, stageLabel } from './mind.install.logic';
 import {
   STORAGE_KEY,
   STORAGE_PATH,
@@ -118,6 +122,7 @@ export default function Memory() {
       {!status.enabled ? (
         <>
           <NotEnabled status={status} />
+          <InstallCard onNote={setDevicesNote} onChanged={refresh} />
           <Devices status={status} note={devicesNote} onNote={setDevicesNote} onChanged={refresh} />
         </>
       ) : (
@@ -163,6 +168,142 @@ export default function Memory() {
         </>
       )}
     </div>
+  );
+}
+
+// --- the Mind turned on from here -----------------------------------------------------
+
+/** No Mind yet on a PC or hub: install it with one tap (the gateway's job), then point the Runtime at it. */
+function InstallCard({ onNote, onChanged }: { onNote: (note: string | null) => void; onChanged: () => void }) {
+  const [info, setInfo] = useState<MindInstall | null>(null);
+  const [error, setError] = useState<string | null>(null);
+  const [busy, setBusy] = useState(false);
+  const [wiring, setWiring] = useState(false);
+
+  const load = useCallback(
+    () =>
+      getMindInstall()
+        .then(setInfo)
+        .catch((reason: unknown) => setError(errorText(reason))),
+    [],
+  );
+
+  useEffect(() => {
+    void load();
+  }, [load]);
+
+  useEffect(() => {
+    if (!info?.running) return;
+    const timer = window.setInterval(() => void load(), POLL_MS);
+    return () => window.clearInterval(timer);
+  }, [info?.running, load]);
+
+  const useIt = useCallback(async () => {
+    setWiring(true);
+    setError(null);
+    try {
+      await patchConfig(installBackendOps());
+      onNote(`Memory is on: the Mind runs on this device. ${restartNote('joined')}`);
+      onChanged();
+    } catch (reason) {
+      setError(errorText(reason));
+    } finally {
+      setWiring(false);
+      setBusy(false);
+    }
+  }, [onChanged, onNote]);
+
+  // The job this page started finished well: point the Runtime at the Mind.
+  useEffect(() => {
+    if (busy && info?.finished && info.ok && !wiring) void useIt();
+  }, [busy, info?.finished, info?.ok, wiring, useIt]);
+
+  const start = useCallback(async () => {
+    setBusy(true);
+    setError(null);
+    try {
+      setInfo(await startMindInstall());
+    } catch (reason) {
+      setError(errorText(reason));
+      setBusy(false);
+    }
+  }, []);
+
+  if (!info) return null;
+  if (!info.can_install) {
+    return <p className="text-xs text-pc-text-muted" data-mind-install="no">{info.reason}</p>;
+  }
+  const pct = percent(info.done, info.total);
+  const ready = info.installed && info.healthy === true && !info.running;
+
+  return (
+    <Card data-mind-install={info.running ? 'running' : ready ? 'ready' : 'offer'}>
+      <div className="mb-1 flex items-center justify-between gap-2">
+        <div className="cz-eyebrow">Long-term memory</div>
+        {info.running && <Badge tone="neutral">{stageLabel(info.stage)}</Badge>}
+        {ready && <Badge tone="ok">installed · running</Badge>}
+      </div>
+      <div className="flex items-start gap-3">
+        <Download className="mt-0.5 h-5 w-5 shrink-0 text-pc-accent" aria-hidden="true" />
+        <div className="space-y-2 text-sm">
+          {ready ? (
+            <p className="text-pc-text">
+              The Mind is installed and running on this device. Use it as Cael's memory here.
+            </p>
+          ) : (
+            <p className="text-pc-text">
+              Cael keeps a long-term memory, the Mind, that lasts across sessions and sleeps to tidy itself. Turn it on and
+              it is set up on this device: the Mind and a small Node runtime it runs on, about 60 MB once. No account, and
+              nothing leaves this device.
+            </p>
+          )}
+        </div>
+      </div>
+
+      {!info.running && (
+        <div className="mt-3 flex flex-wrap items-center gap-2">
+          {ready ? (
+            <Button size="sm" disabled={wiring} onClick={() => void useIt()} data-mind-install="use">
+              {wiring ? 'Turning on…' : 'Use it'}
+            </Button>
+          ) : (
+            <Button size="sm" disabled={busy} onClick={() => void start()} data-mind-install="start">
+              <Download size={14} aria-hidden="true" />
+              <span className="ml-1.5">{info.finished && info.error ? 'Try again' : 'Turn on memory'}</span>
+            </Button>
+          )}
+        </div>
+      )}
+
+      {info.running && (
+        <div className="mt-3 space-y-2" data-mind-install="progress">
+          <p className="text-sm text-pc-text">{info.detail}</p>
+          {info.total > 0 && (
+            <div className="cz-progress" role="progressbar" aria-valuenow={pct ?? 0} aria-valuemin={0} aria-valuemax={100}>
+              <span style={{ width: `${pct ?? 0}%` }} />
+            </div>
+          )}
+          {info.total > 0 && (
+            <p className="text-xs text-pc-text-faint">
+              {megabytes(info.done)} of {megabytes(info.total)}
+            </p>
+          )}
+          {info.log.length > 0 && <p className="truncate font-mono text-xs text-pc-text-faint">{info.log[info.log.length - 1]}</p>}
+        </div>
+      )}
+
+      {error && <Notice tone="error">{error}</Notice>}
+      {!info.running && info.finished && info.error && (
+        <Notice tone="error">
+          <div>{info.error}</div>
+          {info.log.length > 0 && (
+            <pre className="mt-2 max-h-40 overflow-auto whitespace-pre-wrap font-mono text-[11px] opacity-80">
+              {info.log.slice(-8).join('\n')}
+            </pre>
+          )}
+        </Notice>
+      )}
+    </Card>
   );
 }
 
@@ -563,9 +704,9 @@ function NotEnabled({ status }: { status: MindStatus }) {
             The Runtime's memory is <code className="font-mono">{status.backend}</code>, not the Mind. The agent still remembers,
             but there is no brain service to show here.
           </p>
-          <p className="text-pc-text-muted">{status.hint}</p>
           <p className="text-pc-text-muted">
-            Local notes stored by the Runtime itself are on the dashboard under <em>Memories</em>.
+            Local notes stored by the Runtime itself are on the dashboard under <em>Memories</em>. Turn the Mind on below, or
+            join one on another device.
           </p>
         </div>
       </div>

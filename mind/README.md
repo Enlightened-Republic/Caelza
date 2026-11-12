@@ -194,6 +194,20 @@ and cron turns never become memories.
 - **Skill evolution → Caelza skills.** `skillEvolution` generates a skill file
   when a pattern recurs; write them into the runtime's skill-bundle directory
   so the agent grows its own playbooks.
+- **Turned on from the Memory page: shipped.** *Turn on memory* on the
+  page's not-enabled card runs the install as a gateway job
+  (`runtime/overlay/crates/caelza-gateway/src/api_mind_install.rs`,
+  `POST|GET /api/mind/install`): the release's `caelza-mind-<version>.tgz`
+  for this Caelza version (its `.sha256` checked; the latest release when
+  the build is unversioned), a portable Node from nodejs.org when none >= 22
+  is on PATH (the version pinned as `node_version` in `bundle/manifest.toml`,
+  the archive checked against `SHASUMS256.txt`, unpacked with the system
+  `tar`), `npm install --omit=dev` in the same directory the scripts use, the
+  same launcher, the same tokens, the service started and waited for on
+  `/health`, the Startup shortcut on Windows; the page then sets
+  `memory.backend = "xanima"` and asks for the one reload. The scripts stay
+  for hubs and Termux and share the directories, so either can follow the
+  other. The phone app offers no install (it joins a PC's Mind).
 - **Memory page in the dashboard: shipped** (M4 phase 2a). `/memory` shows the
   brains (`brain_stats`), the status counts and attention lines
   (`brain_status`), recall by query with a forget action (`brain_query`,
