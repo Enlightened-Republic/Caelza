@@ -6,10 +6,10 @@ an untrusted app (`avc: denied { link }`), so every pairing answered HTTP 500
 is denied the writer now refuses an existing key (the same no-replace
 guarantee) and renames the staged file into place instead.
 
-diff --git a/crates/zeroclaw-config/src/secrets.rs b/crates/zeroclaw-config/src/secrets.rs
+diff --git a/crates/caelza-config/src/secrets.rs b/crates/caelza-config/src/secrets.rs
 index 76befca..2c46459 100644
---- a/crates/zeroclaw-config/src/secrets.rs
-+++ b/crates/zeroclaw-config/src/secrets.rs
+--- a/crates/caelza-config/src/secrets.rs
++++ b/crates/caelza-config/src/secrets.rs
 @@ -749,6 +749,20 @@ where
                  return Err(e)
                      .context("Key file already exists — another process created it concurrently");
