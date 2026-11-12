@@ -10,9 +10,9 @@ An agent that lives on your own hardware, remembers across months, and acts on t
 <p align="center"><sub><a href="https://www.enlightenedrepublic.tech"><img src="https://enlightenedrepublic.online/assets/er-profile-pic.png" alt="" width="20" align="absmiddle" /></a>&nbsp; Built by <a href="https://www.enlightenedrepublic.tech">Enlightened Republic</a>, the lab behind SharpWave and xanima. · EST. 2026</sub></p>
 
 <p align="center">
-  <a href="https://github.com/Enlightened-Republic/Caelza/releases/download/v0.2.0/caelza-app-0.2.0.apk"><img src="https://img.shields.io/badge/%E2%AC%87%EF%B8%8F_Install_the_Android_app-APK_v0.2.0-00d4ff?style=for-the-badge&logo=android&logoColor=white" alt="Install the Android app (APK v0.2.0)" /></a>
+  <a href="https://github.com/Enlightened-Republic/Caelza/releases/download/v0.3.0/caelza-app-0.3.0.apk"><img src="https://img.shields.io/badge/%E2%AC%87%EF%B8%8F_Install_the_Android_app-APK_v0.3.0-00d4ff?style=for-the-badge&logo=android&logoColor=white" alt="Install the Android app (APK v0.3.0)" /></a>
   &nbsp;
-  <a href="https://github.com/Enlightened-Republic/Caelza/releases/latest/download/Caelza-Setup.exe"><img src="https://img.shields.io/badge/%E2%AC%87%EF%B8%8F_Install_on_Windows-Setup.exe_latest-7b6bff?style=for-the-badge" alt="Install on Windows (Caelza-Setup.exe v0.2.0)" /></a>
+  <a href="https://github.com/Enlightened-Republic/Caelza/releases/latest/download/Caelza-Setup.exe"><img src="https://img.shields.io/badge/%E2%AC%87%EF%B8%8F_Install_on_Windows-Setup.exe_latest-7b6bff?style=for-the-badge" alt="Install on Windows (Caelza-Setup.exe, latest release)" /></a>
 </p>
 
 > [!WARNING]
@@ -20,7 +20,7 @@ An agent that lives on your own hardware, remembers across months, and acts on t
 
 ## Try it on your Android phone
 
-1. On your phone, tap the **Install the Android app** button above (or [download the APK](https://github.com/Enlightened-Republic/Caelza/releases/download/v0.2.0/caelza-app-0.2.0.apk)).
+1. On your phone, tap the **Install the Android app** button above (or [download the APK](https://github.com/Enlightened-Republic/Caelza/releases/download/v0.3.0/caelza-app-0.3.0.apk)).
 2. Open the downloaded file. If Android asks, allow your browser or Files app to **install unknown apps**, then tap **Install**.
 3. Open **Caelza** and follow Cael's first-run screens. The app downloads the runtime on first run, so connect to Wi-Fi first.
 4. Something broke? Use **Logs** in the app to share a bug report.
