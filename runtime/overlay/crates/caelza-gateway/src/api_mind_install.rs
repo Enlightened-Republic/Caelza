@@ -291,26 +291,49 @@ pub fn mind_urls(version: &str) -> (String, String) {
     (base.clone(), format!("{base}.sha256"))
 }
 
-/// The launcher the scripts write: `node` from PATH at run time first (a
-/// version manager moves it), else the one this install chose.
-pub fn launcher_text(windows: bool, cli: &Path, node: &Path) -> String {
+/// The launcher. When the install used the `node` on PATH, the launcher
+/// does too (a version manager moves it, as the scripts allow). When the
+/// install fetched a portable Node because PATH had none new enough, the
+/// launcher runs that one and nothing else: preferring PATH would hand the
+/// service back to the Node the install rejected on its next start.
+pub fn launcher_text(windows: bool, cli: &Path, node: &Path, prefer_path: bool) -> String {
     if windows {
-        [
+        let mut lines = vec![
             "@echo off".to_string(),
             "rem Caelza Mind: xanima-server, installed from the Memory page".to_string(),
             format!("set \"NODE={}\"", node.display()),
-            "where node >nul 2>&1 && set \"NODE=node\"".to_string(),
-            format!("\"%NODE%\" \"{}\" %*", cli.display()),
-        ]
-        .join("\r\n")
-            + "\r\n"
-    } else {
+        ];
+        if prefer_path {
+            lines.push("where node >nul 2>&1 && set \"NODE=node\"".to_string());
+        }
+        lines.push(format!("\"%NODE%\" \"{}\" %*", cli.display()));
+        lines.join("\r\n") + "\r\n"
+    } else if prefer_path {
         format!(
             "#!/bin/sh\n# Caelza Mind: xanima-server, installed from the Memory page\nnode=$(command -v node 2>/dev/null || printf '%s' \"{}\")\nexec \"$node\" \"{}\" \"$@\"\n",
             node.display(),
             cli.display()
         )
+    } else {
+        format!(
+            "#!/bin/sh\n# Caelza Mind: xanima-server, installed from the Memory page (its own Node: PATH had none new enough)\nexec \"{}\" \"{}\" \"$@\"\n",
+            node.display(),
+            cli.display()
+        )
     }
+}
+
+/// The systemd user unit install.sh writes on a Linux hub.
+pub fn systemd_unit(launcher: &Path) -> String {
+    format!(
+        "[Unit]\nDescription=Caelza Mind (xanima-server, the brain service on 127.0.0.1:18790)\nAfter=network.target\n[Service]\nExecStart=\"{}\" serve\nRestart=on-failure\nRestartSec=5\n[Install]\nWantedBy=default.target\n",
+        launcher.display()
+    )
+}
+
+/// A path inside a single-quoted PowerShell literal: the quote doubled.
+pub fn ps_quote(text: &str) -> String {
+    text.replace('\'', "''")
 }
 
 /// The Caelza version this build answers to (the tag's, stamped at release).
@@ -410,10 +433,7 @@ async fn run(program: &Path, args: &[&str], cwd: Option<&Path>, path_prefix: Opt
         cmd.env("PATH", format!("{}{sep}{old}", prefix.display()));
     }
     #[cfg(windows)]
-    {
-        use std::os::windows::process::CommandExt;
-        cmd.creation_flags(0x0800_0000); // CREATE_NO_WINDOW
-    }
+    cmd.creation_flags(0x0800_0000); // CREATE_NO_WINDOW
     let out = cmd
         .output()
         .await
@@ -447,7 +467,8 @@ async fn extract(archive: &Path, into: &Path, zip: bool) -> Result<(), String> {
     .map(|_| ())
 }
 
-/// `node` on PATH when it is new enough.
+/// `node` on PATH when it is new enough and its `npm` is beside it; else
+/// the portable one is fetched.
 async fn node_on_path() -> Option<PathBuf> {
     let program = PathBuf::from("node");
     let out = tokio::process::Command::new(&program)
@@ -461,18 +482,36 @@ async fn node_on_path() -> Option<PathBuf> {
     }
     let version = String::from_utf8_lossy(&out.stdout).trim().to_string();
     let major: u64 = version.split('.').next()?.parse().ok()?;
-    (major >= NODE_MAJOR_MIN).then_some(program)
+    if major < NODE_MAJOR_MIN {
+        return None;
+    }
+    let npm = if cfg!(windows) { "npm.cmd" } else { "npm" };
+    let npm_ok = tokio::process::Command::new(npm)
+        .arg("--version")
+        .stdin(std::process::Stdio::null())
+        .output()
+        .await
+        .map(|o| o.status.success())
+        .unwrap_or(false);
+    npm_ok.then_some(program)
 }
 
+/// `GET /health` on loopback over a plain socket: the Runtime's proxied
+/// client could send 127.0.0.1 through a configured proxy.
 async fn health(port: u16) -> bool {
-    let client = caelza_config::schema::build_runtime_proxy_client("mind.install");
-    client
-        .get(format!("http://127.0.0.1:{port}/health"))
-        .timeout(Duration::from_secs(3))
-        .send()
-        .await
-        .map(|r| r.status().is_success())
-        .unwrap_or(false)
+    use tokio::io::{AsyncReadExt, AsyncWriteExt};
+    let probe = async {
+        let mut stream = tokio::net::TcpStream::connect(("127.0.0.1", port)).await.ok()?;
+        stream
+            .write_all(format!("GET /health HTTP/1.1\r\nHost: 127.0.0.1:{port}\r\nConnection: close\r\n\r\n").as_bytes())
+            .await
+            .ok()?;
+        let mut head = [0u8; 64];
+        let n = stream.read(&mut head).await.ok()?;
+        let line = String::from_utf8_lossy(&head[..n]);
+        Some(line.starts_with("HTTP/1.1 200") || line.starts_with("HTTP/1.0 200"))
+    };
+    matches!(tokio::time::timeout(Duration::from_secs(3), probe).await, Ok(Some(true)))
 }
 
 fn write_owner_only(path: &Path, text: &str) -> Result<(), String> {
@@ -511,6 +550,8 @@ async fn run_install(agents: Vec<String>) -> Result<(), String> {
     let lay = layout();
     let windows = cfg!(windows);
     std::fs::create_dir_all(&lay.mind_dir).map_err(|e| format!("creating {}: {e}", lay.mind_dir.display()))?;
+    // A crashed job's leftovers (another pid's work dir, a part-written archive) go first.
+    let _ = std::fs::remove_dir_all(lay.base.join("tmp"));
     let work = lay.base.join("tmp").join(format!("mind-install-{}", std::process::id()));
     std::fs::create_dir_all(&work).map_err(|e| format!("creating {}: {e}", work.display()))?;
 
@@ -545,8 +586,10 @@ async fn run_install(agents: Vec<String>) -> Result<(), String> {
                 };
                 let tgz_url = find(&|n| n.starts_with("caelza-mind-") && n.ends_with(".tgz"))
                     .ok_or_else(|| format!("the latest release ({}) has no caelza-mind-<version>.tgz", rel.get("tag_name").and_then(Value::as_str).unwrap_or("?")))?;
-                let sum_url = find(&|n| n.starts_with("caelza-mind-") && n.ends_with(".tgz.sha256"))
-                    .ok_or_else(|| "the latest release has no .sha256 beside the Mind's package; refusing to install it unverified".to_string())?;
+                let tgz_name = tgz_url.rsplit('/').next().unwrap_or_default().to_string();
+                let sum_name = format!("{tgz_name}.sha256");
+                let sum_url = find(&|n| n == sum_name)
+                    .ok_or_else(|| format!("the latest release has no {sum_name} beside the Mind's package; refusing to install it unverified"))?;
                 (tgz_url, fetch_text(&sum_url, "release").await?)
             }
         };
@@ -574,9 +617,14 @@ async fn run_install(agents: Vec<String>) -> Result<(), String> {
             .ok_or_else(|| format!("no portable Node for {}/{}", std::env::consts::OS, std::env::consts::ARCH))?;
         let root = lay.node_dir.join(&asset.root);
         let exe = node_exe(&root, windows);
-        if exe.is_file() {
+        let whole = exe.is_file() && npm_cli(&root, windows).is_file();
+        if whole {
             log(format!("portable Node already at {}", root.display()));
         } else {
+            if root.exists() {
+                log("a half-unpacked Node from before goes first");
+                std::fs::remove_dir_all(&root).map_err(|e| format!("removing {}: {e}", root.display()))?;
+            }
             let archive = work.join(&asset.name);
             if let Some(given) = std::env::var_os("CAELZA_NODE_ARCHIVE").filter(|s| !s.is_empty()) {
                 let given = PathBuf::from(given);
@@ -597,13 +645,19 @@ async fn run_install(agents: Vec<String>) -> Result<(), String> {
                 log("checksum ok");
             }
             stage("node", "unpacking Node");
-            extract(&archive, &lay.node_dir, asset.zip).await?;
-            if !exe.is_file() {
-                return Err(format!("the Node archive left no {}", exe.display()));
+            let unpack = work.join("node");
+            extract(&archive, &unpack, asset.zip).await?;
+            let unpacked = unpack.join(&asset.root);
+            if !node_exe(&unpacked, windows).is_file() || !npm_cli(&unpacked, windows).is_file() {
+                return Err(format!("the Node archive left no node or npm under {}", unpacked.display()));
             }
+            std::fs::create_dir_all(&lay.node_dir).map_err(|e| format!("creating {}: {e}", lay.node_dir.display()))?;
+            // Whole or not at all: it moves in only once both are there.
+            std::fs::rename(&unpacked, &root).map_err(|e| format!("moving Node into {}: {e}", root.display()))?;
         }
         exe
     };
+    let node_from_path = node.as_os_str() == "node";
     let node_bin_dir = node.parent().map(Path::to_path_buf);
 
     // 3. npm install: a minimal project around the tarball, the way the scripts make it.
@@ -644,7 +698,7 @@ async fn run_install(agents: Vec<String>) -> Result<(), String> {
     stage("launcher", "writing the caelza-mind launcher");
     let launcher = lay.bin_dir.join(if windows { "caelza-mind.cmd" } else { "caelza-mind" });
     std::fs::create_dir_all(&lay.bin_dir).map_err(|e| format!("creating {}: {e}", lay.bin_dir.display()))?;
-    std::fs::write(&launcher, launcher_text(windows, &cli, &node)).map_err(|e| format!("writing {}: {e}", launcher.display()))?;
+    std::fs::write(&launcher, launcher_text(windows, &cli, &node, node_from_path)).map_err(|e| format!("writing {}: {e}", launcher.display()))?;
     #[cfg(unix)]
     {
         use std::os::unix::fs::PermissionsExt;
@@ -665,7 +719,8 @@ async fn run_install(agents: Vec<String>) -> Result<(), String> {
     let mut minted = Vec::new();
     for (file, agent, scopes) in wanted {
         let path = lay.tokens_dir.join(format!("{file}.token"));
-        if path.is_file() {
+        // A file with a token in it is kept; an empty one (a write that died) is minted again.
+        if std::fs::read_to_string(&path).map(|t| !t.trim().is_empty()).unwrap_or(false) {
             continue;
         }
         // Quiet: the reply is the token itself, which never goes into the log the page shows.
@@ -735,17 +790,48 @@ async fn run_install(agents: Vec<String>) -> Result<(), String> {
         log("the Mind answers on /health");
     }
 
-    // 7. Start at logon (Windows): the shortcut the installer makes; best effort.
+    // 7. Start at logon: the Startup shortcut on Windows, the systemd user unit on a
+    //    Linux hub (what install.sh writes with CAELZA_SERVICE=1); best effort both.
     if windows {
         stage("startup", "adding the Startup shortcut");
         let script = format!(
             "$s=(New-Object -ComObject WScript.Shell).CreateShortcut([IO.Path]::Combine([Environment]::GetFolderPath('Startup'),'Caelza Mind.lnk')); $s.TargetPath=$env:ComSpec; $s.Arguments='/c start \"Caelza Mind\" /min \"{}\" serve'; $s.WorkingDirectory='{}'; $s.WindowStyle=7; $s.Description='Start the Caelza Mind at logon'; $s.Save()",
-            launcher.display(),
-            lay.bin_dir.display()
+            ps_quote(&launcher.display().to_string()),
+            ps_quote(&lay.bin_dir.display().to_string())
         );
         match run(&PathBuf::from("powershell.exe"), &["-NoProfile", "-NonInteractive", "-Command", &script], None, None, "startup", false).await {
             Ok(_) => log("Startup shortcut written (the Mind starts minimised when you log on)"),
             Err(e) => log(format!("no Startup shortcut ({e}); the Start menu's Caelza starts the Mind anyway")),
+        }
+    } else if cfg!(target_os = "linux") {
+        stage("startup", "setting the Mind to start when you log in");
+        let unit_dir = std::env::var_os("XDG_CONFIG_HOME")
+            .filter(|s| !s.is_empty())
+            .map(PathBuf::from)
+            .or_else(|| home_dir().map(|h| h.join(".config")))
+            .map(|c| c.join("systemd").join("user"));
+        match unit_dir {
+            Some(dir) => {
+                let unit = dir.join("caelza-mind.service");
+                let written = std::fs::create_dir_all(&dir)
+                    .and_then(|()| std::fs::write(&unit, systemd_unit(&launcher)))
+                    .map_err(|e| format!("writing {}: {e}", unit.display()));
+                match written {
+                    Ok(()) => {
+                        log(format!("systemd user unit -> {}", unit.display()));
+                        let systemctl = PathBuf::from("systemctl");
+                        let enabled = run(&systemctl, &["--user", "daemon-reload"], None, None, "startup", true).await.is_ok()
+                            && run(&systemctl, &["--user", "enable", "caelza-mind.service"], None, None, "startup", true).await.is_ok();
+                        log(if enabled {
+                            "enabled: the Mind starts with your next login (loginctl enable-linger keeps it up after you log out)".to_string()
+                        } else {
+                            "no user systemd here; the launcher starts it: caelza-mind serve".to_string()
+                        });
+                    }
+                    Err(e) => log(format!("no autostart ({e}); the launcher starts it: caelza-mind serve")),
+                }
+            }
+            None => log("no home for a systemd user unit; the launcher starts it: caelza-mind serve"),
         }
     }
 
@@ -901,15 +987,26 @@ mod tests {
     }
 
     #[test]
-    fn the_launcher_prefers_node_on_path_then_the_one_it_found() {
-        let cmd = launcher_text(true, Path::new("C:\\m\\node_modules\\xanima-server\\dist\\cli.js"), Path::new("C:\\n\\node.exe"));
+    fn the_launcher_prefers_path_only_when_the_install_used_path() {
+        let cli_w = Path::new("C:\\m\\node_modules\\xanima-server\\dist\\cli.js");
+        let cmd = launcher_text(true, cli_w, Path::new("node"), true);
         assert!(cmd.starts_with("@echo off\r\n"));
-        assert!(cmd.contains("set \"NODE=C:\\n\\node.exe\"\r\nwhere node >nul 2>&1 && set \"NODE=node\"\r\n"));
+        assert!(cmd.contains("set \"NODE=node\"\r\nwhere node >nul 2>&1 && set \"NODE=node\"\r\n"));
         assert!(cmd.ends_with("\"%NODE%\" \"C:\\m\\node_modules\\xanima-server\\dist\\cli.js\" %*\r\n"));
-        let sh = launcher_text(false, Path::new("/m/node_modules/xanima-server/dist/cli.js"), Path::new("/n/bin/node"));
+        // A portable Node, fetched because PATH had none new enough: PATH is never consulted again.
+        let fixed = launcher_text(true, cli_w, Path::new("C:\\n\\node.exe"), false);
+        assert!(fixed.contains("set \"NODE=C:\\n\\node.exe\"\r\n\"%NODE%\""));
+        assert!(!fixed.contains("where node"));
+        let sh = launcher_text(false, Path::new("/m/node_modules/xanima-server/dist/cli.js"), Path::new("node"), true);
         assert!(sh.starts_with("#!/bin/sh\n"));
-        assert!(sh.contains("node=$(command -v node 2>/dev/null || printf '%s' \"/n/bin/node\")\n"));
-        assert!(sh.ends_with("exec \"$node\" \"/m/node_modules/xanima-server/dist/cli.js\" \"$@\"\n"));
+        assert!(sh.contains("node=$(command -v node 2>/dev/null || printf '%s' \"node\")\n"));
+        let sh_fixed = launcher_text(false, Path::new("/m/node_modules/xanima-server/dist/cli.js"), Path::new("/n/bin/node"), false);
+        assert!(sh_fixed.ends_with("exec \"/n/bin/node\" \"/m/node_modules/xanima-server/dist/cli.js\" \"$@\"\n"));
+        assert!(!sh_fixed.contains("command -v node"));
+        // The unit install.sh writes, and PowerShell's quote doubled.
+        let unit = systemd_unit(Path::new("/home/u/.local/bin/caelza-mind"));
+        assert!(unit.contains("ExecStart=\"/home/u/.local/bin/caelza-mind\" serve\n") && unit.contains("WantedBy=default.target"));
+        assert_eq!(ps_quote("C:\\Users\\O'Brien\\x"), "C:\\Users\\O''Brien\\x");
     }
 
     #[test]

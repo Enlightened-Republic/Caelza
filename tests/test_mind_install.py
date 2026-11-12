@@ -79,6 +79,25 @@ def test_the_job_does_what_the_scripts_do_in_the_same_places():
     # Detached on both platforms, logging to the service log.
     assert "cmd.process_group(0);" in GATEWAY and "DETACHED_PROCESS" in GATEWAY
     assert 'logs.join("service.log")' in GATEWAY
+    # The bug check's fixes: PATH is preferred by the launcher only when the install used PATH's node.
+    assert "launcher_text(windows, &cli, &node, node_from_path)" in GATEWAY
+    assert 'let node_from_path = node.as_os_str() == "node";' in GATEWAY
+    # The Runtime reads the tokens where they are minted, on Windows too (USERPROFILE, XANIMA_HOME_OVERRIDE).
+    xanima = (OVERLAY / "crates" / "caelza-memory" / "src" / "xanima.rs").read_text()
+    assert 'std::env::var_os("XANIMA_HOME_OVERRIDE")' in xanima and '["USERPROFILE", "HOME"]' in xanima
+    assert "fn expand_home_in(path: &str, home: Option<&Path>) -> PathBuf" in xanima
+    # A half-unpacked Node is replaced; Node moves in whole; the unit on Linux; the quote in PowerShell.
+    assert "let whole = exe.is_file() && npm_cli(&root, windows).is_file();" in GATEWAY
+    assert "std::fs::rename(&unpacked, &root)" in GATEWAY
+    assert "pub fn systemd_unit(launcher: &Path) -> String" in GATEWAY and '"enable", "caelza-mind.service"' in GATEWAY
+    assert "ps_quote(&launcher.display().to_string())" in GATEWAY
+    # The latest release's sum is the tarball's own; loopback health is a plain socket; an empty token file is minted again.
+    assert 'let sum_name = format!("{tgz_name}.sha256");' in GATEWAY
+    assert 'tokio::net::TcpStream::connect(("127.0.0.1", port))' in GATEWAY
+    assert "std::fs::read_to_string(&path).map(|t| !t.trim().is_empty()).unwrap_or(false)" in GATEWAY
+    assert 'let _ = std::fs::remove_dir_all(lay.base.join("tmp"));' in GATEWAY
+    assert "npm_ok.then_some(program)" in GATEWAY
+    assert "void load();\n    }\n  }, [load]);" in PAGE
     # The token mint's output is the token: it is never logged (the page shows the log).
     assert '"--scopes", &scopes, "--json"], Some(&lay.mind_dir), None, "tokens", true)' in GATEWAY
     assert "if !quiet {" in GATEWAY
