@@ -365,6 +365,28 @@ impl XanimaMemory {
         matches!(self.stored_token(agent), Ok(Some(_)))
     }
 
+    /// `GET {url}/health` as the service answers it: `status`, `version` and
+    /// `addresses` (every `host:port` it is bound to). Unauthenticated, so it
+    /// says whether a service is there before any token is tried.
+    pub async fn health_info(&self) -> Result<Value> {
+        let url = format!("{}/health", self.settings.url);
+        let response = self
+            .client
+            .get(&url)
+            .timeout(self.settings.timeout)
+            .send()
+            .await
+            .with_context(|| format!("xanima: GET {url} failed (is xanima-server running?)"))?;
+        let status = response.status();
+        if !status.is_success() {
+            bail!("xanima: GET {url} answered {status}");
+        }
+        response
+            .json::<Value>()
+            .await
+            .with_context(|| format!("xanima: reading the reply from {url}"))
+    }
+
     /// One brain tool call for operator surfaces (the dashboard's Mind page):
     /// the tool's text reply, parsed as JSON when it is JSON, else wrapped as
     /// `{"text": ...}`. Errors carry the service's own message.

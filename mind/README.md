@@ -160,10 +160,27 @@ and cron turns never become memories.
 
 ### Later
 
-- **Shared brain across bodies.** One service, many Caelza runtimes (the phone,
-  a hub, a Pi): private brains per agent, the shared brain and rooms for what
-  the fleet knows together. The service already models this (`brain_room`,
-  `brain_publish`, `brain_subscribe`).
+- **One Mind for every device: shipped** (the consumer shape of the shared
+  brain). The Memory page's *Your other devices* card, on the device that
+  runs the service, writes this machine's home-network or Tailscale address
+  into the service's `config.json` (`tailnetHosts`, its own non-wildcard
+  bind policy), mints a `caelza-share` token for the default agent into its
+  `tokens.json` (the hash only, as `token mint` does; a fresh token on every
+  Share) and shows a join code (`caelza-mind:` + base64url of the service
+  URL, the agent and the token); *Stop sharing* removes the address and
+  revokes every `caelza-share` token. The *Join a Mind on another device*
+  card on the other device probes the code (`POST /api/mind/probe`:
+  `/health`, then `brain_stats` with the token) and writes
+  `[storage.xanima.default]` (`url`, `token` encrypted at rest, `agent`,
+  provisioning off) and `memory.backend = "xanima"` through the config API;
+  the service's own address needs one restart, the joined Runtime one
+  restart. Gateway routes `GET|POST|DELETE /api/mind/share` and
+  `POST /api/mind/probe` in `runtime/overlay/crates/caelza-gateway/src/api_mind_share.rs`.
+- **The fleet shape.** One service, many named agents (the phone's, a hub's,
+  a Pi's): private brains per agent, the shared brain and rooms for what the
+  fleet knows together. The service already models this (`brain_room`,
+  `brain_publish`, `brain_subscribe`); the Memory page's share is the
+  one-agent case of it.
 - **Skill evolution → Caelza skills.** `skillEvolution` generates a skill file
   when a pattern recurs; write them into the runtime's skill-bundle directory
   so the agent grows its own playbooks.

@@ -174,3 +174,84 @@ export function decideMindReview(
     body: JSON.stringify({ id, action, reason, agent }),
   });
 }
+
+// --- one Mind for every device (`/api/mind/share`, `/api/mind/probe`) ----------------
+
+/** An address this device could share, and the network it is on. */
+export interface MindShareCandidate {
+  host: string;
+  kind: 'lan' | 'tailnet';
+}
+
+/** `GET /api/mind/share` on the device that hosts the Mind. */
+export interface MindShareState {
+  enabled: boolean;
+  hosted_here: boolean;
+  url?: string;
+  agent?: string;
+  port?: number;
+  config_path?: string;
+  config_error?: string | null;
+  /** Addresses in the service's config.json (`tailnetHosts`). */
+  configured?: string[];
+  sharing?: boolean;
+  /** Every configured address is one the service currently listens on. */
+  reachable?: boolean;
+  healthy?: boolean;
+  version?: string | null;
+  /** `host:port` for every listener the service reports. */
+  listening?: string[];
+  candidates?: MindShareCandidate[];
+  share_tokens?: number;
+  /** Not hosting: the memory backend when the Mind is off (`enabled: false`). */
+  backend?: string;
+  /** Not hosting: whether a Mind answers on this device's own loopback. */
+  local_mind?: boolean;
+  error?: string;
+}
+
+/** `POST /api/mind/share`: the state plus the fresh join code. */
+export interface MindShareResult extends MindShareState {
+  host: string;
+  kind: string;
+  share_url: string;
+  code: string;
+  token_id: string;
+  restart_needed: boolean;
+  added: boolean;
+}
+
+/** `DELETE /api/mind/share`. */
+export interface MindUnshareResult extends MindShareState {
+  removed: string[];
+  revoked: number;
+  restart_needed: boolean;
+}
+
+/** `POST /api/mind/probe`: the other device's Mind, checked with the code. */
+export interface MindProbeResult {
+  ok: boolean;
+  url: string;
+  agent: string;
+  /** The code's token, back from the gateway for the config write. */
+  token: string;
+  version: string | null;
+  addresses: string[];
+  stats: unknown;
+}
+
+export function getMindShare(): Promise<MindShareState> {
+  return apiFetch<MindShareState>('/api/mind/share');
+}
+
+export function startMindShare(host: string): Promise<MindShareResult> {
+  return apiFetch<MindShareResult>('/api/mind/share', { method: 'POST', body: JSON.stringify({ host }) });
+}
+
+export function stopMindShare(): Promise<MindUnshareResult> {
+  return apiFetch<MindUnshareResult>('/api/mind/share', { method: 'DELETE' });
+}
+
+export function probeMindCode(code: string): Promise<MindProbeResult> {
+  return apiFetch<MindProbeResult>('/api/mind/probe', { method: 'POST', body: JSON.stringify({ code }) });
+}
