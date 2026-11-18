@@ -1022,9 +1022,13 @@ mod tests {
 
     #[test]
     fn due_dates_come_in_three_shapes() {
-        assert_eq!(due_secs("2026-12-07T00:00:00Z"), Some(1_796_515_200));
-        assert_eq!(due_secs("2026-12-07"), Some(1_796_515_200 + 12 * 3600));
-        assert_eq!(due_secs("2026-12"), Some(1_795_996_800 + 12 * 3600));
+        let day = |y: i32, m: u32, d: u32, h: u32| {
+            chrono::NaiveDate::from_ymd_opt(y, m, d).unwrap().and_hms_opt(h, 0, 0).unwrap().and_utc().timestamp()
+        };
+        assert_eq!(due_secs("2026-12-07T00:00:00Z"), Some(day(2026, 12, 7, 0)));
+        assert_eq!(due_secs("2026-12-07T01:30:00+01:00"), Some(day(2026, 12, 7, 0) + 30 * 60));
+        assert_eq!(due_secs("2026-12-07"), Some(day(2026, 12, 7, 12)));
+        assert_eq!(due_secs("2026-12"), Some(day(2026, 12, 1, 12)));
         assert_eq!(due_secs("soon"), None);
     }
 
