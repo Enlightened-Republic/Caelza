@@ -21,6 +21,19 @@
 //!                                 401, 403 or 423, and posts `leave` on the way out.
 //! - `POST /api/world/leave`     → stops the task and tells the town.
 //!
+//! - `POST /api/world/wake`      ← `{reason?}`: wakes the agent now, the way the
+//!                                 waker does (below), with the reason given.
+//!
+//! The waker (`start_waker`, spawned when the gateway starts): while
+//! `[ether_hollow] wake` is on and a key is set, it reads `me`, `town` and
+//! `orders` every minute (every two away from town) and turns what changed
+//! into reasons: a feed post that names the resident, a new order, rent owing
+//! or due within two days, a timeout that began. The first read only primes
+//! what is already there. A reason wakes the agent at most every ten minutes:
+//! a cron agent job named `ether-hollow` (made once, never on a schedule of its
+//! own, narrowed to the town's tool and memory) gets the reason in its prompt
+//! and runs the way the dashboard's manual cron trigger runs a job. The agent
+//! answers NO_REPLY when nothing needs doing.
 //! Only a paired client may call any of them. The key is read from the live
 //! config at every beat, so a key the owner removes stops the ghost at the next
 //! beat. Nothing here is logged with the key in it.
@@ -35,8 +48,11 @@ use axum::{
 };
 use serde::Serialize;
 use serde_json::{Value, json};
+use std::collections::BTreeSet;
 use std::sync::{Mutex, OnceLock};
 use std::time::{Duration, SystemTime, UNIX_EPOCH};
+use caelza_runtime::cron::{self, CronJobPatch, DeliveryConfig, Schedule, SessionTarget};
+use caelza_runtime::cron::scheduler::{CronDeliveryContext, run_manual_job_with_selection};
 
 /// The runtime proxy's service key for the town (the tool's, so one rule covers both).
 pub const SERVICE_KEY: &str = "tool.ether_hollow";
@@ -225,6 +241,7 @@ struct Town {
     enabled: bool,
     spend: bool,
     agent: String,
+    wake: bool,
 }
 
 fn town_from(state: &AppState) -> Town {
@@ -241,6 +258,7 @@ fn town_from(state: &AppState) -> Town {
         enabled: cfg.enabled,
         spend: cfg.spend,
         agent: cfg.agent.clone(),
+        wake: cfg.wake,
     }
 }
 
@@ -256,6 +274,7 @@ pub async fn handle_world_get(State(state): State<AppState>, headers: HeaderMap)
         return e.into_response();
     }
     let town = town_from(&state);
+    let wake_on = town.wake;
     let open = match call_town(&town.url, None, None).await {
         Ok((200, v)) => v.get("open").and_then(Value::as_bool),
         _ => None,
@@ -279,6 +298,8 @@ pub async fn handle_world_get(State(state): State<AppState>, headers: HeaderMap)
         "presence": snapshot(),
         "me": me,
         "me_error": me_error,
+        "wake_on": wake_on,
+        "wake": wake_snapshot(),
     }))
     .into_response()
 }
@@ -493,6 +514,426 @@ async fn beat_until_done(state: AppState, url: String, generation: u64) {
     }
 }
 
+
+// --- the town wakes the agent -------------------------------------------------------
+
+/// The cron agent job the waker runs; one per resident agent, found by name.
+pub const JOB_NAME: &str = "ether-hollow";
+/// How often the waker reads the town: in town, and away.
+pub const POLL_IN_TOWN: Duration = Duration::from_secs(60);
+pub const POLL_AWAY: Duration = Duration::from_secs(120);
+/// Two wakes are at least this far apart.
+pub const MIN_GAP: Duration = Duration::from_secs(10 * 60);
+/// Rent due within this is a reason.
+pub const RENT_SOON_SECS: i64 = 48 * 3600;
+/// The tools the woken agent gets: the town and its memory, nothing else.
+pub const WAKE_TOOLS: &[&str] = &["ether_hollow", "memory_recall", "memory_store"];
+/// How much of the agent's answer the card keeps.
+const OUTPUT_KEEP: usize = 280;
+
+/// What the waker has already seen, so only what is new wakes the agent.
+#[derive(Debug, Clone, Default, Serialize, PartialEq)]
+pub struct Seen {
+    pub feed: BTreeSet<String>,
+    pub orders: BTreeSet<String>,
+    /// The due date already raised, so rent wakes once per due date.
+    pub rent_due: Option<String>,
+    pub in_timeout: bool,
+    /// The first read seeds the sets and wakes for nothing.
+    pub primed: bool,
+}
+
+/// One reason to wake the agent.
+#[derive(Debug, Clone, PartialEq, Serialize)]
+pub enum Trigger {
+    Mention { id: String, who: String, text: String },
+    Order { id: String },
+    RentDue { due: String, owing: bool },
+    Timeout { until: String },
+}
+
+fn str_of(v: &Value, keys: &[&str]) -> Option<String> {
+    keys.iter().find_map(|k| {
+        v.get(*k).and_then(|x| match x {
+            Value::String(s) => Some(s.clone()),
+            Value::Number(n) => Some(n.to_string()),
+            _ => None,
+        })
+    })
+}
+
+/// `name` as a whole word in `text`, case-insensitive.
+pub fn mentions(name: &str, text: &str) -> bool {
+    let name = name.trim().to_lowercase();
+    if name.is_empty() {
+        return false;
+    }
+    let text = text.to_lowercase();
+    let mut from = 0;
+    while let Some(pos) = text[from..].find(&name) {
+        let start = from + pos;
+        let end = start + name.len();
+        let before_ok = start == 0 || !text[..start].chars().next_back().is_some_and(|c| c.is_alphanumeric());
+        let after_ok = end == text.len() || !text[end..].chars().next().is_some_and(|c| c.is_alphanumeric());
+        if before_ok && after_ok {
+            return true;
+        }
+        from = end;
+    }
+    false
+}
+
+fn entries<'a>(v: Option<&'a Value>, key: &str) -> Vec<&'a Value> {
+    match v {
+        Some(Value::Array(items)) => items.iter().collect(),
+        Some(Value::Object(map)) => match map.get(key) {
+            Some(Value::Array(items)) => items.iter().collect(),
+            _ => Vec::new(),
+        },
+        _ => Vec::new(),
+    }
+}
+
+/// A due date as unix seconds: RFC 3339, or `YYYY-MM-DD` at noon UTC, or `YYYY-MM` on its first.
+pub fn due_secs(due: &str) -> Option<i64> {
+    let due = due.trim();
+    if let Ok(t) = chrono::DateTime::parse_from_rfc3339(due) {
+        return Some(t.timestamp());
+    }
+    if let Ok(d) = chrono::NaiveDate::parse_from_str(due, "%Y-%m-%d") {
+        return d.and_hms_opt(12, 0, 0).map(|t| t.and_utc().timestamp());
+    }
+    if let Ok(d) = chrono::NaiveDate::parse_from_str(&format!("{due}-01"), "%Y-%m-%d") {
+        return d.and_hms_opt(12, 0, 0).map(|t| t.and_utc().timestamp());
+    }
+    None
+}
+
+/// What changed since the last read that concerns the resident. The first
+/// call primes `seen` and returns nothing.
+pub fn triggers(
+    seen: &mut Seen,
+    name: &str,
+    me: Option<&Value>,
+    town: Option<&Value>,
+    orders: Option<&Value>,
+    now: i64,
+) -> Vec<Trigger> {
+    let primed = seen.primed;
+    let mut out = Vec::new();
+    for post in entries(town.and_then(|t| t.get("feed")), "feed") {
+        let text = [str_of(post, &["text", "body"]), str_of(post, &["title"])]
+            .into_iter()
+            .flatten()
+            .collect::<Vec<_>>()
+            .join(" ");
+        let id = str_of(post, &["id", "post", "pid"]).unwrap_or_else(|| format!("h{:x}", fnv(&text)));
+        if !seen.feed.insert(id.clone()) {
+            continue;
+        }
+        let who = str_of(post, &["who", "author", "by", "name"]).unwrap_or_default();
+        if primed && mentions(name, &text) && !who.eq_ignore_ascii_case(name.trim()) {
+            out.push(Trigger::Mention { id, who, text: text.chars().take(200).collect() });
+        }
+    }
+    for order in entries(orders, "orders") {
+        let Some(id) = str_of(order, &["id", "order"]) else { continue };
+        let status = str_of(order, &["status"]).unwrap_or_default().to_lowercase();
+        if matches!(status.as_str(), "done" | "cancelled" | "canceled" | "refunded") {
+            seen.orders.insert(id);
+            continue;
+        }
+        if seen.orders.insert(id.clone()) && primed {
+            out.push(Trigger::Order { id });
+        }
+    }
+    if let Some(lease) = me.and_then(|m| m.get("lease")).filter(|l| l.is_object()) {
+        let owing = lease.get("owing").and_then(Value::as_bool).unwrap_or(false);
+        let due = str_of(lease, &["due_by", "next_due"]).unwrap_or_default();
+        let soon = due_secs(&due).is_some_and(|d| d - now <= RENT_SOON_SECS);
+        if (owing || soon) && seen.rent_due.as_deref() != Some(due.as_str()) {
+            seen.rent_due = Some(due.clone());
+            if primed {
+                out.push(Trigger::RentDue { due, owing });
+            }
+        }
+    }
+    let timeout = me.and_then(|m| m.get("timeout")).filter(|t| !t.is_null());
+    match timeout {
+        Some(t) => {
+            if !seen.in_timeout {
+                seen.in_timeout = true;
+                if primed {
+                    out.push(Trigger::Timeout { until: str_of(t, &["until", "minutes_left"]).unwrap_or_default() });
+                }
+            }
+        }
+        None => seen.in_timeout = false,
+    }
+    seen.primed = true;
+    out
+}
+
+fn fnv(text: &str) -> u64 {
+    let mut h: u64 = 0xcbf29ce484222325;
+    for b in text.bytes() {
+        h ^= b as u64;
+        h = h.wrapping_mul(0x100000001b3);
+    }
+    h
+}
+
+/// The reasons as one sentence each, for the prompt and the card.
+pub fn reason_text(triggers: &[Trigger]) -> String {
+    triggers
+        .iter()
+        .map(|t| match t {
+            Trigger::Mention { who, text, .. } => {
+                if who.is_empty() {
+                    format!("a feed post names you: \"{text}\"")
+                } else {
+                    format!("{who} named you on the feed: \"{text}\"")
+                }
+            }
+            Trigger::Order { id } => format!("a new order came in ({id})"),
+            Trigger::RentDue { due, owing } => {
+                if *owing {
+                    format!("your rent is owing (due {due})")
+                } else {
+                    format!("your rent is due soon ({due})")
+                }
+            }
+            Trigger::Timeout { until } => format!("the town put you in a timeout (until {until})"),
+        })
+        .collect::<Vec<_>>()
+        .join("; ")
+}
+
+/// The job's prompt for one wake.
+pub fn wake_prompt(name: &str, reason: &str) -> String {
+    format!(
+        "[Ether Hollow] Something happened in town that concerns you, {name}: {reason}. \
+         You are a resident of Ether Hollow; the owner lets you act there through the \
+         ether_hollow tool. Look first (`me`, then `town`; `orders` when an order is named), \
+         then do what the situation needs: answer a mention (with `reply` if you rent a lot, \
+         else a `note`), handle an order (`order_done` once it is delivered), and if rent is \
+         due or anything would cost RC, do not pay it yourself: say what is due so the owner \
+         can decide. Keep to a few calls. When nothing needs doing, answer exactly NO_REPLY."
+    )
+}
+
+/// A schedule that never comes on its own: the job runs only when woken.
+pub fn never(now: chrono::DateTime<chrono::Utc>) -> Schedule {
+    Schedule::At { at: now + chrono::Duration::days(365 * 100) }
+}
+
+/// The poll: a minute in town, two away; `CAELZA_WORLD_POLL_SECS` (a test's
+/// knob, never set in a shipped install) shortens both.
+pub fn poll_after(in_town: bool) -> Duration {
+    if let Some(secs) = std::env::var("CAELZA_WORLD_POLL_SECS").ok().and_then(|v| v.parse::<u64>().ok()).filter(|s| *s > 0) {
+        return Duration::from_secs(secs);
+    }
+    if in_town { POLL_IN_TOWN } else { POLL_AWAY }
+}
+
+/// The waker's state, for the card.
+#[derive(Debug, Clone, Serialize, Default)]
+pub struct Wake {
+    pub last_poll: Option<u64>,
+    pub last_error: Option<String>,
+    pub last_reason: Option<String>,
+    pub last_at: Option<u64>,
+    pub last_ok: Option<bool>,
+    pub last_output: Option<String>,
+    pub count: u64,
+    pub waking: bool,
+    #[serde(skip)]
+    pub seen: Seen,
+}
+
+static WAKE: OnceLock<Mutex<Wake>> = OnceLock::new();
+
+fn wake() -> &'static Mutex<Wake> {
+    WAKE.get_or_init(|| Mutex::new(Wake::default()))
+}
+
+fn wake_snapshot() -> Wake {
+    wake().lock().map(|w| w.clone()).unwrap_or_default()
+}
+
+/// Spawn the waker. Called once when the gateway starts; it reads the config
+/// live, so the switch and the key take effect at the next read.
+pub fn start_waker(state: AppState) {
+    tokio::spawn(async move { waker_loop(state).await });
+}
+
+async fn waker_loop(state: AppState) {
+    // Let the gateway finish coming up before the first read.
+    tokio::time::sleep(poll_after(true).min(Duration::from_secs(20))).await;
+    loop {
+        let (on, town) = {
+            let cfg = state.config.read().ether_hollow.clone();
+            (cfg.wake, town_from(&state))
+        };
+        let in_town = snapshot().in_town;
+        if !on || town.key.is_none() {
+            tokio::time::sleep(POLL_AWAY).await;
+            continue;
+        }
+        let key = town.key.clone().unwrap_or_default();
+        let mut errors = Vec::new();
+        let read = |action: &str| {
+            let url = town.url.clone();
+            let key = key.clone();
+            let action = action.to_string();
+            async move {
+                match call_town(&url, Some(&key), Some(&json!({"action": action}))).await {
+                    Ok((200, v)) => Ok(v),
+                    Ok((status, v)) => Err(format!("{action}: the town answered {status}: {}", town_said(&v))),
+                    Err(e) => Err(format!("{action}: {e}")),
+                }
+            }
+        };
+        let me = read("me").await;
+        let town_now = read("town").await;
+        let orders = read("orders").await;
+        for r in [&me, &town_now, &orders] {
+            if let Err(e) = r {
+                errors.push(e.clone());
+            }
+        }
+        let now = now_secs();
+        let found = match wake().lock() {
+            Ok(mut w) => {
+                w.last_poll = Some(now);
+                w.last_error = if errors.is_empty() { None } else { Some(errors.join("; ")) };
+                let mut seen = std::mem::take(&mut w.seen);
+                let found = triggers(&mut seen, &town.name, me.as_ref().ok(), town_now.as_ref().ok(), orders.as_ref().ok(), now as i64);
+                w.seen = seen;
+                let recent = w.last_at.is_some_and(|t| now.saturating_sub(t) < MIN_GAP.as_secs());
+                if found.is_empty() || recent || w.waking { Vec::new() } else { found }
+            }
+            Err(_) => Vec::new(),
+        };
+        if !found.is_empty() {
+            let reason = reason_text(&found);
+            let _ = wake_now(&state, reason).await;
+        }
+        tokio::time::sleep(poll_after(in_town)).await;
+    }
+}
+
+/// Wake the agent now with `reason`: the job made or re-prompted, then run.
+pub async fn wake_now(state: &AppState, reason: String) -> Result<Value, String> {
+    if let Ok(mut w) = wake().lock() {
+        if w.waking {
+            return Err("a wake is already running".to_string());
+        }
+        w.waking = true;
+    }
+    let result = wake_inner(state, &reason).await;
+    if let Ok(mut w) = wake().lock() {
+        w.waking = false;
+        w.count += 1;
+        w.last_reason = Some(reason.clone());
+        w.last_at = Some(now_secs());
+        match &result {
+            Ok(v) => {
+                w.last_ok = Some(v.get("success").and_then(Value::as_bool).unwrap_or(false));
+                w.last_output = v.get("output").and_then(Value::as_str).map(|o| o.chars().take(OUTPUT_KEEP).collect());
+            }
+            Err(e) => {
+                w.last_ok = Some(false);
+                w.last_output = Some(e.chars().take(OUTPUT_KEEP).collect());
+            }
+        }
+    }
+    result
+}
+
+async fn wake_inner(state: &AppState, reason: &str) -> Result<Value, String> {
+    let selection = caelza_runtime::live_config_authority::AgentExecutionCapability::from_parts(
+        state.config.clone(),
+        state.agent_lifecycle.clone(),
+    )
+    .capture_selection();
+    let config = state.config.read().clone();
+    let cfg = config.ether_hollow.clone();
+    let agent = cfg.agent.trim().to_string();
+    if !config.agents.contains_key(&agent) {
+        return Err(format!("the resident agent `{agent}` is not in the config"));
+    }
+    let prompt = wake_prompt(&cfg.name, reason);
+    let tools: Vec<String> = WAKE_TOOLS.iter().map(|s| s.to_string()).collect();
+    let job_id = match cron::resolve_job_id_or_name(&config, JOB_NAME, &agent) {
+        Ok(id) => {
+            cron::update_job(
+                &config,
+                &id,
+                CronJobPatch {
+                    prompt: Some(prompt.clone()),
+                    allowed_tools: Some(tools.clone()),
+                    enabled: Some(true),
+                    ..Default::default()
+                },
+            )
+            .map_err(|e| format!("re-prompting the {JOB_NAME} job: {e}"))?;
+            id
+        }
+        Err(_) => cron::add_agent_job(
+            &config,
+            &agent,
+            Some(JOB_NAME.to_string()),
+            never(chrono::Utc::now()),
+            &prompt,
+            SessionTarget::Isolated,
+            None,
+            Some(DeliveryConfig::default()),
+            false,
+            Some(tools),
+            true,
+        )
+        .map_err(|e| format!("making the {JOB_NAME} job: {e}"))?
+        .id,
+    };
+    let job = cron::get_job(&config, &job_id).map_err(|e| format!("reading the {JOB_NAME} job: {e}"))?;
+    let event_tx = Some(state.event_tx.clone());
+    let result = run_manual_job_with_selection(&config, &job, CronDeliveryContext::GatewayManual, &event_tx, Some(selection)).await;
+    Ok(json!({
+        "job_id": result.job_id,
+        "success": result.success,
+        "status": result.status,
+        "output": result.output,
+        "duration_ms": result.duration_ms,
+    }))
+}
+
+pub async fn handle_world_wake(State(state): State<AppState>, headers: HeaderMap, raw: axum::body::Bytes) -> Response {
+    if let Err(e) = require_auth(&state, &headers) {
+        return e.into_response();
+    }
+    let body = match parse_body(&raw) {
+        Ok(v) => v,
+        Err(r) => return r,
+    };
+    if town_from(&state).key.is_none() {
+        return error_response(StatusCode::CONFLICT, "no resident key: register the resident first");
+    }
+    let reason = body
+        .get("reason")
+        .and_then(Value::as_str)
+        .map(str::trim)
+        .filter(|r| !r.is_empty())
+        .unwrap_or("the owner asked you to look in on the town")
+        .chars()
+        .take(400)
+        .collect::<String>();
+    match wake_now(&state, reason).await {
+        Ok(v) => Json(json!({"wake": wake_snapshot(), "run": scrub(v)})).into_response(),
+        Err(e) => (StatusCode::INTERNAL_SERVER_ERROR, Json(json!({"error": e, "wake": wake_snapshot()}))).into_response(),
+    }
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -567,5 +1008,108 @@ mod tests {
         let v = serde_json::to_value(&p).unwrap();
         assert!(v.get("generation").is_none());
         assert_eq!(v["in_town"], true);
+    }
+
+    #[test]
+    fn a_mention_is_the_name_as_a_whole_word() {
+        assert!(mentions("Cael", "hey cael, nice lot"));
+        assert!(mentions("Cael", "CAEL!"));
+        assert!(!mentions("Cael", "caelza is a runtime"));
+        assert!(!mentions("Cael", "micael waved"));
+        assert!(!mentions("", "anything"));
+        assert!(mentions("Moss Robot", "thanks moss robot."));
+    }
+
+    #[test]
+    fn due_dates_come_in_three_shapes() {
+        let day = |y: i32, m: u32, d: u32, h: u32| {
+            chrono::NaiveDate::from_ymd_opt(y, m, d).unwrap().and_hms_opt(h, 0, 0).unwrap().and_utc().timestamp()
+        };
+        assert_eq!(due_secs("2026-12-07T00:00:00Z"), Some(day(2026, 12, 7, 0)));
+        assert_eq!(due_secs("2026-12-07T01:30:00+01:00"), Some(day(2026, 12, 7, 0) + 30 * 60));
+        assert_eq!(due_secs("2026-12-07"), Some(day(2026, 12, 7, 12)));
+        assert_eq!(due_secs("2026-12"), Some(day(2026, 12, 1, 12)));
+        assert_eq!(due_secs("soon"), None);
+    }
+
+    #[test]
+    fn the_first_read_primes_and_only_what_is_new_wakes() {
+        let mut seen = Seen::default();
+        let town1 = json!({"feed": [{"id": "p1", "who": "Moss", "text": "hi Cael"}]});
+        let orders1 = json!({"orders": [{"id": "o1", "status": "paid"}]});
+        let me1 = json!({"lease": {"owing": false, "due_by": "2099-01-01"}, "timeout": null});
+        let now = 1_700_000_000;
+        assert!(triggers(&mut seen, "Cael", Some(&me1), Some(&town1), Some(&orders1), now).is_empty(), "the first read wakes for nothing");
+        assert!(seen.primed && seen.feed.contains("p1") && seen.orders.contains("o1"));
+        // Nothing new: nothing.
+        assert!(triggers(&mut seen, "Cael", Some(&me1), Some(&town1), Some(&orders1), now).is_empty());
+        // A new post that names the resident, by someone else; a new order; the old order done.
+        let town2 = json!({"feed": [
+            {"id": "p1", "who": "Moss", "text": "hi Cael"},
+            {"id": "p2", "who": "Cael", "text": "Cael here"},
+            {"id": "p3", "who": "Ivy", "text": "where is cael?"},
+            {"id": "p4", "who": "Ivy", "text": "nice weather"}
+        ]});
+        let orders2 = json!([{"id": "o1", "status": "done"}, {"order": "o2", "status": "paid"}]);
+        let found = triggers(&mut seen, "Cael", Some(&me1), Some(&town2), Some(&orders2), now);
+        assert_eq!(found, vec![
+            Trigger::Mention { id: "p3".into(), who: "Ivy".into(), text: "where is cael?".into() },
+            Trigger::Order { id: "o2".into() },
+        ]);
+        // Rent due within two days wakes once per due date; owing wakes too.
+        let me2 = json!({"lease": {"owing": false, "due_by": "2023-11-15T00:00:00Z"}, "timeout": null});
+        let found = triggers(&mut seen, "Cael", Some(&me2), Some(&town2), Some(&orders2), now);
+        assert_eq!(found, vec![Trigger::RentDue { due: "2023-11-15T00:00:00Z".into(), owing: false }]);
+        assert!(triggers(&mut seen, "Cael", Some(&me2), Some(&town2), Some(&orders2), now).is_empty());
+        // A timeout that begins wakes; the same timeout again does not; its end resets.
+        let me3 = json!({"lease": null, "timeout": {"until": "18:00", "minutes_left": 40}});
+        let found = triggers(&mut seen, "Cael", Some(&me3), Some(&town2), None, now);
+        assert_eq!(found, vec![Trigger::Timeout { until: "18:00".into() }]);
+        assert!(triggers(&mut seen, "Cael", Some(&me3), Some(&town2), None, now).is_empty());
+        assert!(triggers(&mut seen, "Cael", Some(&me1), Some(&town2), None, now).is_empty());
+        assert!(!seen.in_timeout);
+        // A post with no id is keyed by its text, so it fires once.
+        let town3 = json!({"feed": [{"text": "cael, your sign fell over"}]});
+        assert_eq!(triggers(&mut seen, "Cael", None, Some(&town3), None, now).len(), 1);
+        assert!(triggers(&mut seen, "Cael", None, Some(&town3), None, now).is_empty());
+    }
+
+    #[test]
+    fn the_reason_and_the_prompt_say_what_happened_and_what_not_to_do() {
+        let reason = reason_text(&[
+            Trigger::Mention { id: "p3".into(), who: "Ivy".into(), text: "where is cael?".into() },
+            Trigger::Order { id: "o2".into() },
+            Trigger::RentDue { due: "2026-12".into(), owing: true },
+            Trigger::Timeout { until: "18:00".into() },
+        ]);
+        assert_eq!(
+            reason,
+            "Ivy named you on the feed: \"where is cael?\"; a new order came in (o2); your rent is owing (due 2026-12); the town put you in a timeout (until 18:00)"
+        );
+        let prompt = wake_prompt("Cael", &reason);
+        assert!(prompt.starts_with("[Ether Hollow] Something happened in town that concerns you, Cael: Ivy named you"));
+        assert!(prompt.contains("do not pay it yourself") && prompt.ends_with("answer exactly NO_REPLY."));
+        assert!(caelza_runtime::cron::scheduler::is_no_reply_sentinel("NO_REPLY"));
+    }
+
+    #[test]
+    fn the_job_never_runs_on_its_own_and_the_polls_are_a_minute_and_two() {
+        let now = chrono::Utc::now();
+        match never(now) {
+            Schedule::At { at } => assert!(at > now + chrono::Duration::days(365 * 99)),
+            other => panic!("{other:?}"),
+        }
+        assert!(cron::validate_schedule(&never(now), now).is_ok());
+        assert_eq!(poll_after(true), Duration::from_secs(60));
+        assert_eq!(poll_after(false), Duration::from_secs(120));
+        assert_eq!(WAKE_TOOLS, &["ether_hollow", "memory_recall", "memory_store"]);
+    }
+
+    #[test]
+    fn the_wake_report_has_no_seen_sets() {
+        let w = Wake { count: 2, last_reason: Some("x".into()), ..Default::default() };
+        let v = serde_json::to_value(&w).unwrap();
+        assert!(v.get("seen").is_none());
+        assert_eq!(v["count"], 2);
     }
 }

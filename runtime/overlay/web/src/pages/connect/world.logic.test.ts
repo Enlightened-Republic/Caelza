@@ -1,7 +1,7 @@
 import assert from "node:assert/strict";
 import test from "node:test";
 
-import { bioOk, clock, hsl, lookFor, minutesLeft, nameOk, rcText, spendOps, tagFor, townSite, VISITS } from "./world.logic.ts";
+import { bioOk, clock, hsl, lookFor, minutesLeft, nameOk, rcText, spendOps, tagFor, townSite, VISITS, wakeLine, wakeOps } from "./world.logic.ts";
 
 test("a resident's name follows the town's rule", () => {
   assert.equal(nameOk("Cael"), true);
@@ -60,10 +60,29 @@ test("the name tag takes the color nearest the agent's accent", () => {
   assert.equal(tagFor(null), "cyan");
 });
 
-test("the spending switch is one config write and the visits are the three", () => {
+test("the spending and wake switches are one config write each and the visits are the three", () => {
   assert.deepEqual(spendOps(true), [{ op: "add", path: "/ether_hollow/spend", value: true }]);
   assert.deepEqual(spendOps(false), [{ op: "add", path: "/ether_hollow/spend", value: false }]);
+  assert.deepEqual(wakeOps(true), [{ op: "add", path: "/ether_hollow/wake", value: true }]);
+  assert.deepEqual(wakeOps(false, "balanced", []), [{ op: "add", path: "/ether_hollow/wake", value: false }], "off never touches the profile");
+  assert.deepEqual(wakeOps(true, "balanced", ["memory_recall"]), [
+    { op: "add", path: "/ether_hollow/wake", value: true },
+    { op: "add", path: "/risk_profiles/balanced/auto_approve", value: ["memory_recall", "ether_hollow", "memory_store"] },
+  ]);
+  assert.deepEqual(wakeOps(true, "balanced", ["ether_hollow", "memory_recall", "memory_store", "shell"]), [{ op: "add", path: "/ether_hollow/wake", value: true }], "already let through: the switch alone");
   assert.deepEqual([...VISITS], [15, 60, 240]);
+});
+
+test("the last wake reads as one line", () => {
+  const words = { never: "Never woken yet.", quiet: "nothing needed doing", failed: "the wake failed" };
+  assert.equal(wakeLine({ last_at: null, last_reason: null, last_ok: null, last_output: null }, words), "Never woken yet.");
+  const at = 0;
+  const line = wakeLine({ last_at: at, last_reason: "a new order came in (o2)", last_ok: true, last_output: "NO_REPLY" }, words, "en-GB");
+  assert.match(line, /^\d\d:\d\d · a new order came in \(o2\) · nothing needed doing$/);
+  const said = wakeLine({ last_at: at, last_reason: "Ivy named you", last_ok: true, last_output: "I left Ivy a note." }, words, "en-GB");
+  assert.ok(said.endsWith("· I left Ivy a note."));
+  const failed = wakeLine({ last_at: at, last_reason: "x", last_ok: false, last_output: "no provider" }, words, "en-GB");
+  assert.ok(failed.endsWith("· the wake failed"));
 });
 
 test("the words for RC, a visit and the town's address", () => {

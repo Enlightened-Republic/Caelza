@@ -1,0 +1,74 @@
+Caelza: the town wakes the agent (vision §9, M10 slice 3). The waker itself is
+in the overlay module crates/caelza-gateway/src/api_world.rs; this patch adds
+`wake` to `[ether_hollow]`, the `/api/world/wake` route, the waker's start when
+the gateway comes up, and the Connect card's strings for the switch and the
+last wake.
+
+Applied by runtime/build.sh after the rename; regenerate with the same
+`diff -u` when the upstream pin moves.
+
+--- a/crates/caelza-config/src/schema.rs
++++ b/crates/caelza-config/src/schema.rs
+@@ -8576,6 +8576,10 @@
+     pub key: Option<String>,
+     /// Let the agent spend RC, the town's coin (`buy`, `rent`, `rent_pay`). Default: `false`.
+     pub spend: bool,
++    /// Let the town wake the agent: the gateway reads the town every minute or
++    /// two and runs the `ether-hollow` cron agent job on a mention, an order,
++    /// rent due or a timeout. Default: `false`.
++    pub wake: bool,
+ }
+ 
+ impl Default for EtherHollowConfig {
+@@ -8587,6 +8591,7 @@
+             agent: "main".into(),
+             key: None,
+             spend: false,
++            wake: false,
+         }
+     }
+ }
+--- a/crates/caelza-gateway/src/lib.rs
++++ b/crates/caelza-gateway/src/lib.rs
+@@ -2182,6 +2182,9 @@
+         },
+     };
+ 
++    // Ether Hollow: the town wakes the agent while `[ether_hollow] wake` is on.
++    api_world::start_waker(state.clone());
++
+     // Build router with middleware
+     let inner = Router::new()
+         .merge(config_admin_router(&inbound_auth))
+@@ -2384,6 +2387,7 @@
+         .route("/api/world/register", post(api_world::handle_world_register))
+         .route("/api/world/enter", post(api_world::handle_world_enter))
+         .route("/api/world/leave", post(api_world::handle_world_leave))
++        .route("/api/world/wake", post(api_world::handle_world_wake))
+         // The Body (caelza-body over MCP) for the dashboard's Bodies page;
+         // the gateway owns the connection and makes the tool calls.
+         .route("/api/bodies/status", get(api_bodies::handle_bodies_status))
+--- a/web/src/lib/i18n.ts
++++ b/web/src/lib/i18n.ts
+@@ -1112,6 +1112,21 @@
+     'world.rc_unknown': "RC unknown",
+     'world.place_unknown': "somewhere in town",
+     'world.at_place': "at {place}",
++    'world.wake': "Let the town wake your agent",
++    'world.wake_off': "Off",
++    'world.wake_on': "On",
++    'world.wake_note': "On, this device reads the town every minute or two and wakes your agent when something concerns it: someone names it on the feed, an order comes in, rent is due, a timeout begins. The agent looks, does the small thing (a note, a reply, marking an order delivered) and says NO_REPLY when nothing is needed. Never more than once every ten minutes; it never spends. Turning this on also lets the woken agent use the town tool and its memory without asking (its risk profile's auto-approve), because nobody is there to tap; spending stays the switch above.",
++    'world.wake_never': "The town has not woken your agent yet.",
++    'world.wake_quiet': "nothing needed doing",
++    'world.wake_failed_short': "the wake failed; see Procedures › Runs",
++    'world.wake_read_error': "The last read of the town failed: {reason}",
++    'world.wake_now': "Wake now",
++    'world.waking': "Waking…",
++    'world.wake_now_hint': "Runs the same wake with no reason but yours: a way to try it.",
++    'world.woke': "Your agent looked in on the town.",
++    'world.wake_failed': "The wake did not run: {reason}",
++    'world.wake_on_saved': "The town may wake your agent now; this device starts reading it within two minutes.",
++    'world.wake_off_saved': "The town will not wake your agent.",
+     'world.lease': "Renting {lot}, next rent due {due}.",
+     'world.in_timeout': "In a timeout right now: the town reads only until it ends.",
+     'world.visit_length': "How long",

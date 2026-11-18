@@ -90,9 +90,44 @@ export function tagFor(colors: Partial<Record<Slot, string>> | null | undefined)
   return best;
 }
 
-/** The one config write the card makes itself: the spending switch. */
+/** The config writes the card makes itself: the spending switch and the wake switch. */
 export function spendOps(on: boolean): PatchOp[] {
   return [{ op: "add", path: "/ether_hollow/spend", value: on }];
+}
+
+/** The tools a woken agent gets; nobody is there to tap, so its profile must let them through. */
+export const WAKE_TOOLS = ["ether_hollow", "memory_recall", "memory_store"] as const;
+
+/**
+ * The wake switch, and, when it goes on, the resident agent's risk profile
+ * letting the woken agent use the town and its memory without a prompt: a
+ * wake runs with no one to answer one, and a supervised profile denies what
+ * it cannot ask about. Spending stays the tool's own switch. Without a
+ * profile to write, the switch alone is written.
+ */
+export function wakeOps(on: boolean, profile?: string | null, autoApprove?: readonly string[] | null): PatchOp[] {
+  const ops: PatchOp[] = [{ op: "add", path: "/ether_hollow/wake", value: on }];
+  if (on && profile) {
+    const current = autoApprove ?? [];
+    const missing = WAKE_TOOLS.filter((t) => !current.includes(t));
+    if (missing.length) ops.push({ op: "add", path: `/risk_profiles/${profile}/auto_approve`, value: [...current, ...missing] });
+  }
+  return ops;
+}
+
+/** The last wake, as one line: when, why, and whether the agent had anything to say. */
+export function wakeLine(
+  wake: { last_at: number | null; last_reason: string | null; last_ok: boolean | null; last_output: string | null },
+  words: { never: string; quiet: string; failed: string },
+  locale?: string,
+): string {
+  if (wake.last_at === null) return words.never;
+  const when = clock(wake.last_at, locale);
+  const reason = wake.last_reason ?? "";
+  const output = (wake.last_output ?? "").trim();
+  const quiet = /^no_reply\b/i.test(output);
+  const said = wake.last_ok === false ? words.failed : quiet || output === "" ? words.quiet : output;
+  return `${when} · ${reason} · ${said}`;
 }
 
 /** `rc` as the owner reads it: the coin and what it is worth (100 RC = $1). */

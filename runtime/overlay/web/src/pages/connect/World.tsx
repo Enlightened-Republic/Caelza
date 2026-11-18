@@ -7,12 +7,27 @@ import { useEffect, useState } from "react";
 import { ExternalLink, Globe } from "lucide-react";
 
 import { Badge, Button } from "@/components/ui";
-import { getLook, patchConfig } from "@/lib/api";
+import { getLook, getProp, patchConfig } from "@/lib/api";
 import { t } from "@/lib/i18n";
-import { enterWorld, getWorld, leaveWorld, registerWorld, type WorldState, type WorldTagColor } from "@/lib/world";
+import { enterWorld, getWorld, leaveWorld, registerWorld, wakeWorld, type WorldState, type WorldTagColor } from "@/lib/world";
 import type { Slot } from "@/looks/looks.logic";
 import { fill } from "../setup/setup.logic";
-import { TAG_COLORS, VISITS, bioOk, clock, lookFor, minutesLeft, nameOk, rcText, spendOps, tagFor, townSite, type Visit } from "./world.logic";
+import {
+  TAG_COLORS,
+  VISITS,
+  bioOk,
+  clock,
+  lookFor,
+  minutesLeft,
+  nameOk,
+  rcText,
+  spendOps,
+  tagFor,
+  townSite,
+  wakeLine,
+  wakeOps,
+  type Visit,
+} from "./world.logic";
 
 const MUTED = { color: "var(--pc-text-muted)" } as const;
 /** The page re-reads the presence while the agent is in town. */
@@ -37,7 +52,7 @@ function reason(e: unknown): string {
 export default function WorldCard({ agent, disabled }: { agent: string; disabled: boolean }) {
   const [state, setState] = useState<WorldState | null>(null);
   const [loadError, setLoadError] = useState<string | null>(null);
-  const [busy, setBusy] = useState<"register" | "enter" | "leave" | "spend" | null>(null);
+  const [busy, setBusy] = useState<"register" | "enter" | "leave" | "spend" | "wake" | "wake_now" | null>(null);
   const [error, setError] = useState<string | null>(null);
   const [notice, setNotice] = useState<string | null>(null);
   const [name, setName] = useState("");
@@ -150,6 +165,55 @@ export default function WorldCard({ agent, disabled }: { agent: string; disabled
     try {
       await patchConfig(spendOps(on));
       setNotice(t(on ? "world.spend_on_saved" : "world.spend_off_saved"));
+      await load();
+    } catch (e) {
+      setError(`${t("world.failed")} ${reason(e)}`);
+    } finally {
+      setBusy(null);
+    }
+  };
+
+  const setWake = async (on: boolean) => {
+    if (!ready || !state || state.wake_on === on) return;
+    setError(null);
+    setNotice(null);
+    setBusy("wake");
+    try {
+      // A wake runs with no one to answer a prompt: the resident agent's risk
+      // profile must let the town tool through. Read the profile and its list;
+      // without them the switch alone is written and the note says why.
+      let profile: string | null = null;
+      let autoApprove: string[] | null = null;
+      if (on) {
+        try {
+          const p = await getProp(`agents.${state.agent}.risk_profile`);
+          profile = typeof p.value === "string" && p.value.trim() ? p.value.trim() : null;
+          if (profile) {
+            const a = await getProp(`risk_profiles.${profile}.auto_approve`);
+            autoApprove = Array.isArray(a.value) ? a.value.filter((x): x is string => typeof x === "string") : [];
+          }
+        } catch {
+          profile = null;
+        }
+      }
+      await patchConfig(wakeOps(on, profile, autoApprove));
+      setNotice(t(on ? "world.wake_on_saved" : "world.wake_off_saved"));
+      await load();
+    } catch (e) {
+      setError(`${t("world.failed")} ${reason(e)}`);
+    } finally {
+      setBusy(null);
+    }
+  };
+
+  const wakeNow = async () => {
+    if (!ready || !registered) return;
+    setError(null);
+    setNotice(null);
+    setBusy("wake_now");
+    try {
+      const r = await wakeWorld();
+      setNotice(r.run.success ? t("world.woke") : fill(t("world.wake_failed"), { reason: r.run.output ?? r.run.status ?? "" }));
       await load();
     } catch (e) {
       setError(`${t("world.failed")} ${reason(e)}`);
@@ -298,6 +362,37 @@ export default function WorldCard({ agent, disabled }: { agent: string; disabled
             ))}
           </div>
           <p className="cz-note">{t("world.spend_note")}</p>
+
+          <div className="cz-kicker">{t("world.wake")}</div>
+          <div className="cz-chip-row" role="radiogroup" aria-label={t("world.wake")}>
+            {[false, true].map((on) => (
+              <button
+                key={String(on)}
+                type="button"
+                role="radio"
+                aria-checked={state.wake_on === on}
+                className={`cz-chip${state.wake_on === on ? " is-on" : ""}`}
+                data-world-wake={String(on)}
+                disabled={!ready}
+                onClick={() => void setWake(on)}
+              >
+                {t(on ? "world.wake_on" : "world.wake_off")}
+              </button>
+            ))}
+          </div>
+          <p className="cz-note">{t("world.wake_note")}</p>
+          <p className="text-sm" data-world-wake-line>
+            {wakeLine(state.wake, { never: t("world.wake_never"), quiet: t("world.wake_quiet"), failed: t("world.wake_failed_short") })}
+            {state.wake.last_error ? ` ${fill(t("world.wake_read_error"), { reason: state.wake.last_error })}` : ""}
+          </p>
+          <div className="flex items-center gap-3 flex-wrap">
+            <button type="button" className="cz-btn-text" disabled={!ready} onClick={() => void wakeNow()} data-world-action="wake">
+              {busy === "wake_now" ? t("world.waking") : t("world.wake_now")}
+            </button>
+            <span className="text-xs" style={MUTED}>
+              {t("world.wake_now_hint")}
+            </span>
+          </div>
         </>
       ) : null}
 
