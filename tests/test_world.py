@@ -219,17 +219,20 @@ def test_the_town_wakes_the_agent_through_a_cron_job_it_never_schedules():
     assert "run_manual_job_with_selection(&config, &job, CronDeliveryContext::GatewayManual, &event_tx, Some(selection))" in API
     assert "answer exactly NO_REPLY" in API and "do not pay it yourself" in API
     # The card: the switch, the line, Wake now; the client's call.
-    assert "await patchConfig(wakeOps(on));" in DOOR and 'data-world-action="wake"' in DOOR and "data-world-wake-line" in DOOR
+    assert "await patchConfig(wakeOps(on, profile, autoApprove));" in DOOR and 'data-world-action="wake"' in DOOR and "data-world-wake-line" in DOOR
+    assert "getProp(`agents.${state.agent}.risk_profile`)" in DOOR and "getProp(`risk_profiles.${profile}.auto_approve`)" in DOOR
+    assert 'export const WAKE_TOOLS = ["ether_hollow", "memory_recall", "memory_store"] as const;' in DOOR_LOGIC
+    assert "path: `/risk_profiles/${profile}/auto_approve`" in DOOR_LOGIC
     assert "export function wakeOps(" in DOOR_LOGIC and "export function wakeLine(" in DOOR_LOGIC
     assert "export function wakeWorld(" in CLIENT and "'/api/world/wake'" in CLIENT
     used = set(re.findall(r'"(world\.wake[a-z_0-9]*)"', DOOR)) | set(re.findall(r'"(world\.woke|world\.waking)"', DOOR))
     added = set(re.findall(r"^\+    '(world\.[a-z_0-9]+)': ", WAKE_PATCH, re.M))
     assert used and used <= added, sorted(used - added)
     note = re.search(r"^\+    'world\.wake_note': (.*),$", WAKE_PATCH, re.M).group(1)
-    assert "once every ten minutes" in json.loads(note) and "never spends" in json.loads(note)
+    assert "once every ten minutes" in json.loads(note) and "never spends" in json.loads(note) and "auto-approve" in json.loads(note)
     # The FAQ and the corpus say it.
     section = " ".join(FAQ.split("## Can Cael live in Ether Hollow?", 1)[1].split("\n## ", 1)[0].split())
-    assert "Let the town wake your agent" in section and "once every ten minutes" in section
+    assert "Let the town wake your agent" in section and "once every ten minutes" in section and "auto-approve" in section
     assert "wake your agent" in CORPUS and CORPUS == APP_CORPUS
     assert MANIFEST["components"]["runtime"]["world_wake_patch"] == "runtime/patches/0020-world-wake.patch"
     assert "**Slice 3 (the town wakes the agent):**" in VISION.split("| **M10 Ether Hollow** |", 1)[1].split("\n", 1)[0]

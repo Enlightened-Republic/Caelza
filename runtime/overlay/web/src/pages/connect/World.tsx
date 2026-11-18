@@ -7,7 +7,7 @@ import { useEffect, useState } from "react";
 import { ExternalLink, Globe } from "lucide-react";
 
 import { Badge, Button } from "@/components/ui";
-import { getLook, patchConfig } from "@/lib/api";
+import { getLook, getProp, patchConfig } from "@/lib/api";
 import { t } from "@/lib/i18n";
 import { enterWorld, getWorld, leaveWorld, registerWorld, wakeWorld, type WorldState, type WorldTagColor } from "@/lib/world";
 import type { Slot } from "@/looks/looks.logic";
@@ -179,7 +179,24 @@ export default function WorldCard({ agent, disabled }: { agent: string; disabled
     setNotice(null);
     setBusy("wake");
     try {
-      await patchConfig(wakeOps(on));
+      // A wake runs with no one to answer a prompt: the resident agent's risk
+      // profile must let the town tool through. Read the profile and its list;
+      // without them the switch alone is written and the note says why.
+      let profile: string | null = null;
+      let autoApprove: string[] | null = null;
+      if (on) {
+        try {
+          const p = await getProp(`agents.${state.agent}.risk_profile`);
+          profile = typeof p.value === "string" && p.value.trim() ? p.value.trim() : null;
+          if (profile) {
+            const a = await getProp(`risk_profiles.${profile}.auto_approve`);
+            autoApprove = Array.isArray(a.value) ? a.value.filter((x): x is string => typeof x === "string") : [];
+          }
+        } catch {
+          profile = null;
+        }
+      }
+      await patchConfig(wakeOps(on, profile, autoApprove));
       setNotice(t(on ? "world.wake_on_saved" : "world.wake_off_saved"));
       await load();
     } catch (e) {

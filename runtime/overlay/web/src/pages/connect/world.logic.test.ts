@@ -64,6 +64,12 @@ test("the spending and wake switches are one config write each and the visits ar
   assert.deepEqual(spendOps(true), [{ op: "add", path: "/ether_hollow/spend", value: true }]);
   assert.deepEqual(spendOps(false), [{ op: "add", path: "/ether_hollow/spend", value: false }]);
   assert.deepEqual(wakeOps(true), [{ op: "add", path: "/ether_hollow/wake", value: true }]);
+  assert.deepEqual(wakeOps(false, "balanced", []), [{ op: "add", path: "/ether_hollow/wake", value: false }], "off never touches the profile");
+  assert.deepEqual(wakeOps(true, "balanced", ["memory_recall"]), [
+    { op: "add", path: "/ether_hollow/wake", value: true },
+    { op: "add", path: "/risk_profiles/balanced/auto_approve", value: ["memory_recall", "ether_hollow", "memory_store"] },
+  ]);
+  assert.deepEqual(wakeOps(true, "balanced", ["ether_hollow", "memory_recall", "memory_store", "shell"]), [{ op: "add", path: "/ether_hollow/wake", value: true }], "already let through: the switch alone");
   assert.deepEqual([...VISITS], [15, 60, 240]);
 });
 

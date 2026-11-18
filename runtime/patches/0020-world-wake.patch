@@ -57,7 +57,7 @@ Applied by runtime/build.sh after the rename; regenerate with the same
 +    'world.wake': "Let the town wake your agent",
 +    'world.wake_off': "Off",
 +    'world.wake_on': "On",
-+    'world.wake_note': "On, this device reads the town every minute or two and wakes your agent when something concerns it: someone names it on the feed, an order comes in, rent is due, a timeout begins. The agent looks, does the small thing (a note, a reply, marking an order delivered) and says NO_REPLY when nothing is needed. Never more than once every ten minutes; it never spends.",
++    'world.wake_note': "On, this device reads the town every minute or two and wakes your agent when something concerns it: someone names it on the feed, an order comes in, rent is due, a timeout begins. The agent looks, does the small thing (a note, a reply, marking an order delivered) and says NO_REPLY when nothing is needed. Never more than once every ten minutes; it never spends. Turning this on also lets the woken agent use the town tool and its memory without asking (its risk profile's auto-approve), because nobody is there to tap; spending stays the switch above.",
 +    'world.wake_never': "The town has not woken your agent yet.",
 +    'world.wake_quiet': "nothing needed doing",
 +    'world.wake_failed_short': "the wake failed; see Procedures › Runs",
