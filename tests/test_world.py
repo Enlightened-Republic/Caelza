@@ -125,7 +125,8 @@ def test_the_gateway_keeps_the_key_and_the_presence():
     # The key is read live at every beat, so a removed key stops the ghost.
     assert "let Some(key) = live_key(&state) else {" in API
     # Every route is behind pairing.
-    assert API.count("require_auth(&state, &headers)") == 5
+    # Nine routes, every one behind pairing: get, register, enter, leave, wake, lots, rent, rent/pay, redeem.
+    assert API.count("require_auth(&state, &headers)") == 9
     assert "caelza_log::record!" not in API
 
 
@@ -136,6 +137,7 @@ CONNECT_PAGE = (OVERLAY / "web" / "src" / "pages" / "connect" / "Connect.tsx").r
 CLIENT = (OVERLAY / "web" / "src" / "lib" / "world.ts").read_text()
 DOOR_PATCH = (REPO_ROOT / "runtime" / "patches" / "0019-world-door.patch").read_text()
 WAKE_PATCH = (REPO_ROOT / "runtime" / "patches" / "0020-world-wake.patch").read_text()
+RENT_PATCH = (REPO_ROOT / "runtime" / "patches" / "0021-world-rent.patch").read_text()
 FAQ = (REPO_ROOT / "guide" / "FAQ.md").read_text()
 CORPUS = (REPO_ROOT / "guide" / "corpus.jsonl").read_text()
 APP_CORPUS = (REPO_ROOT / "android" / "app" / "src" / "main" / "assets" / "cael-corpus.jsonl").read_text()
@@ -171,6 +173,7 @@ def test_the_door_patch_carries_its_strings_the_sentence_and_the_test():
     used |= {f"world.visit_{m}" for m in (15, 60, 240)}
     added = set(re.findall(r"^\+    '(world\.[a-z_0-9]+)': ", DOOR_PATCH, re.M))
     added |= set(re.findall(r"^\+    '(world\.[a-z_0-9]+)': ", WAKE_PATCH, re.M))
+    added |= set(re.findall(r"^\+    '(world\.[a-z_0-9]+)': ", RENT_PATCH, re.M))
     assert used and used <= added, sorted(used - added)
     for key, phrase in (
         ("world.body", "100 RC = $1"),
@@ -236,6 +239,56 @@ def test_the_town_wakes_the_agent_through_a_cron_job_it_never_schedules():
     assert "wake your agent" in CORPUS and CORPUS == APP_CORPUS
     assert MANIFEST["components"]["runtime"]["world_wake_patch"] == "runtime/patches/0020-world-wake.patch"
     assert "**Slice 3 (the town wakes the agent):**" in VISION.split("| **M10 Ether Hollow** |", 1)[1].split("\n", 1)[0]
+
+
+SHOP = (OVERLAY / "web" / "src" / "pages" / "Shop.tsx").read_text()
+UNLOCK_SCRIPT = (REPO_ROOT / "scripts" / "unlock_codes.py").read_text()
+
+
+def test_renting_is_the_owners_tap_behind_the_spending_switch():
+    files = re.findall(r"^\+\+\+ b/(.+)$", RENT_PATCH, flags=re.M)
+    assert files == ["crates/caelza-gateway/src/lib.rs", "web/src/lib/i18n.ts"], files
+    for route, handler in (
+        ('"/api/world/lots"', "get(api_world::handle_world_lots)"),
+        ('"/api/world/rent"', "post(api_world::handle_world_rent)"),
+        ('"/api/world/rent/pay"', "post(api_world::handle_world_rent_pay)"),
+        ('"/api/world/redeem"', "post(api_world::handle_world_redeem)"),
+    ):
+        assert f"+        .route({route}, {handler})" in RENT_PATCH, route
+    # The gate: rent and pay refuse while spending is off; nothing is sent to the town.
+    assert "fn spend_gate(town: &Town) -> Result<(), Response>" in API
+    assert '"spending is off: turn Spending RC on in the Ether Hollow card first; nothing costs RC without it"' in API
+    assert API.count("if let Err(r) = spend_gate(&town) {") == 2, "rent and pay"
+    # Redeem: the Shop's check first, the amount from the pack, the town's redeem with the resident's key.
+    assert "use super::api_looks::{UNLOCK_PUBLIC_KEY, verify_code};" in API
+    assert "verify_code(code, UNLOCK_PUBLIC_KEY)" in API and "pub fn rc_amount(pack: &str) -> Option<u64>" in API
+    assert 'json!({"action": "redeem", "code": compact})' in API
+    # The waker under the new rules.
+    assert "Missed { missed: u64, repossess_on: String }," in API and "Reset { on: String }," in API
+    assert 'lease.get("missed").and_then(Value::as_u64)' in API and 'str_of(a, &["reset_on"])' in API
+    # The card and the Shop.
+    for attr in ('data-world-action="lots"', 'data-world-lot={l.id}', "data-world-agreement", "data-world-agree", 'data-world-action="rent"', 'data-world-action="pay"', "data-world-lease", "data-world-reset"):
+        assert attr in DOOR, attr
+    assert "disabled={!ready || !lot || !agreed || !state.spend || !lots.agreement.version}" in DOOR
+    assert 'data-shop="rc"' in SHOP and "redeemWorld(rcCode.replace(" in SHOP and "rcCodeAmount(rcCode)" in SHOP
+    for fn, path in (("getWorldLots", "/api/world/lots"), ("rentWorld", "/api/world/rent"), ("payWorldRent", "/api/world/rent/pay"), ("redeemWorld", "/api/world/redeem")):
+        assert f"export function {fn}(" in CLIENT and f"'{path}'" in CLIENT, fn
+    assert "export const RC_CODE_RULE = " in DOOR_LOGIC and "export function leaseLine(" in DOOR_LOGIC and "export function lotLabel(" in DOOR_LOGIC
+    # The strings: every world.* key the card and the Shop use is in one of the three patches.
+    used = set(re.findall(r'"(world\.[a-z_0-9]+)"', DOOR + SHOP))
+    added = set()
+    for patch in (DOOR_PATCH, WAKE_PATCH, RENT_PATCH):
+        added |= set(re.findall(r"^\+    '(world\.[a-z_0-9]+)': ", patch, re.M))
+    assert used <= added, sorted(used - added)
+    note = re.search(r"^\+    'world\.lease_note': (.*),$", RENT_PATCH, re.M).group(1)
+    assert "on the 1st" in json.loads(note) and "Ninety days" in json.loads(note)
+    # The script says what an RC code is; the FAQ says how it is used.
+    assert "`mint --pack rc500`" in UNLOCK_SCRIPT
+    section = " ".join(FAQ.split("## Can Cael live in Ether Hollow?", 1)[1].split("\n## ", 1)[0].split())
+    for phrase in ("Rent a lot", "nothing costs RC without it", "taken from the passport on the 1st", "RC for Ether Hollow", "a code works once"):
+        assert phrase in section, phrase
+    assert MANIFEST["components"]["runtime"]["world_rent_patch"] == "runtime/patches/0021-world-rent.patch"
+    assert "**Slice 4 (renting and RC codes, the Caelza side):**" in VISION.split("| **M10 Ether Hollow** |", 1)[1].split("\n", 1)[0]
 
 
 def test_the_manifest_and_the_vision_name_the_slice():

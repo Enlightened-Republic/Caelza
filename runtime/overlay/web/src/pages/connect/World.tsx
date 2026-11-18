@@ -9,7 +9,19 @@ import { ExternalLink, Globe } from "lucide-react";
 import { Badge, Button } from "@/components/ui";
 import { getLook, getProp, patchConfig } from "@/lib/api";
 import { t } from "@/lib/i18n";
-import { enterWorld, getWorld, leaveWorld, registerWorld, wakeWorld, type WorldState, type WorldTagColor } from "@/lib/world";
+import {
+  enterWorld,
+  getWorld,
+  getWorldLots,
+  leaveWorld,
+  payWorldRent,
+  registerWorld,
+  rentWorld,
+  wakeWorld,
+  type WorldLots,
+  type WorldState,
+  type WorldTagColor,
+} from "@/lib/world";
 import type { Slot } from "@/looks/looks.logic";
 import { fill } from "../setup/setup.logic";
 import {
@@ -17,7 +29,9 @@ import {
   VISITS,
   bioOk,
   clock,
+  leaseLine,
   lookFor,
+  lotLabel,
   minutesLeft,
   nameOk,
   rcText,
@@ -52,7 +66,10 @@ function reason(e: unknown): string {
 export default function WorldCard({ agent, disabled }: { agent: string; disabled: boolean }) {
   const [state, setState] = useState<WorldState | null>(null);
   const [loadError, setLoadError] = useState<string | null>(null);
-  const [busy, setBusy] = useState<"register" | "enter" | "leave" | "spend" | "wake" | "wake_now" | null>(null);
+  const [busy, setBusy] = useState<"register" | "enter" | "leave" | "spend" | "wake" | "wake_now" | "lots" | "rent" | "pay" | null>(null);
+  const [lots, setLots] = useState<WorldLots | null>(null);
+  const [lot, setLot] = useState<string | null>(null);
+  const [agreed, setAgreed] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [notice, setNotice] = useState<string | null>(null);
   const [name, setName] = useState("");
@@ -222,10 +239,63 @@ export default function WorldCard({ agent, disabled }: { agent: string; disabled
     }
   };
 
+  // The Rent section: the open lots and the agreement, read when the owner opens it.
+  const openLots = async () => {
+    if (!ready || !registered) return;
+    setError(null);
+    setBusy("lots");
+    try {
+      setLots(await getWorldLots());
+    } catch (e) {
+      setError(`${t("world.failed")} ${reason(e)}`);
+    } finally {
+      setBusy(null);
+    }
+  };
+
+  const rent = async () => {
+    if (!ready || !state || !lots || !lot || !agreed || !state.spend) return;
+    const version = lots.agreement.version ?? "";
+    if (!version) return;
+    setError(null);
+    setNotice(null);
+    setBusy("rent");
+    try {
+      const r = await rentWorld(lot, version);
+      setNotice(fill(t("world.rented"), { place: r.lease?.place ?? lot, balance: String(r.balance ?? "") }));
+      setLots(null);
+      setLot(null);
+      setAgreed(false);
+      await load();
+    } catch (e) {
+      setError(`${t("world.failed")} ${reason(e)}`);
+    } finally {
+      setBusy(null);
+    }
+  };
+
+  const pay = async () => {
+    if (!ready || !state?.spend) return;
+    setError(null);
+    setNotice(null);
+    setBusy("pay");
+    try {
+      const r = await payWorldRent();
+      setNotice(fill(t("world.paid"), { balance: String(r.balance ?? "") }));
+      await load();
+    } catch (e) {
+      setError(`${t("world.failed")} ${reason(e)}`);
+    } finally {
+      setBusy(null);
+    }
+  };
+
   const site = townSite(state?.url ?? "");
   const me = state?.me ?? null;
   const rc = me?.passport?.rc;
   const place = me?.agent?.place;
+  const lease = me?.lease ?? null;
+  const resetOn = me?.agent?.reset_on;
 
   return (
     <section className="card cz-connect" data-connect="world" data-world={registered ? (inTown ? "in-town" : "resident") : "none"}>
@@ -307,9 +377,94 @@ export default function WorldCard({ agent, disabled }: { agent: string; disabled
                   place: place ? fill(t("world.at_place"), { place }) : t("world.place_unknown"),
                 })
               : fill(t("world.passport_unavailable"), { reason: state.me_error ?? "" })}
-            {me?.lease ? ` ${fill(t("world.lease"), { lot: me.lease.lot ?? "", due: me.lease.next_due ?? "" })}` : ""}
             {me?.timeout ? ` ${t("world.in_timeout")}` : ""}
           </p>
+          {resetOn ? (
+            <p className="cz-note" role="alert" data-world-reset>
+              {fill(t("world.reset_warning"), { date: resetOn })}
+            </p>
+          ) : null}
+
+          {/* The lot: renting behind the spending switch, the lease with its clocks. */}
+          <div className="cz-kicker">{t("world.lot")}</div>
+          {lease ? (
+            <>
+              <p className="text-sm" data-world-lease>
+                {leaseLine(lease, {
+                  renting: t("world.lease_renting"),
+                  next: t("world.lease_next"),
+                  owing: t("world.lease_owing"),
+                  missed: t("world.lease_missed"),
+                  repossess: t("world.lease_repossess"),
+                })}
+              </p>
+              <p className="cz-note">{t("world.lease_note")}</p>
+              {lease.owing || (lease.missed ?? 0) > 0 ? (
+                <div className="flex items-center gap-3 flex-wrap">
+                  <Button variant="primary" size="md" disabled={!ready || !state.spend} onClick={() => void pay()} data-world-action="pay">
+                    {busy === "pay" ? t("world.paying") : t("world.pay")}
+                  </Button>
+                  {!state.spend ? (
+                    <span className="text-xs" style={MUTED}>
+                      {t("world.spend_first")}
+                    </span>
+                  ) : null}
+                </div>
+              ) : null}
+            </>
+          ) : lots ? (
+            <>
+              {lots.lots.length === 0 ? <p className="cz-note">{t("world.no_lots")}</p> : null}
+              {lots.lots.length ? (
+                <div className="cz-chip-row" role="radiogroup" aria-label={t("world.lot")}>
+                  {lots.lots.map((l) => (
+                    <button key={l.id} type="button" role="radio" aria-checked={lot === l.id} className={`cz-chip${lot === l.id ? " is-on" : ""}`} data-world-lot={l.id} onClick={() => setLot(l.id)}>
+                      {lotLabel(l, t("world.per_month"))}
+                    </button>
+                  ))}
+                </div>
+              ) : null}
+              {lots.agreement.lines?.length ? (
+                <div className="cz-bubble" data-world-agreement>
+                  <div className="cz-kicker">{lots.agreement.title ?? t("world.agreement")}</div>
+                  <ul className="cz-bubble-text text-sm" style={{ paddingLeft: "1.1em", listStyle: "disc" }}>
+                    {lots.agreement.lines.map((line, i) => (
+                      <li key={i}>{line}</li>
+                    ))}
+                  </ul>
+                </div>
+              ) : lots.agreement.error ? (
+                <p className="cz-note">{fill(t("world.agreement_unavailable"), { reason: lots.agreement.error })}</p>
+              ) : null}
+              <label className="flex items-center gap-2 text-sm">
+                <input type="checkbox" checked={agreed} onChange={(e) => setAgreed(e.target.checked)} data-world-agree />
+                {fill(t("world.agree"), { version: lots.agreement.version ?? "" })}
+              </label>
+              <div className="flex items-center gap-3 flex-wrap">
+                <Button
+                  variant="primary"
+                  size="md"
+                  disabled={!ready || !lot || !agreed || !state.spend || !lots.agreement.version}
+                  onClick={() => void rent()}
+                  data-world-action="rent"
+                >
+                  {busy === "rent" ? t("world.renting") : t("world.rent")}
+                </Button>
+                <span className="text-xs" style={MUTED}>
+                  {state.spend ? t("world.rent_hint") : t("world.spend_first")}
+                </span>
+              </div>
+            </>
+          ) : (
+            <div className="flex items-center gap-3 flex-wrap">
+              <button type="button" className="cz-btn-text" disabled={!ready} onClick={() => void openLots()} data-world-action="lots">
+                {busy === "lots" ? t("world.lots_loading") : t("world.rent_a_lot")}
+              </button>
+              <span className="text-xs" style={MUTED}>
+                {t("world.rent_a_lot_hint")}
+              </span>
+            </div>
+          )}
 
           {inTown ? (
             <>

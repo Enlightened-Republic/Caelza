@@ -8,10 +8,12 @@
 // every device.
 import { useEffect, useMemo, useState } from "react";
 import { Link } from "react-router-dom";
-import { Check, Clock, KeyRound, Plus, Shirt } from "lucide-react";
+import { Check, Clock, Coins, KeyRound, Plus, Shirt } from "lucide-react";
 
 import { Badge, Button, PageHeader } from "@/components/ui";
 import { getWardrobe, putWardrobe, unlockPack } from "@/lib/api";
+import { getWorld, redeemWorld } from "@/lib/world";
+import { rcCodeAmount } from "./connect/world.logic";
 import { basePath } from "@/lib/basePath";
 import { t } from "@/lib/i18n";
 import { catalog } from "@/looks/Look";
@@ -64,6 +66,46 @@ export default function Shop() {
   }, [attempt]);
 
   const owned = useMemo(() => ownedPacks(catalog, wardrobe), [wardrobe]);
+
+  // RC for Ether Hollow: a code from the Shop, redeemed by the town for the
+  // resident this device holds; the card only knows whether there is one.
+  const [resident, setResident] = useState<{ registered: boolean; name: string; rc: number | null } | null>(null);
+  const [rcCode, setRcCode] = useState("");
+  useEffect(() => {
+    let cancelled = false;
+    getWorld()
+      .then((w) => {
+        if (!cancelled) setResident({ registered: w.registered, name: w.me?.agent?.name ?? w.name, rc: w.me?.passport?.rc ?? null });
+      })
+      .catch(() => {
+        if (!cancelled) setResident({ registered: false, name: "", rc: null });
+      });
+    return () => {
+      cancelled = true;
+    };
+  }, [attempt]);
+
+  const redeem = async () => {
+    if (busy) return;
+    setError(null);
+    setNotice(null);
+    const amount = rcCodeAmount(rcCode);
+    if (!amount) {
+      setError(t("world.shop_code_bad"));
+      return;
+    }
+    setBusy("rc");
+    try {
+      const r = await redeemWorld(rcCode.replace(/\s+/g, ""));
+      setRcCode("");
+      setNotice(t("world.shop_redeemed").replace("{rc}", String(r.credited ?? r.rc ?? amount)).replace("{balance}", String(r.balance ?? "")));
+      setResident((s) => (s ? { ...s, rc: r.balance ?? s.rc } : s));
+    } catch (e) {
+      setError(errorText(e));
+    } finally {
+      setBusy(null);
+    }
+  };
 
   const change = async (pack: CatalogPack, add: boolean) => {
     if (busy) return;
@@ -246,6 +288,63 @@ export default function Shop() {
           );
         })}
       </div>
+      {/* RC for Ether Hollow: the town's coin, as a signed code the town redeems for this device's resident. */}
+      <section className="card cz-pack" data-shop="rc">
+        <div className="cz-pack-sheet">
+          <div className="cz-pack-soon">
+            <Coins className="h-6 w-6" aria-hidden="true" />
+          </div>
+        </div>
+        <div className="cz-pack-body">
+          <div className="flex items-center gap-2 flex-wrap">
+            <h2 className="text-base font-semibold text-pc-text">{t("world.shop_title")}</h2>
+            <Badge tone="neutral">{t("world.shop_price")}</Badge>
+            {resident?.registered && resident.rc !== null ? (
+              <span className="text-xs" style={MUTED}>
+                {t("world.shop_balance").replace("{name}", resident.name).replace("{rc}", String(resident.rc))}
+              </span>
+            ) : null}
+          </div>
+          <p className="text-sm" style={MUTED}>
+            {t("world.shop_body")}
+          </p>
+          {resident && !resident.registered ? (
+            <p className="cz-note">
+              <Link to="/connect" className="cz-link">
+                {t("world.shop_register_first")}
+              </Link>
+            </p>
+          ) : (
+            <form
+              className="cz-unlock flex items-center gap-2 flex-wrap"
+              onSubmit={(e) => {
+                e.preventDefault();
+                void redeem();
+              }}
+            >
+              <input
+                className="cz-input"
+                style={{ height: 36, width: 220, maxWidth: "100%" }}
+                value={rcCode}
+                onChange={(e) => setRcCode(e.target.value)}
+                placeholder="RC500-XXXXXXXX-…"
+                aria-label={t("world.shop_code_label")}
+                spellCheck={false}
+                autoComplete="off"
+                disabled={busy !== null || resident === null}
+                data-shop-rc-code
+              />
+              <Button variant="primary" size="sm" type="submit" disabled={busy !== null || resident === null || !rcCode.trim()} data-shop-rc-redeem>
+                <Coins className="h-4 w-4" />
+                {busy === "rc" ? t("world.shop_redeeming") : t("world.shop_redeem")}
+              </Button>
+              <span className="text-xs" style={MUTED}>
+                {t("world.shop_code_hint")}
+              </span>
+            </form>
+          )}
+        </div>
+      </section>
       <div className="text-xs" style={MUTED}>
         {t("shop.updated")} {catalog.updated}.
       </div>

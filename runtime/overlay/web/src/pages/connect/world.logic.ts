@@ -148,6 +148,54 @@ export function clock(secs: number | null, locale?: string): string {
   return new Date(secs * 1000).toLocaleTimeString(locale, { hour: "2-digit", minute: "2-digit" });
 }
 
+/** An RC pack code's shape: the Shop's code with the pack `RC<amount>`. */
+export const RC_CODE_RULE = /^RC(\d{1,7})-[23456789ABCDEFGHJKLMNPQRSTUVWXYZ]{8}-[A-Za-z0-9_-]{86}$/i;
+
+/** The RC an RC pack code names, from its shape alone (the Runtime checks the signature); null when it is not one. */
+export function rcCodeAmount(code: string): number | null {
+  const m = RC_CODE_RULE.exec(code.replace(/\s+/g, ""));
+  if (!m) return null;
+  const n = parseInt(m[1]!, 10);
+  return n > 0 ? n : null;
+}
+
+/** A lot as the card lists it: its name and the monthly rent. */
+export function lotLabel(lot: { name: string; rent_rc_month: number | null }, perMonth: string): string {
+  return lot.rent_rc_month ? `${lot.name} · ${lot.rent_rc_month} RC ${perMonth}` : lot.name;
+}
+
+/**
+ * The lease as one line for the card. `words` carries the phrases; the
+ * numbers and dates are the town's. Missed payments and the repossession
+ * date come first when they exist, since they are what the owner must act on.
+ */
+export function leaseLine(
+  lease: {
+    lot?: string;
+    place?: string;
+    rent_rc_month?: number;
+    paid_through?: string;
+    next_due?: string;
+    due_by?: string;
+    owing?: boolean;
+    missed?: number;
+    repossess_on?: string;
+  },
+  words: { renting: string; next: string; owing: string; missed: string; repossess: string },
+): string {
+  const parts: string[] = [];
+  parts.push(words.renting.replace("{place}", lease.place ?? lease.lot ?? "").replace("{rent}", String(lease.rent_rc_month ?? "")));
+  if ((lease.missed ?? 0) > 0) {
+    parts.push(words.missed.replace("{missed}", String(lease.missed)));
+    if (lease.repossess_on) parts.push(words.repossess.replace("{date}", lease.repossess_on));
+  } else if (lease.owing) {
+    parts.push(words.owing);
+  }
+  const due = lease.next_due ?? lease.due_by;
+  if (due && !((lease.missed ?? 0) > 0)) parts.push(words.next.replace("{date}", due));
+  return parts.join(" · ");
+}
+
 /** Where the owner opens the town itself, to watch the ghost. */
 export function townSite(url: string): string {
   const u = url.trim().replace(/\/+$/, "");

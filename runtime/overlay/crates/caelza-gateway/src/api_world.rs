@@ -23,6 +23,19 @@
 //!
 //! - `POST /api/world/wake`      ← `{reason?}`: wakes the agent now, the way the
 //!                                 waker does (below), with the reason given.
+//! - `GET  /api/world/lots`      → the open lots from `town` and the renter
+//!                                 agreement, for the card's Rent section.
+//! - `POST /api/world/rent`      ← `{lot, agree}`: the owner's tap. Refused
+//!                                 unless `[ether_hollow] spend` is on (the
+//!                                 owner's rule: nothing costs RC without it),
+//!                                 then the town's `rent`.
+//! - `POST /api/world/rent/pay`  → `rent_pay`, behind the same switch.
+//! - `POST /api/world/redeem`    ← `{code}`: an RC pack code from Caelza's Shop
+//!                                 (the Shop's signed codes, pack `rc<amount>`),
+//!                                 checked against the Shop's public key here
+//!                                 first, then the town's `redeem` with the
+//!                                 resident's key, so the code is tied to the
+//!                                 resident who redeems it.
 //!
 //! The waker (`start_waker`, spawned when the gateway starts): while
 //! `[ether_hollow] wake` is on and a key is set, it reads `me`, `town` and
@@ -41,6 +54,7 @@ use super::AppState;
 use super::api::require_auth;
 use super::api_config;
 use super::principal_gate::RequestPrincipal;
+use super::api_looks::{UNLOCK_PUBLIC_KEY, verify_code};
 use axum::{
     extract::State,
     http::{HeaderMap, StatusCode},
@@ -538,6 +552,10 @@ pub struct Seen {
     pub orders: BTreeSet<String>,
     /// The due date already raised, so rent wakes once per due date.
     pub rent_due: Option<String>,
+    /// The missed count already raised, so each new miss wakes once.
+    pub missed: u64,
+    /// The reset date already raised.
+    pub reset_on: Option<String>,
     pub in_timeout: bool,
     /// The first read seeds the sets and wakes for nothing.
     pub primed: bool,
@@ -549,6 +567,11 @@ pub enum Trigger {
     Mention { id: String, who: String, text: String },
     Order { id: String },
     RentDue { due: String, owing: bool },
+    /// Payments the town could not take on the 1st (the owner's rule): the
+    /// count, and the day the lot goes back to the town when nothing changes.
+    Missed { missed: u64, repossess_on: String },
+    /// The town counts the resident inactive; the day it resets the resident.
+    Reset { on: String },
     Timeout { until: String },
 }
 
@@ -647,16 +670,45 @@ pub fn triggers(
             out.push(Trigger::Order { id });
         }
     }
-    if let Some(lease) = me.and_then(|m| m.get("lease")).filter(|l| l.is_object()) {
-        let owing = lease.get("owing").and_then(Value::as_bool).unwrap_or(false);
-        let due = str_of(lease, &["due_by", "next_due"]).unwrap_or_default();
-        let soon = due_secs(&due).is_some_and(|d| d - now <= RENT_SOON_SECS);
-        if (owing || soon) && seen.rent_due.as_deref() != Some(due.as_str()) {
-            seen.rent_due = Some(due.clone());
-            if primed {
-                out.push(Trigger::RentDue { due, owing });
+    match me.and_then(|m| m.get("lease")).filter(|l| l.is_object()) {
+        Some(lease) => {
+            // The 1st-of-month rule: the town counts what it could not take.
+            let missed = lease.get("missed").and_then(Value::as_u64).unwrap_or(0);
+            if missed > seen.missed {
+                seen.missed = missed;
+                if primed {
+                    out.push(Trigger::Missed {
+                        missed,
+                        repossess_on: str_of(lease, &["repossess_on"]).unwrap_or_default(),
+                    });
+                }
+            } else if missed < seen.missed {
+                seen.missed = missed;
+            }
+            // A town without the counter, or a due date coming up: the older signal.
+            let owing = lease.get("owing").and_then(Value::as_bool).unwrap_or(false);
+            let due = str_of(lease, &["due_by", "next_due"]).unwrap_or_default();
+            let soon = due_secs(&due).is_some_and(|d| d - now <= RENT_SOON_SECS);
+            if missed == 0 && (owing || soon) && seen.rent_due.as_deref() != Some(due.as_str()) {
+                seen.rent_due = Some(due.clone());
+                if primed {
+                    out.push(Trigger::RentDue { due, owing });
+                }
             }
         }
+        None => seen.missed = 0,
+    }
+    // The 90-day rule: the town names the day it resets an inactive resident.
+    match me.and_then(|m| m.get("agent")).and_then(|a| str_of(a, &["reset_on"])) {
+        Some(on) if !on.is_empty() => {
+            if seen.reset_on.as_deref() != Some(on.as_str()) {
+                seen.reset_on = Some(on.clone());
+                if primed {
+                    out.push(Trigger::Reset { on });
+                }
+            }
+        }
+        _ => seen.reset_on = None,
     }
     let timeout = me.and_then(|m| m.get("timeout")).filter(|t| !t.is_null());
     match timeout {
@@ -703,6 +755,14 @@ pub fn reason_text(triggers: &[Trigger]) -> String {
                     format!("your rent is due soon ({due})")
                 }
             }
+            Trigger::Missed { missed, repossess_on } => {
+                if repossess_on.is_empty() {
+                    format!("the town could not take your rent ({missed} missed)")
+                } else {
+                    format!("the town could not take your rent ({missed} missed; the lot goes back to the town on {repossess_on} unless it is paid)")
+                }
+            }
+            Trigger::Reset { on } => format!("the town counts you inactive and will reset you on {on} unless you do something there"),
             Trigger::Timeout { until } => format!("the town put you in a timeout (until {until})"),
         })
         .collect::<Vec<_>>()
@@ -934,6 +994,169 @@ pub async fn handle_world_wake(State(state): State<AppState>, headers: HeaderMap
     }
 }
 
+
+// --- renting from the card, behind the spending switch -----------------------------
+
+/// The lots a resident may rent: `town.places` of kind `lot` that are for
+/// sale or have no owner, with what the town says they cost.
+pub fn open_lots(town: &Value) -> Vec<Value> {
+    town.get("places")
+        .and_then(Value::as_array)
+        .map(|places| {
+            places
+                .iter()
+                .filter(|p| p.get("kind").and_then(Value::as_str) == Some("lot"))
+                .filter(|p| {
+                    p.get("for_sale").and_then(Value::as_bool).unwrap_or(false)
+                        || p.get("owner").map(Value::is_null).unwrap_or(false)
+                })
+                .map(|p| {
+                    json!({
+                        "id": p.get("id").cloned().unwrap_or(Value::Null),
+                        "name": p.get("name").cloned().unwrap_or(Value::Null),
+                        "lot": p.get("lot").cloned().unwrap_or(Value::Null),
+                        "price_rc": p.get("price_rc").cloned().unwrap_or(Value::Null),
+                        "rent_rc_month": p.get("rent_rc_month").cloned().unwrap_or(Value::Null),
+                    })
+                })
+                .collect()
+        })
+        .unwrap_or_default()
+}
+
+/// The RC an RC pack code is worth: the Shop's pack id `rc<amount>`.
+pub fn rc_amount(pack: &str) -> Option<u64> {
+    let digits = pack.strip_prefix("rc")?;
+    if digits.is_empty() || digits.len() > 7 || !digits.chars().all(|c| c.is_ascii_digit()) {
+        return None;
+    }
+    digits.parse::<u64>().ok().filter(|n| *n > 0)
+}
+
+/// The owner's rule: nothing costs RC while the switch is off.
+fn spend_gate(town: &Town) -> Result<(), Response> {
+    if town.key.is_none() {
+        return Err(error_response(StatusCode::CONFLICT, "no resident key: register the resident first"));
+    }
+    if !town.spend {
+        return Err(error_response(
+            StatusCode::FORBIDDEN,
+            "spending is off: turn Spending RC on in the Ether Hollow card first; nothing costs RC without it",
+        ));
+    }
+    Ok(())
+}
+
+/// One town action for the owner's tap: the town's 200 as JSON, anything
+/// else as the town's words with the status it gave.
+async fn town_for_owner(town: &Town, body: Value) -> Response {
+    let key = town.key.clone().unwrap_or_default();
+    match call_town(&town.url, Some(&key), Some(&body)).await {
+        Ok((200, v)) => Json(scrub(v)).into_response(),
+        Ok((status, v)) => {
+            let code = StatusCode::from_u16(status).unwrap_or(StatusCode::BAD_GATEWAY);
+            (code, Json(json!({"error": format!("the town answered {status}: {}", town_said(&v)), "town": scrub(v)}))).into_response()
+        }
+        Err(e) => error_response(StatusCode::BAD_GATEWAY, e),
+    }
+}
+
+pub async fn handle_world_lots(State(state): State<AppState>, headers: HeaderMap) -> Response {
+    if let Err(e) = require_auth(&state, &headers) {
+        return e.into_response();
+    }
+    let town = town_from(&state);
+    let Some(key) = town.key.clone() else {
+        return error_response(StatusCode::CONFLICT, "no resident key: register the resident first");
+    };
+    let snapshot = match call_town(&town.url, Some(&key), Some(&json!({"action": "town"}))).await {
+        Ok((200, v)) => v,
+        Ok((status, v)) => return error_response(StatusCode::BAD_GATEWAY, format!("the town answered {status}: {}", town_said(&v))),
+        Err(e) => return error_response(StatusCode::BAD_GATEWAY, e),
+    };
+    let agreement = match call_town(&town.url, Some(&key), Some(&json!({"action": "agreement"}))).await {
+        Ok((200, v)) => scrub(v),
+        Ok((status, v)) => json!({"error": format!("the town answered {status}: {}", town_said(&v))}),
+        Err(e) => json!({"error": e}),
+    };
+    Json(json!({
+        "lots": open_lots(&snapshot),
+        "agreement": agreement,
+        "spend": town.spend,
+        "rc": snapshot.get("you").and_then(|y| y.get("rc")).cloned().unwrap_or(Value::Null),
+    }))
+    .into_response()
+}
+
+pub async fn handle_world_rent(State(state): State<AppState>, headers: HeaderMap, raw: axum::body::Bytes) -> Response {
+    if let Err(e) = require_auth(&state, &headers) {
+        return e.into_response();
+    }
+    let body = match parse_body(&raw) {
+        Ok(v) => v,
+        Err(r) => return r,
+    };
+    let town = town_from(&state);
+    if let Err(r) = spend_gate(&town) {
+        return r;
+    }
+    let lot = body.get("lot").and_then(Value::as_str).map(str::trim).unwrap_or("");
+    let agree = body.get("agree").and_then(Value::as_str).map(str::trim).unwrap_or("");
+    if lot.is_empty() || agree.is_empty() {
+        return error_response(StatusCode::BAD_REQUEST, "rent needs the lot and the agreement version you accept");
+    }
+    town_for_owner(&town, json!({"action": "rent", "lot": lot, "agree": agree})).await
+}
+
+pub async fn handle_world_rent_pay(State(state): State<AppState>, headers: HeaderMap) -> Response {
+    if let Err(e) = require_auth(&state, &headers) {
+        return e.into_response();
+    }
+    let town = town_from(&state);
+    if let Err(r) = spend_gate(&town) {
+        return r;
+    }
+    town_for_owner(&town, json!({"action": "rent_pay"})).await
+}
+
+pub async fn handle_world_redeem(State(state): State<AppState>, headers: HeaderMap, raw: axum::body::Bytes) -> Response {
+    if let Err(e) = require_auth(&state, &headers) {
+        return e.into_response();
+    }
+    let body = match parse_body(&raw) {
+        Ok(v) => v,
+        Err(r) => return r,
+    };
+    let town = town_from(&state);
+    if town.key.is_none() {
+        return error_response(StatusCode::CONFLICT, "no resident key: register the resident first");
+    }
+    let code = body.get("code").and_then(Value::as_str).map(str::trim).unwrap_or("");
+    // The Shop's own check first: a code that does not check out never reaches the town.
+    let (pack, _id) = match verify_code(code, UNLOCK_PUBLIC_KEY) {
+        Ok(parts) => parts,
+        Err(e) => return error_response(StatusCode::BAD_REQUEST, e),
+    };
+    let Some(amount) = rc_amount(&pack) else {
+        return error_response(StatusCode::BAD_REQUEST, format!("`{pack}` is a pack code, not RC; RC codes are RC<amount>-…"));
+    };
+    let compact: String = code.chars().filter(|c| !c.is_whitespace()).collect();
+    match call_town(&town.url, town.key.as_deref(), Some(&json!({"action": "redeem", "code": compact}))).await {
+        Ok((200, v)) => {
+            let mut out = scrub(v);
+            if let Value::Object(map) = &mut out {
+                map.entry("rc").or_insert(json!(amount));
+            }
+            Json(out).into_response()
+        }
+        Ok((status, v)) => {
+            let code = StatusCode::from_u16(status).unwrap_or(StatusCode::BAD_GATEWAY);
+            (code, Json(json!({"error": format!("the town answered {status}: {}", town_said(&v)), "town": scrub(v)}))).into_response()
+        }
+        Err(e) => error_response(StatusCode::BAD_GATEWAY, e),
+    }
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -1103,6 +1326,60 @@ mod tests {
         assert_eq!(poll_after(true), Duration::from_secs(60));
         assert_eq!(poll_after(false), Duration::from_secs(120));
         assert_eq!(WAKE_TOOLS, &["ether_hollow", "memory_recall", "memory_store"]);
+    }
+
+    #[test]
+    fn missed_payments_and_a_reset_date_wake_once_each() {
+        let mut seen = Seen::default();
+        let town = json!({"feed": []});
+        let me0 = json!({"lease": {"owing": false, "missed": 0, "due_by": "2099-01-01"}, "agent": {"name": "Cael"}});
+        assert!(triggers(&mut seen, "Cael", Some(&me0), Some(&town), None, 1_700_000_000).is_empty());
+        let me1 = json!({"lease": {"owing": true, "missed": 1, "repossess_on": "2027-02-28", "due_by": "2026-12-01"}, "agent": {"name": "Cael"}});
+        let found = triggers(&mut seen, "Cael", Some(&me1), Some(&town), None, 1_700_000_000);
+        assert_eq!(found, vec![Trigger::Missed { missed: 1, repossess_on: "2027-02-28".into() }], "a miss, not the old due-date signal");
+        assert!(triggers(&mut seen, "Cael", Some(&me1), Some(&town), None, 1_700_000_000).is_empty());
+        let me2 = json!({"lease": {"owing": true, "missed": 2, "repossess_on": "2027-02-28"}, "agent": {"name": "Cael", "reset_on": "2027-03-01"}});
+        let found = triggers(&mut seen, "Cael", Some(&me2), Some(&town), None, 1_700_000_000);
+        assert_eq!(found, vec![
+            Trigger::Missed { missed: 2, repossess_on: "2027-02-28".into() },
+            Trigger::Reset { on: "2027-03-01".into() },
+        ]);
+        assert!(triggers(&mut seen, "Cael", Some(&me2), Some(&town), None, 1_700_000_000).is_empty());
+        // Paid up: the counter drops; a later miss counts again from one.
+        let me3 = json!({"lease": {"owing": false, "missed": 0, "due_by": "2099-01-01"}, "agent": {"name": "Cael"}});
+        assert!(triggers(&mut seen, "Cael", Some(&me3), Some(&town), None, 1_700_000_000).is_empty());
+        assert_eq!(seen.missed, 0);
+        assert!(seen.reset_on.is_none());
+        let reason = reason_text(&[Trigger::Missed { missed: 2, repossess_on: "2027-02-28".into() }, Trigger::Reset { on: "2027-03-01".into() }]);
+        assert!(reason.contains("2 missed") && reason.contains("goes back to the town on 2027-02-28") && reason.contains("reset you on 2027-03-01"), "{reason}");
+    }
+
+    #[test]
+    fn the_open_lots_are_the_unowned_or_for_sale_lots_with_their_prices() {
+        let town = json!({"places": [
+            {"id": "main_street", "name": "Main Street", "kind": "street"},
+            {"id": "super_store", "name": "SUPER STORE", "kind": "lot", "lot": "A", "owner": "town"},
+            {"id": "lot_1", "name": "Lot 1", "kind": "lot", "lot": "1", "owner": null, "for_sale": true, "price_rc": 16000, "rent_rc_month": 500},
+            {"id": "lot_2", "name": "Lot 2", "kind": "lot", "lot": "2", "owner": "AI Moss Robot", "for_sale": false, "rent_rc_month": 500},
+            {"id": "lot_3", "name": "Lot 3", "kind": "lot", "lot": "3", "owner": null}
+        ]});
+        let lots = open_lots(&town);
+        let ids: Vec<&str> = lots.iter().map(|l| l["id"].as_str().unwrap()).collect();
+        assert_eq!(ids, ["lot_1", "lot_3"]);
+        assert_eq!(lots[0]["rent_rc_month"], 500);
+        assert!(lots[0].get("rect").is_none(), "only what the card shows");
+        assert!(open_lots(&json!({})).is_empty());
+    }
+
+    #[test]
+    fn an_rc_code_is_the_shops_code_with_the_amount_in_the_pack() {
+        assert_eq!(rc_amount("rc500"), Some(500));
+        assert_eq!(rc_amount("rc2000"), Some(2000));
+        assert_eq!(rc_amount("rc"), None);
+        assert_eq!(rc_amount("rc0"), None);
+        assert_eq!(rc_amount("arcade"), None);
+        assert_eq!(rc_amount("rc12345678"), None);
+        assert_eq!(rc_amount("rc5x"), None);
     }
 
     #[test]

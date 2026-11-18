@@ -18,6 +18,12 @@ Ed25519 is RFC 8032 in plain Python below (slow, a few milliseconds a code,
 and nothing to install), pinned to the RFC's test vectors and to the Rust
 side by tests/test_unlock_codes.py. A code is cosmetic: this is an honest
 storefront, not DRM.
+
+RC packs for Ether Hollow are the same codes with the pack id `rc<amount>`
+(`mint --pack rc500`): the Shop's "RC for Ether Hollow" card checks the
+signature on the device and the town redeems the code once, crediting the
+resident's passport with that many RC (the town verifies with this public key
+and keeps the spent ids).
 """
 from __future__ import annotations
 
