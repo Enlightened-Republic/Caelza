@@ -26,9 +26,20 @@ export interface WorldPresence {
 
 /** The town's `me`, scrubbed of anything key-shaped by the gateway. */
 export interface WorldMe {
-  agent?: { aid?: string; name?: string; bio?: string; look?: WorldLook; color?: WorldTagColor; place?: string; pid?: string };
+  agent?: {
+    aid?: string;
+    name?: string;
+    bio?: string;
+    look?: WorldLook;
+    color?: WorldTagColor;
+    place?: string;
+    pid?: string;
+    /** The town's 90-day rule: set once the resident has been quiet for 60 days. */
+    reset_on?: string;
+    last_active?: string;
+  };
   passport?: { rc?: number; pid?: string; [k: string]: unknown };
-  lease?: { lot?: string; place?: string; rent_rc_month?: number; next_due?: string; owing?: boolean } | null;
+  lease?: WorldLease | null;
   timeout?: { until?: string; minutes_left?: number } | null;
   revoked?: boolean;
 }
@@ -121,6 +132,85 @@ export function enterWorld(minutes: number): Promise<WorldEnterResult> {
 
 export function leaveWorld(): Promise<WorldLeaveResult> {
   return apiFetch<WorldLeaveResult>('/api/world/leave', { method: 'POST' });
+}
+
+/** An open lot, as the town lists it. */
+export interface WorldLot {
+  id: string;
+  name: string;
+  lot: string | null;
+  price_rc: number | null;
+  rent_rc_month: number | null;
+}
+
+export interface WorldAgreement {
+  version?: string;
+  title?: string;
+  lines?: string[];
+  error?: string;
+}
+
+export interface WorldLots {
+  lots: WorldLot[];
+  agreement: WorldAgreement;
+  spend: boolean;
+  rc: number | null;
+}
+
+export interface WorldLease {
+  lot?: string;
+  place?: string;
+  rent_rc_month?: number;
+  since?: string;
+  paid_through?: string;
+  next_due?: string;
+  due_by?: string;
+  agreement?: string;
+  owing?: boolean;
+  missed?: number;
+  missed_since?: string;
+  repossess_on?: string;
+}
+
+export interface WorldRentResult {
+  lease?: WorldLease;
+  balance?: number;
+  error?: string;
+}
+
+export interface WorldRedeemResult {
+  credited?: number;
+  rc?: number;
+  balance?: number;
+  error?: string;
+}
+
+/** The open lots and the renter agreement, for the card's Rent section. */
+export function getWorldLots(): Promise<WorldLots> {
+  return apiFetch<WorldLots>('/api/world/lots');
+}
+
+/** The owner's tap: rent `lot` having accepted agreement version `agree`. Refused while spending is off. */
+export function rentWorld(lot: string, agree: string): Promise<WorldRentResult> {
+  return apiFetch<WorldRentResult>('/api/world/rent', {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ lot, agree }),
+  });
+}
+
+/** Pay what is owing on the lease. Refused while spending is off. */
+export function payWorldRent(): Promise<WorldRentResult> {
+  return apiFetch<WorldRentResult>('/api/world/rent/pay', { method: 'POST' });
+}
+
+/** An RC pack code from the Shop, checked here and redeemed by the town for this resident. */
+export function redeemWorld(code: string): Promise<WorldRedeemResult> {
+  return apiFetch<WorldRedeemResult>('/api/world/redeem', {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ code }),
+  });
 }
 
 /** Wake the agent now, the way the town would, with a reason of the owner's. */

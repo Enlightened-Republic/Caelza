@@ -1,7 +1,7 @@
 import assert from "node:assert/strict";
 import test from "node:test";
 
-import { bioOk, clock, hsl, lookFor, minutesLeft, nameOk, rcText, spendOps, tagFor, townSite, VISITS, wakeLine, wakeOps } from "./world.logic.ts";
+import { bioOk, clock, hsl, leaseLine, lookFor, lotLabel, minutesLeft, nameOk, rcCodeAmount, rcText, spendOps, tagFor, townSite, VISITS, wakeLine, wakeOps } from "./world.logic.ts";
 
 test("a resident's name follows the town's rule", () => {
   assert.equal(nameOk("Cael"), true);
@@ -71,6 +71,28 @@ test("the spending and wake switches are one config write each and the visits ar
   ]);
   assert.deepEqual(wakeOps(true, "balanced", ["ether_hollow", "memory_recall", "memory_store", "shell"]), [{ op: "add", path: "/ether_hollow/wake", value: true }], "already let through: the switch alone");
   assert.deepEqual([...VISITS], [15, 60, 240]);
+});
+
+test("an RC code is the Shop's code with the amount in the pack", () => {
+  const sig = "M9z0fcplw6kgE2r1tzRdxl_UCQu_u8k-sLxeEnkB2Pyekgo1PawD-QL-PirDPpa0ELfZoHUnfGbl4uqHtRlkBw";
+  assert.equal(rcCodeAmount(`RC500-CCAWA2ET-${sig}`), 500);
+  assert.equal(rcCodeAmount(` rc2000-CCAWA2ET-${sig} `), 2000, "case and spaces are forgiven");
+  assert.equal(rcCodeAmount(`ARCADE-CCAWA2ET-${sig}`), null, "a pack code is not RC");
+  assert.equal(rcCodeAmount(`RC0-CCAWA2ET-${sig}`), null);
+  assert.equal(rcCodeAmount("RC500-CCAWA2ET-short"), null);
+  assert.equal(rcCodeAmount(`RC500-CCAWA2E0-${sig}`), null, "0 is not in the id alphabet");
+});
+
+test("a lot and a lease read as one line each", () => {
+  assert.equal(lotLabel({ name: "Lot 1", rent_rc_month: 500 }, "a month"), "Lot 1 · 500 RC a month");
+  assert.equal(lotLabel({ name: "Lot 9", rent_rc_month: null }, "a month"), "Lot 9");
+  const words = { renting: "Renting {place} at {rent} RC a month", next: "next rent {date}", owing: "rent is owing", missed: "{missed} missed", repossess: "the lot goes back to the town on {date}" };
+  assert.equal(leaseLine({ lot: "lot_1", place: "Lot 1", rent_rc_month: 500, next_due: "2027-01-01", owing: false, missed: 0 }, words), "Renting Lot 1 at 500 RC a month · next rent 2027-01-01");
+  assert.equal(leaseLine({ lot: "lot_1", rent_rc_month: 500, due_by: "2026-12-07", owing: true }, words), "Renting lot_1 at 500 RC a month · rent is owing · next rent 2026-12-07");
+  assert.equal(
+    leaseLine({ place: "Lot 1", rent_rc_month: 500, next_due: "2027-01-01", owing: true, missed: 2, repossess_on: "2027-02-28" }, words),
+    "Renting Lot 1 at 500 RC a month · 2 missed · the lot goes back to the town on 2027-02-28",
+  );
 });
 
 test("the last wake reads as one line", () => {

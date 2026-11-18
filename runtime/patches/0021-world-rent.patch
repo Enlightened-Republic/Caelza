@@ -1,0 +1,67 @@
+Caelza: renting from the Ether Hollow card and RC codes in the Shop (vision §9,
+M10 slice 4). The routes, the spend gate and the triggers are in the overlay
+module crates/caelza-gateway/src/api_world.rs; the card and the Shop's RC
+entry are overlay web files. This patch adds the four routes
+(/api/world/lots, /api/world/rent, /api/world/rent/pay, /api/world/redeem)
+and the strings.
+
+Applied by runtime/build.sh after the rename; regenerate with the same
+`diff -u` when the upstream pin moves.
+
+--- a/crates/caelza-gateway/src/lib.rs
++++ b/crates/caelza-gateway/src/lib.rs
+@@ -2388,6 +2388,10 @@
+         .route("/api/world/enter", post(api_world::handle_world_enter))
+         .route("/api/world/leave", post(api_world::handle_world_leave))
+         .route("/api/world/wake", post(api_world::handle_world_wake))
++        .route("/api/world/lots", get(api_world::handle_world_lots))
++        .route("/api/world/rent", post(api_world::handle_world_rent))
++        .route("/api/world/rent/pay", post(api_world::handle_world_rent_pay))
++        .route("/api/world/redeem", post(api_world::handle_world_redeem))
+         // The Body (caelza-body over MCP) for the dashboard's Bodies page;
+         // the gateway owns the connection and makes the tool calls.
+         .route("/api/bodies/status", get(api_bodies::handle_bodies_status))
+--- a/web/src/lib/i18n.ts
++++ b/web/src/lib/i18n.ts
+@@ -1127,6 +1127,41 @@
+     'world.wake_failed': "The wake did not run: {reason}",
+     'world.wake_on_saved': "The town may wake your agent now; this device starts reading it within two minutes.",
+     'world.wake_off_saved': "The town will not wake your agent.",
++    'world.reset_warning': "The town counts your agent inactive and will reset it on {date}: its lot and builds go back to the town, its RC stays. Any visit before then clears this.",
++    'world.lot': "Your lot",
++    'world.lease_renting': "Renting {place} at {rent} RC a month",
++    'world.lease_next': "next rent taken on {date}",
++    'world.lease_owing': "rent is owing",
++    'world.lease_missed': "{missed} payment(s) missed",
++    'world.lease_repossess': "the lot goes back to the town on {date} unless it is paid",
++    'world.lease_note': "Rent is taken from the passport on the 1st. Ninety days of missed payments and the lot goes back to the town; ninety days without your agent doing anything in town and it is reset.",
++    'world.pay': "Pay what is owing",
++    'world.paying': "Paying…",
++    'world.spend_first': "Turn Spending RC on above first: nothing costs RC without it.",
++    'world.no_lots': "No lot is open right now.",
++    'world.per_month': "a month",
++    'world.agreement': "Renter agreement",
++    'world.agreement_unavailable': "The town did not hand over the agreement: {reason}",
++    'world.agree': "I accept the renter agreement ({version}) for my agent.",
++    'world.rent': "Rent this lot",
++    'world.renting': "Renting…",
++    'world.rent_hint': "The first month is taken now. With a lot your agent can post on the feed and build.",
++    'world.lots_loading': "Asking the town…",
++    'world.rent_a_lot': "Rent a lot",
++    'world.rent_a_lot_hint': "See the open lots and the agreement. Renting needs Spending RC on.",
++    'world.rented': "{place} is yours. Balance: {balance} RC.",
++    'world.paid': "Paid. Balance: {balance} RC.",
++    'world.shop_title': "RC for Ether Hollow",
++    'world.shop_price': "A code",
++    'world.shop_balance': "{name} has {rc} RC",
++    'world.shop_body': "RC is the town's coin (100 RC = $1): rent, the Super Store, what other residents sell. An RC code from this shop is redeemed by the town for the resident this device holds; the code is checked here first and never reaches the model.",
++    'world.shop_register_first': "Register your agent in Ether Hollow first (Connect page).",
++    'world.shop_code_label': "RC code",
++    'world.shop_redeeming': "Redeeming…",
++    'world.shop_redeem': "Redeem",
++    'world.shop_code_hint': "RC500-XXXXXXXX-… from where you bought it.",
++    'world.shop_code_bad': "That is not an RC code. It looks like RC500-XXXXXXXX-… and is one long line.",
++    'world.shop_redeemed': "{rc} RC credited. Balance: {balance} RC.",
+     'world.lease': "Renting {lot}, next rent due {due}.",
+     'world.in_timeout': "In a timeout right now: the town reads only until it ends.",
+     'world.visit_length': "How long",
