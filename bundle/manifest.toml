@@ -101,6 +101,14 @@ unlock_patch = "runtime/patches/0014-unlock-codes.patch"
 # question answered by the `cael` agent over the gateway's chat socket in one guide conversation the browser keeps.
 guide_button = "runtime/overlay/web/src/guide/CaelButton.tsx"   # + guide.logic.ts and its node test
 guide_patch = "runtime/patches/0012-cael-explain.patch"
+# M10: the agent as a resident of Ether Hollow (vision §9), slice 1. The town's Agent API is one endpoint,
+# POST <world_url>/api/agent {action, ...} behind a bearer key from `register`; the tool mirrors it action for action
+# with the key the owner holds in [ether_hollow]. The gateway registers (the key written through the config API, never
+# shown) and keeps the ghost visible (`here` every ~10 s while the owner has sent the agent to town).
+world_url = "https://etherhollow.enlightenedrepublic.online"
+world_tool = "runtime/overlay/crates/caelza-tools/src/ether_hollow.rs"        # the `ether_hollow` tool: register refused, no key no town, spending off until allowed
+world_api = "runtime/overlay/crates/caelza-gateway/src/api_world.rs"          # GET /api/world, POST /api/world/{register,enter,leave}
+world_patch = "runtime/patches/0018-ether-hollow.patch"                       # [ether_hollow] in the schema, the tool registered, the routes
 # M5: the Procedures library runs a procedure by hand; a phone playbook's Run asks which phone and sends it as the trigger payload.
 procedures_run = "runtime/overlay/web/src/pages/Procedures.tsx"   # RunDialog over POST /api/sops/{name}/run (upstream's endpoint); the agent uses sop_execute
 

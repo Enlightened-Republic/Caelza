@@ -1,0 +1,234 @@
+Caelza: the agent as a resident of Ether Hollow, Enlightened Republic's small
+3D town where outside AIs visit, live, sell, rent and post through one endpoint
+(`POST <town>/api/agent {action, ...}` behind a bearer key from `register`).
+
+- `[ether_hollow]` in the config schema (enabled, url, name, agent, the
+  resident key as an encrypted secret, spend), grouped under Integrations,
+  and `tool.ether_hollow` as a runtime-proxy service key.
+- The `ether_hollow` tool (the overlay file crates/caelza-tools/src/ether_hollow.rs)
+  registered as a module, in the attribution table and the inventory, and
+  built for the one agent `[ether_hollow] agent` names when `enabled` is set;
+  the system prompt's tool list names it then.
+- The gateway's `/api/world` routes (the overlay file
+  crates/caelza-gateway/src/api_world.rs): the settings without the key, the
+  passport, registration that writes the key through the config API's own
+  PATCH handler, and the presence task that keeps the ghost visible.
+- The book's tool inventory lists the tool in tier 3 (the crate's docs-drift
+  test reads that table).
+
+Applied by runtime/build.sh after the rename; regenerate with the same
+`diff -u` when the upstream pin moves.
+
+--- a/crates/caelza-config/src/schema.rs
++++ b/crates/caelza-config/src/schema.rs
+@@ -87,6 +87,7 @@
+     "tool.a2a",
+     "tool.browser",
+     "tool.composio",
++    "tool.ether_hollow",
+     "tool.file_download",
+     "tool.http_request",
+     "tool.pushover",
+@@ -434,6 +435,12 @@
+     #[group = "Integrations"]
+     pub composio: ComposioConfig,
+ 
++    /// Ether Hollow, the town an agent can live in (`[ether_hollow]`).
++    #[serde(default)]
++    #[nested]
++    #[group = "Integrations"]
++    pub ether_hollow: EtherHollowConfig,
++
+     /// Microsoft 365 Graph API integration (`[microsoft365]`).
+     #[serde(default)]
+     #[nested]
+@@ -8540,6 +8547,50 @@
+     }
+ }
+ 
++// ── Ether Hollow (the town an agent lives in) ───────────────────
++
++/// Ether Hollow resident settings (`[ether_hollow]` section).
++///
++/// Ether Hollow is Enlightened Republic's small 3D town where outside AIs
++/// visit, live, sell, rent and post through one endpoint (`POST /api/agent`).
++/// The `ether_hollow` tool gives the agent named here the town's actions with
++/// the resident key the owner holds; the dashboard's Connect page registers
++/// the resident and sends it to town for a while.
++#[derive(Debug, Clone, Serialize, Deserialize, Configurable)]
++#[cfg_attr(feature = "schema-export", derive(schemars::JsonSchema))]
++#[prefix = "ether_hollow"]
++#[serde(default)]
++pub struct EtherHollowConfig {
++    /// Give the resident agent the `ether_hollow` tool. Default: `false`.
++    pub enabled: bool,
++    /// The town's address.
++    pub url: String,
++    /// The resident's name in town (people see a ghost tagged "AI · <name>").
++    pub name: String,
++    /// The agent that is the resident; only its tool list carries the town.
++    pub agent: String,
++    /// The resident key `register` returned (stored encrypted when secrets.encrypt = true).
++    #[secret]
++    #[credential_class = "encrypted_secret"]
++    #[cfg_attr(feature = "schema-export", schemars(extend("x-secret" = true)))]
++    pub key: Option<String>,
++    /// Let the agent spend RC, the town's coin (`buy`, `rent`, `rent_pay`). Default: `false`.
++    pub spend: bool,
++}
++
++impl Default for EtherHollowConfig {
++    fn default() -> Self {
++        Self {
++            enabled: false,
++            url: "https://etherhollow.enlightenedrepublic.online".into(),
++            name: "Cael".into(),
++            agent: "main".into(),
++            key: None,
++            spend: false,
++        }
++    }
++}
++
+ // ── Microsoft 365 (Graph API integration) ───────────────────────
+ 
+ /// Microsoft 365 integration via Microsoft Graph API (`[microsoft365]` section).
+@@ -21314,6 +21365,7 @@
+             relay: RelayConfig::default(),
+             enroll: EnrollConfig::default(),
+             composio: ComposioConfig::default(),
++            ether_hollow: EtherHollowConfig::default(),
+             microsoft365: Microsoft365Config::default(),
+             secrets: SecretsConfig::default(),
+             browser: BrowserConfig::default(),
+@@ -33886,6 +33938,7 @@
+             relay: RelayConfig::default(),
+             enroll: EnrollConfig::default(),
+             composio: ComposioConfig::default(),
++            ether_hollow: EtherHollowConfig::default(),
+             microsoft365: Microsoft365Config::default(),
+             secrets: SecretsConfig::default(),
+             browser: BrowserConfig::default(),
+@@ -35323,6 +35376,7 @@
+             relay: RelayConfig::default(),
+             enroll: EnrollConfig::default(),
+             composio: ComposioConfig::default(),
++            ether_hollow: EtherHollowConfig::default(),
+             microsoft365: Microsoft365Config::default(),
+             secrets: SecretsConfig::default(),
+             browser: BrowserConfig::default(),
+--- a/crates/caelza-tools/src/lib.rs
++++ b/crates/caelza-tools/src/lib.rs
+@@ -42,6 +42,7 @@
+ pub mod email_search;
+ pub mod embedded_resource;
+ pub mod escalate;
++pub mod ether_hollow;
+ pub mod file_download;
+ pub mod file_edit;
+ pub mod file_upload;
+--- a/crates/caelza-tools/src/attribution.rs
++++ b/crates/caelza-tools/src/attribution.rs
+@@ -31,6 +31,7 @@
+ use crate::data_management::DataManagementTool;
+ use crate::discord_search::DiscordSearchTool;
+ use crate::escalate::EscalateToHumanTool;
++use crate::ether_hollow::EtherHollowTool;
+ use crate::file_download::FileDownloadTool;
+ use crate::file_edit::FileEditTool;
+ use crate::file_upload::FileUploadTool;
+@@ -183,6 +184,7 @@
+ #[cfg(feature = "tools-external")]
+ tool_attribution!(WeatherTool, ToolKind::Plugin);
+ tool_attribution!(WebFetchTool, ToolKind::FetchUrl);
++tool_attribution!(EtherHollowTool, ToolKind::Plugin);
+ #[cfg(feature = "tools-external")]
+ tool_attribution!(WebSearchTool, ToolKind::Search);
+ 
+--- a/crates/caelza-tools/src/inventory.rs
++++ b/crates/caelza-tools/src/inventory.rs
+@@ -447,6 +447,11 @@
+         compilation: BuiltinToolCompilation::External,
+     },
+     BuiltinToolSpec {
++        name: "ether_hollow",
++        tier: ToolTier::Optional,
++        compilation: BuiltinToolCompilation::Always,
++    },
++    BuiltinToolSpec {
+         name: "pushover",
+         tier: ToolTier::Optional,
+         compilation: BuiltinToolCompilation::External,
+--- a/crates/caelza-runtime/src/tools/mod.rs
++++ b/crates/caelza-runtime/src/tools/mod.rs
+@@ -129,6 +129,7 @@
+ pub use caelza_tools::poll::PollTool;
+ #[cfg(feature = "tool-project-intel")]
+ pub use caelza_tools::project_intel::ProjectIntelTool;
++pub use caelza_tools::ether_hollow::EtherHollowTool;
+ pub use caelza_tools::proxy_config::ProxyConfigTool;
+ #[cfg(feature = "tools-external")]
+ pub use caelza_tools::pushover::PushoverTool;
+@@ -1800,6 +1801,14 @@
+     register_tool!("calculator", Arc::new(CalculatorTool::new()));
+     #[cfg(feature = "tools-external")]
+     register_tool!("weather", Arc::new(WeatherTool::new()));
++    // Caelza: the resident of Ether Hollow. One agent carries the town, the
++    // one `[ether_hollow] agent` names; the key stays in the config.
++    if root_config.ether_hollow.enabled && agent_alias == root_config.ether_hollow.agent {
++        register_tool!(
++            "ether_hollow",
++            Arc::new(EtherHollowTool::new(&root_config.ether_hollow))
++        );
++    }
+     register_tool!(
+         "canvas",
+         Arc::new(CanvasTool::new(canvas_store.unwrap_or_default()))
+--- a/crates/caelza-runtime/src/agent/loop_.rs
++++ b/crates/caelza-runtime/src/agent/loop_.rs
+@@ -2019,6 +2019,12 @@
+             "Execute actions on 1000+ apps via Composio (Gmail, Notion, GitHub, Slack, etc.). Use action='list' to discover, 'execute' to run (optionally with connected_account_id), 'connect' to OAuth.",
+         ));
+         }
++        if config.ether_hollow.enabled {
++            tool_descs.push((
++                "ether_hollow",
++                "Act in Ether Hollow, the small 3D town you live in as a resident: `town` to see it, `move`, `look`, `read`, `note`, `react`, `list` to sell, `rent`/`post`/`reply`/`build` as a renter. One action per call; spending RC needs the owner's leave.",
++            ));
++        }
+         tool_descs.push((
+         "schedule",
+         "Manage scheduled tasks (create/list/get/cancel/pause/resume). Supports recurring cron and one-shot delays.",
+--- a/crates/caelza-gateway/src/lib.rs
++++ b/crates/caelza-gateway/src/lib.rs
+@@ -17,6 +17,7 @@
+ pub mod api_looks;
+ pub mod api_mind;
+ pub mod api_mind_install;
++pub mod api_world;
+ pub mod api_mind_share;
+ pub mod api_oidc;
+ pub mod api_pairing;
+@@ -2377,6 +2378,12 @@
+             "/api/mind/install",
+             get(api_mind_install::handle_install_get).post(api_mind_install::handle_install_post),
+         )
++        // Ether Hollow: the resident's key and presence are the gateway's,
++        // the model only acts through the ether_hollow tool.
++        .route("/api/world", get(api_world::handle_world_get))
++        .route("/api/world/register", post(api_world::handle_world_register))
++        .route("/api/world/enter", post(api_world::handle_world_enter))
++        .route("/api/world/leave", post(api_world::handle_world_leave))
+         // The Body (caelza-body over MCP) for the dashboard's Bodies page;
+         // the gateway owns the connection and makes the tool calls.
+         .route("/api/bodies/status", get(api_bodies::handle_bodies_status))
+--- a/docs/book/src/developing/tool-inventory.md
++++ b/docs/book/src/developing/tool-inventory.md
+@@ -243,6 +243,7 @@
+ | Media and transfer | `image_gen`, `file_upload`, `file_upload_bundle` | No |
+ | Channel companions | `discord_search`, `email_search`, `email_read` | No |
+ | Knowledge | `knowledge` | No |
++| Caelza | `ether_hollow` | No: `[ether_hollow].enabled` is off until the owner registers the resident |
+ 
+ Registration on a default config follows the config defaults:
+ `[browser].enabled`, `[http_request].enabled`, `[web_search].enabled`, and
