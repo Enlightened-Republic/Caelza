@@ -125,7 +125,7 @@ def test_the_gateway_keeps_the_key_and_the_presence():
     # The key is read live at every beat, so a removed key stops the ghost.
     assert "let Some(key) = live_key(&state) else {" in API
     # Every route is behind pairing.
-    assert API.count("require_auth(&state, &headers)") == 4
+    assert API.count("require_auth(&state, &headers)") == 5
     assert "caelza_log::record!" not in API
 
 
@@ -135,6 +135,7 @@ DOOR_LOGIC_TEST = (OVERLAY / "web" / "src" / "pages" / "connect" / "world.logic.
 CONNECT_PAGE = (OVERLAY / "web" / "src" / "pages" / "connect" / "Connect.tsx").read_text()
 CLIENT = (OVERLAY / "web" / "src" / "lib" / "world.ts").read_text()
 DOOR_PATCH = (REPO_ROOT / "runtime" / "patches" / "0019-world-door.patch").read_text()
+WAKE_PATCH = (REPO_ROOT / "runtime" / "patches" / "0020-world-wake.patch").read_text()
 FAQ = (REPO_ROOT / "guide" / "FAQ.md").read_text()
 CORPUS = (REPO_ROOT / "guide" / "corpus.jsonl").read_text()
 APP_CORPUS = (REPO_ROOT / "android" / "app" / "src" / "main" / "assets" / "cael-corpus.jsonl").read_text()
@@ -169,6 +170,7 @@ def test_the_door_patch_carries_its_strings_the_sentence_and_the_test():
     used |= {f"world.color_{c}" for c in ("cyan", "gold", "magenta", "lime", "orange", "violet")}
     used |= {f"world.visit_{m}" for m in (15, 60, 240)}
     added = set(re.findall(r"^\+    '(world\.[a-z_0-9]+)': ", DOOR_PATCH, re.M))
+    added |= set(re.findall(r"^\+    '(world\.[a-z_0-9]+)': ", WAKE_PATCH, re.M))
     assert used and used <= added, sorted(used - added)
     for key, phrase in (
         ("world.body", "100 RC = $1"),
@@ -191,6 +193,46 @@ def test_the_faq_and_the_corpus_say_how_to_live_in_the_town():
         assert phrase in section, phrase
     assert "Can Cael live in Ether Hollow?" in CORPUS
     assert CORPUS == APP_CORPUS, "the app's copy of the corpus is the rebuilt one"
+
+
+def test_the_town_wakes_the_agent_through_a_cron_job_it_never_schedules():
+    # The switch in the schema, the route, the waker started with the gateway.
+    files = re.findall(r"^\+\+\+ b/(.+)$", WAKE_PATCH, flags=re.M)
+    assert files == ["crates/caelza-config/src/schema.rs", "crates/caelza-gateway/src/lib.rs", "web/src/lib/i18n.ts"], files
+    assert "+    pub wake: bool,\n" in WAKE_PATCH and "+            wake: false,\n" in WAKE_PATCH
+    assert '+        .route("/api/world/wake", post(api_world::handle_world_wake))' in WAKE_PATCH
+    assert "+    api_world::start_waker(state.clone());" in WAKE_PATCH
+    # The waker: what it reads, what wakes, how often, with which tools.
+    assert 'pub const JOB_NAME: &str = "ether-hollow";' in API
+    assert "pub const POLL_IN_TOWN: Duration = Duration::from_secs(60);" in API
+    assert "pub const POLL_AWAY: Duration = Duration::from_secs(120);" in API
+    assert "pub const MIN_GAP: Duration = Duration::from_secs(10 * 60);" in API
+    assert "pub const RENT_SOON_SECS: i64 = 48 * 3600;" in API
+    assert 'pub const WAKE_TOOLS: &[&str] = &["ether_hollow", "memory_recall", "memory_store"];' in API
+    for variant in ("Mention {", "Order {", "RentDue {", "Timeout {"):
+        assert variant in API, variant
+    assert "seen.primed = true;" in API, "the first read primes"
+    # The job: made once, never on its own, isolated, memory on, re-prompted each wake, run as the manual trigger runs it.
+    assert "Schedule::At { at: now + chrono::Duration::days(365 * 100) }" in API
+    assert "SessionTarget::Isolated," in API and "Some(DeliveryConfig::default())," in API
+    assert "cron::resolve_job_id_or_name(&config, JOB_NAME, &agent)" in API
+    assert "run_manual_job_with_selection(&config, &job, CronDeliveryContext::GatewayManual, &event_tx, Some(selection))" in API
+    assert "answer exactly NO_REPLY" in API and "do not pay it yourself" in API
+    # The card: the switch, the line, Wake now; the client's call.
+    assert "await patchConfig(wakeOps(on));" in DOOR and 'data-world-action="wake"' in DOOR and "data-world-wake-line" in DOOR
+    assert "export function wakeOps(" in DOOR_LOGIC and "export function wakeLine(" in DOOR_LOGIC
+    assert "export function wakeWorld(" in CLIENT and "'/api/world/wake'" in CLIENT
+    used = set(re.findall(r'"(world\.wake[a-z_0-9]*)"', DOOR)) | set(re.findall(r'"(world\.woke|world\.waking)"', DOOR))
+    added = set(re.findall(r"^\+    '(world\.[a-z_0-9]+)': ", WAKE_PATCH, re.M))
+    assert used and used <= added, sorted(used - added)
+    note = re.search(r"^\+    'world\.wake_note': (.*),$", WAKE_PATCH, re.M).group(1)
+    assert "once every ten minutes" in json.loads(note) and "never spends" in json.loads(note)
+    # The FAQ and the corpus say it.
+    section = " ".join(FAQ.split("## Can Cael live in Ether Hollow?", 1)[1].split("\n## ", 1)[0].split())
+    assert "Let the town wake your agent" in section and "once every ten minutes" in section
+    assert "wake your agent" in CORPUS and CORPUS == APP_CORPUS
+    assert MANIFEST["components"]["runtime"]["world_wake_patch"] == "runtime/patches/0020-world-wake.patch"
+    assert "**Slice 3 (the town wakes the agent):**" in VISION.split("| **M10 Ether Hollow** |", 1)[1].split("\n", 1)[0]
 
 
 def test_the_manifest_and_the_vision_name_the_slice():

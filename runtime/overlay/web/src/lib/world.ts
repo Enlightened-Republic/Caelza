@@ -33,6 +33,18 @@ export interface WorldMe {
   revoked?: boolean;
 }
 
+/** The waker: what it last read and the last time it woke the agent. */
+export interface WorldWake {
+  last_poll: number | null;
+  last_error: string | null;
+  last_reason: string | null;
+  last_at: number | null;
+  last_ok: boolean | null;
+  last_output: string | null;
+  count: number;
+  waking: boolean;
+}
+
 export interface WorldState {
   enabled: boolean;
   url: string;
@@ -45,6 +57,14 @@ export interface WorldState {
   presence: WorldPresence;
   me: WorldMe | null;
   me_error: string | null;
+  /** `[ether_hollow] wake`: the town may wake the agent. */
+  wake_on: boolean;
+  wake: WorldWake;
+}
+
+export interface WorldWakeResult {
+  wake: WorldWake;
+  run: { job_id?: string; success?: boolean; status?: string; output?: string; duration_ms?: number };
 }
 
 export interface WorldRegisterBody {
@@ -101,4 +121,13 @@ export function enterWorld(minutes: number): Promise<WorldEnterResult> {
 
 export function leaveWorld(): Promise<WorldLeaveResult> {
   return apiFetch<WorldLeaveResult>('/api/world/leave', { method: 'POST' });
+}
+
+/** Wake the agent now, the way the town would, with a reason of the owner's. */
+export function wakeWorld(reason?: string): Promise<WorldWakeResult> {
+  return apiFetch<WorldWakeResult>('/api/world/wake', {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify(reason ? { reason } : {}),
+  });
 }

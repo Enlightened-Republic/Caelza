@@ -90,9 +90,28 @@ export function tagFor(colors: Partial<Record<Slot, string>> | null | undefined)
   return best;
 }
 
-/** The one config write the card makes itself: the spending switch. */
+/** The config writes the card makes itself: the spending switch and the wake switch. */
 export function spendOps(on: boolean): PatchOp[] {
   return [{ op: "add", path: "/ether_hollow/spend", value: on }];
+}
+
+export function wakeOps(on: boolean): PatchOp[] {
+  return [{ op: "add", path: "/ether_hollow/wake", value: on }];
+}
+
+/** The last wake, as one line: when, why, and whether the agent had anything to say. */
+export function wakeLine(
+  wake: { last_at: number | null; last_reason: string | null; last_ok: boolean | null; last_output: string | null },
+  words: { never: string; quiet: string; failed: string },
+  locale?: string,
+): string {
+  if (wake.last_at === null) return words.never;
+  const when = clock(wake.last_at, locale);
+  const reason = wake.last_reason ?? "";
+  const output = (wake.last_output ?? "").trim();
+  const quiet = /^no_reply\b/i.test(output);
+  const said = wake.last_ok === false ? words.failed : quiet || output === "" ? words.quiet : output;
+  return `${when} · ${reason} · ${said}`;
 }
 
 /** `rc` as the owner reads it: the coin and what it is worth (100 RC = $1). */
