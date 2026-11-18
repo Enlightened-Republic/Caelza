@@ -23,6 +23,7 @@ import {
 } from "@/lib/api";
 import { t } from "@/lib/i18n";
 import { fill } from "../setup/setup.logic";
+import WorldCard from "./World";
 import {
   HOME_ASSISTANT,
   MATON,
@@ -464,6 +465,9 @@ export default function Connect() {
             </span>
           </div>
         </section>
+
+        {/* Ether Hollow: the agent as a resident of the town. */}
+        <WorldCard agent={agent} disabled={!ready} />
       </div>
     </div>
   );

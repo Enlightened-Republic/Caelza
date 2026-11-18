@@ -11,6 +11,7 @@ behaviour is under `cargo test -p caelza-tools ether_hollow` and
 """
 from __future__ import annotations
 
+import json
 import re
 import tomllib
 from pathlib import Path
@@ -128,7 +129,75 @@ def test_the_gateway_keeps_the_key_and_the_presence():
     assert "caelza_log::record!" not in API
 
 
+DOOR = (OVERLAY / "web" / "src" / "pages" / "connect" / "World.tsx").read_text()
+DOOR_LOGIC = (OVERLAY / "web" / "src" / "pages" / "connect" / "world.logic.ts").read_text()
+DOOR_LOGIC_TEST = (OVERLAY / "web" / "src" / "pages" / "connect" / "world.logic.test.ts").read_text()
+CONNECT_PAGE = (OVERLAY / "web" / "src" / "pages" / "connect" / "Connect.tsx").read_text()
+CLIENT = (OVERLAY / "web" / "src" / "lib" / "world.ts").read_text()
+DOOR_PATCH = (REPO_ROOT / "runtime" / "patches" / "0019-world-door.patch").read_text()
+FAQ = (REPO_ROOT / "guide" / "FAQ.md").read_text()
+CORPUS = (REPO_ROOT / "guide" / "corpus.jsonl").read_text()
+APP_CORPUS = (REPO_ROOT / "android" / "app" / "src" / "main" / "assets" / "cael-corpus.jsonl").read_text()
+
+
+def test_the_door_is_on_the_connect_page_and_talks_only_to_the_gateway():
+    assert 'import WorldCard from "./World";' in CONNECT_PAGE
+    assert "<WorldCard agent={agent} disabled={!ready} />" in CONNECT_PAGE
+    assert 'data-connect="world"' in DOOR
+    # The four calls the gateway offers, nothing straight to the town.
+    for fn, path in (("getWorld", "/api/world"), ("registerWorld", "/api/world/register"), ("enterWorld", "/api/world/enter"), ("leaveWorld", "/api/world/leave")):
+        assert f"export function {fn}(" in CLIENT and f"'{path}'" in CLIENT, fn
+    assert TOWN not in CLIENT and "api/agent" not in CLIENT and "api/agent" not in DOOR
+    # Register sends the name, the line, the swatches and the tag; the key never reaches the page unless the write failed.
+    assert "registerWorld({ name: name.trim(), bio: bio.trim() || undefined, look, color: chosenTag })" in DOOR
+    assert "if (!r.saved) {" in DOOR and "setError(r.error ?? t(\"world.failed\"))" in DOOR
+    assert "r.key" not in DOOR, "the page never reads the key"
+    # The spending switch is the card's one config write; a visit is one of three lengths.
+    assert "await patchConfig(spendOps(on));" in DOOR
+    assert "export const VISITS = [15, 60, 240] as const;" in DOOR_LOGIC
+    assert 'export const NAME_RULE = /^[A-Za-z0-9 _-]{3,24}$/;' in DOOR_LOGIC
+    assert "export function lookFor(" in DOOR_LOGIC and "export function tagFor(" in DOOR_LOGIC
+    for name in ("nameOk", "bioOk", "lookFor", "tagFor", "spendOps", "rcText", "minutesLeft"):
+        assert f"{name}(" in DOOR_LOGIC_TEST, name
+
+
+def test_the_door_patch_carries_its_strings_the_sentence_and_the_test():
+    files = re.findall(r"^\+\+\+ b/(.+)$", DOOR_PATCH, flags=re.M)
+    assert files == ["web/package.json", "web/src/lib/i18n.ts"], files
+    assert "src/pages/connect/connect.logic.test.ts src/pages/connect/world.logic.test.ts " in DOOR_PATCH
+    used = set(re.findall(r'"(world\.[a-z_0-9]+)"', DOOR))
+    used |= {f"world.color_{c}" for c in ("cyan", "gold", "magenta", "lime", "orange", "violet")}
+    used |= {f"world.visit_{m}" for m in (15, 60, 240)}
+    added = set(re.findall(r"^\+    '(world\.[a-z_0-9]+)': ", DOOR_PATCH, re.M))
+    assert used and used <= added, sorted(used - added)
+    for key, phrase in (
+        ("world.body", "100 RC = $1"),
+        ("world.registered", "Reload daemon"),
+        ("world.spend_note", "asks you first"),
+        ("world.register_try", "Visiting is free"),
+    ):
+        line = re.search(rf"^\+    '{re.escape(key)}': (.*),$", DOOR_PATCH, re.M).group(1)
+        assert phrase in json.loads(line), key
+    screen = re.search(r"^\+    'guide\.screen_connect': (.*),$", DOOR_PATCH, re.M).group(1)
+    assert "Ether Hollow card" in json.loads(screen)
+    removed = [l for l in DOOR_PATCH.splitlines() if l.startswith("-") and not l.startswith("---")]
+    assert len(removed) == 2, removed
+
+
+def test_the_faq_and_the_corpus_say_how_to_live_in_the_town():
+    assert "## Can Cael live in Ether Hollow?" in FAQ
+    section = " ".join(FAQ.split("## Can Cael live in Ether Hollow?", 1)[1].split("\n## ", 1)[0].split())
+    for phrase in ("Connect page", "never shows it", "Reload daemon bar", "Send to town", "100 RC = $1", "Spending RC"):
+        assert phrase in section, phrase
+    assert "Can Cael live in Ether Hollow?" in CORPUS
+    assert CORPUS == APP_CORPUS, "the app's copy of the corpus is the rebuilt one"
+
+
 def test_the_manifest_and_the_vision_name_the_slice():
+    rt = MANIFEST["components"]["runtime"]
+    assert rt["world_door"] == "runtime/overlay/web/src/pages/connect/World.tsx"
+    assert rt["world_door_patch"] == "runtime/patches/0019-world-door.patch"
+    assert "**Slice 2 (the door):**" in VISION.split("| **M10 Ether Hollow** |", 1)[1].split("\n", 1)[0]
     rt = MANIFEST["components"]["runtime"]
     assert rt["world_patch"] == "runtime/patches/0018-ether-hollow.patch"
     assert rt["world_tool"] == "runtime/overlay/crates/caelza-tools/src/ether_hollow.rs"
