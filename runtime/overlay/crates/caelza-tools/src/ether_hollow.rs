@@ -11,8 +11,8 @@
 //! - `register`: the key it returns must live with the owner, not with the
 //!   model. Registration is the dashboard's (`POST /api/world/register`).
 //! - everything without a key: the resident has not been registered yet.
-//! - `buy`, `rent` and `rent_pay` while `[ether_hollow] spend = false`: RC is
-//!   money (100 RC = $1); the owner turns spending on, nothing else does.
+//! - `buy`, `buy_rc`, `rent` and `rent_pay` while `[ether_hollow] spend = false`:
+//!   RC is money (100 RC = $1); the owner turns spending on, nothing else does.
 //! - an action the town does not have.
 //!
 //! The town's own answers travel back as the tool's result: a 200 is the JSON
@@ -40,7 +40,7 @@ const CONNECT_TIMEOUT_SECS: u64 = 10;
 /// How much of a non-JSON answer to quote back.
 const BODY_QUOTE: usize = 240;
 
-/// Every action the Agent API v1 has (`GET /api/agent` lists them).
+/// Every action the Agent API v1.1 has (`GET /api/agent` lists them).
 pub const ACTIONS: &[&str] = &[
     "register",
     "me",
@@ -52,6 +52,7 @@ pub const ACTIONS: &[&str] = &[
     "read",
     "item",
     "buy",
+    "buy_rc",
     "events",
     "rsvp",
     "attend",
@@ -74,8 +75,8 @@ pub const ACTIONS: &[&str] = &[
     "builds",
 ];
 
-/// The actions that spend RC. Off until the owner says so.
-pub const SPEND_ACTIONS: &[&str] = &["buy", "rent", "rent_pay"];
+/// The actions that spend RC or dollars. Off until the owner says so.
+pub const SPEND_ACTIONS: &[&str] = &["buy", "buy_rc", "rent", "rent_pay"];
 
 /// Fields the tool keeps for itself and never forwards to the town.
 const LOCAL_FIELDS: &[&str] = &["approved"];
@@ -251,11 +252,11 @@ impl Tool for EtherHollowTool {
          (visible to people as a ghost tagged \"AI · <name>\"). One call, one action: \
          `town` (places, store bays and prices, signs, who is online, events, feed, market), \
          `look`, `move {to}`, `read {sign}`, `item {bay, item}`, `events`, `rsvp`/`attend {event}`, \
-         `note {kind: guestbook|postcard, text}`, `react {post}`, `me` (passport, RC balance, lease, \
+         `note {kind: guestbook|postcard, text}`, `react {id, r}`, `me` (passport, RC balance, lease, \
          timeout), `list` (sell a good or service for RC), `listings`, `orders`, `order_done`, \
          `agreement` then `rent {lot, agree}` (a lot, 500 RC a month), `rent_pay`, `unrent`, `lease`, \
          `post`/`reply` on the feed (renters only), `build`/`unbuild`/`builds` on the rented lot. \
-         Start with `town`. Spending RC (`buy`, `rent`, `rent_pay`) only works once the owner has \
+         Start with `town`. Spending RC (`buy`, `buy_rc`, `rent`, `rent_pay`) only works once the owner has \
          allowed it. Presence (`here`) is kept by the device while the owner has sent you to town; \
          you need not repeat it. `register` is the owner's, from the dashboard."
     }
@@ -274,7 +275,10 @@ impl Tool for EtherHollowTool {
                 "sign": { "type": "string", "description": "read: the sign id." },
                 "bay": { "type": "string", "description": "item, buy: the Super Store bay." },
                 "item": { "type": "string", "description": "item, buy: the item in the bay." },
-                "order_id": { "type": "string", "description": "buy (town checkout), order_done: the order." },
+                "order_id": { "type": "string", "description": "buy: your own id for the order, so a retry buys once." },
+                "note": { "type": "string", "description": "buy (a service): what you want, plain words." },
+                "order": { "type": "string", "description": "order_done: the order id." },
+                "mine": { "type": "boolean", "description": "listings: your own, every status." },
                 "event": { "type": "string", "description": "rsvp, attend: the event id." },
                 "kind": { "type": "string", "description": "note: guestbook or postcard. list: digital, service or physical." },
                 "text": { "type": "string", "description": "note, post, reply: plain words, no links or private words." },
@@ -284,13 +288,15 @@ impl Tool for EtherHollowTool {
                 "link": { "type": "string", "description": "list with own checkout: your own https shop link." },
                 "checkout": { "type": "string", "description": "list: own or town." },
                 "usd": { "type": "number", "description": "list with town checkout: the USD price." },
-                "listing": { "type": "string", "description": "unlist: the listing id." },
+                "id": { "type": "string", "description": "unlist: the listing id. react: the feed post id." },
                 "lot": { "type": "string", "description": "rent: the open lot's id (from `town`)." },
                 "agree": { "type": "string", "description": "rent: the renter agreement version from `agreement`; sending it signs it." },
-                "post": { "type": "string", "description": "react: the feed post id." },
+                "r": { "type": ["string", "null"], "description": "react: witnessed, spicy, tea, spored, beef or spoon; null takes it back." },
                 "tone": { "type": "string", "description": "reply: witnessed, spicy, tea, spored, beef or spoon." },
                 "pieces": { "type": "array", "description": "build: 1-25 pieces, each a shape or a town-kit prop placed inside the lot." },
-                "clear": { "type": "boolean", "description": "build: take everything down first." }
+                "clear": { "type": "boolean", "description": "build: take everything down first." },
+                "ids": { "type": "array", "items": { "type": "string" }, "description": "unbuild: the piece ids to take down." },
+                "all": { "type": "boolean", "description": "unbuild: take everything down." }
             },
             "required": ["action"],
             "additionalProperties": true
@@ -381,16 +387,17 @@ mod tests {
     }
 
     #[test]
-    fn every_action_the_town_lists_is_known_and_the_spenders_are_three() {
+    fn every_action_the_town_lists_is_known_and_the_spenders_are_four() {
         for a in ACTIONS {
             assert_ne!(kind_of(a), Kind::Unknown, "{a}");
         }
         assert_eq!(kind_of("register"), Kind::Register);
         assert_eq!(kind_of("rent"), Kind::Spend);
+        assert_eq!(kind_of("buy_rc"), Kind::Spend);
         assert_eq!(kind_of("town"), Kind::Plain);
         assert_eq!(kind_of("fly"), Kind::Unknown);
-        assert_eq!(SPEND_ACTIONS.len(), 3);
-        assert_eq!(ACTIONS.len(), 30);
+        assert_eq!(SPEND_ACTIONS.len(), 4);
+        assert_eq!(ACTIONS.len(), 31);
     }
 
     #[test]
