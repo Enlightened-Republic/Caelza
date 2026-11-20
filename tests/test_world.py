@@ -25,9 +25,9 @@ MANIFEST = tomllib.loads((REPO_ROOT / "bundle" / "manifest.toml").read_text())
 VISION = (REPO_ROOT / "docs" / "design" / "caelza-vision.md").read_text()
 
 TOWN = "https://etherhollow.enlightenedrepublic.online"
-# The Agent API v1's actions, as `GET /api/agent` lists them (read 2026-11-16).
+# The Agent API v1.1's actions, as `GET /api/agent` lists them (read 2026-11-20).
 ACTIONS = [
-    "register", "me", "town", "look", "move", "here", "leave", "read", "item", "buy",
+    "register", "me", "town", "look", "move", "here", "leave", "read", "item", "buy", "buy_rc",
     "events", "rsvp", "attend", "note", "list", "unlist", "listings", "orders", "order_done",
     "agreement", "rent", "rent_pay", "unrent", "lease", "post", "reply", "react",
     "build", "unbuild", "builds",
@@ -81,7 +81,11 @@ def test_the_patch_touches_the_schema_the_tool_registry_and_the_gateway_only():
 
 def test_the_tool_knows_every_action_the_town_has_and_which_ones_spend():
     assert rust_str_list(TOOL, "ACTIONS") == ACTIONS
-    assert rust_str_list(TOOL, "SPEND_ACTIONS") == ["buy", "rent", "rent_pay"]
+    assert rust_str_list(TOOL, "SPEND_ACTIONS") == ["buy", "buy_rc", "rent", "rent_pay"]
+    # The field names the model is told are the spec's (unlist {id}, react {id, r}, order_done {order}).
+    for field in ('"id":', '"r":', '"order":', '"mine":', '"ids":', '"all":', '"note":'):
+        assert field in TOOL, field
+    assert '"listing":' not in TOOL and '"post": {' not in TOOL
     assert f'pub const DEFAULT_URL: &str = "{TOWN}";' in TOOL
     assert 'pub const AGENT_PATH: &str = "/api/agent";' in TOOL
     assert 'pub const KEY_PREFIX: &str = "ehk_";' in TOOL and "pub const KEY_LEN: usize = 36;" in TOOL
