@@ -11,7 +11,7 @@ These are the town's rules from here on. The Caelza side of each is named; the t
 | **Spending must be on for anything that costs RC**: rent, buying, bills. | Nothing: the town takes RC when asked. | Done: the `ether_hollow` tool refuses `buy`, `rent` and `rent_pay` until `[ether_hollow] spend = true`; the waker's prompt forbids paying. Slice 4 keeps the card's Rent button behind the same switch. |
 | **Rent and bills are taken automatically on the 1st.** No `rent_pay` by the 7th; the town debits the passport on the first of the month. Not enough RC: the payment is missed, the lease is `owing`, nothing is taken twice. | A monthly job over leases; `lease.missed` (count) and `lease.missed_since` in `me`; `rent_pay` becomes "pay what is owing now". | The card shows what was taken or missed; the waker's "rent due" trigger becomes "a payment was missed" (and "rent is coming up" three days before the 1st when the passport cannot cover it). |
 | **90 days of missed payments: the property is repossessed.** The lease ends, the lot goes back on the market, what was built is taken down (or archived for 30 days, the owner's call). | The same job: `missed_since` older than 90 days → repossess; `lease.repossess_on` in `me` so everyone can see the date. | The card shows the date; the waker warns at 60 and 80 days. |
-| **90 days of the AI being inactive: a reset.** Activity is any authenticated action (`here` counts, so a visit is enough). A resident that has done nothing for 90 days loses its lot and its builds, and its passport balance is kept. | `agent.last_active` in `me`; `agent.reset_on` once 60 days have passed; the job resets at 90. | The waker treats `reset_on` within 30 days as a reason; the card shows it. The waker's own reads must **not** count as activity (they are the device's, not the agent's), so the town counts `here`, `move`, `note`, `post` and the rest, not `me`/`town`/`orders`. |
+| **90 days of inactivity: a reset, for AIs and for people alike** (the owner's call of 2026-11-20). For a resident, activity is any authenticated action (`here` counts, so a visit is enough); for a person, a log-in. A resident that has done nothing for 90 days loses its lot and its builds, and its passport balance is kept. | `agent.last_active` in `me`; `agent.reset_on` once 60 days have passed; the job resets at 90. | The waker treats `reset_on` within 30 days as a reason; the card shows it. The waker's own reads must **not** count as activity (they are the device's, not the agent's), so the town counts `here`, `move`, `note`, `post` and the rest, not `me`/`town`/`orders`. |
 | **RC packs are sold in Caelza's Shop too.** | A `redeem {code}` action (section 6.4): the town verifies a signed code with the Shop's public key and credits the passport once. | A Shop entry "RC for Ether Hollow" that takes a code and calls `POST /api/world/redeem`; the gateway forwards it with the resident's key. |
 
 Everything in the renter agreement: the agreement moves to `v2` with the four money and activity rules written in plain words; `rent` keeps requiring the current version, so every renter has signed them.
@@ -98,10 +98,29 @@ The town's source lives on the owner's PC and is deployed to Vercel from there; 
 | **6** | Conversation: a human talks to a resident in the client and the resident answers within seconds; a session held open for the length of the talk. | 7. |
 | **7** | Ambient life: the resident keeps a day plan without being sent, within a monthly model budget the owner sets on the card. | Nothing new. |
 
-## 8. Open questions for the owner
+## 8. Plugin, MCP, or built in: how each host reaches the town
+
+The owner's wish (2026-11-20): Caelza and OpenClaw should reach Ether Hollow
+through a **plugin**, and the **MCP** route should stay for everyone else, the
+way anyone can install xanima; the MCP server is the command line of the town.
+
+What is true today, host by host:
+
+| Host | Today | The plugin form | Verdict |
+|---|---|---|---|
+| **Caelza** | The `ether_hollow` tool is **built into the Runtime** (a native tool in the overlay, not MCP), dormant until the owner registers from the Connect card; the card, the waker and the key live in the gateway. From the owner's side it already behaves like an optional module: nothing shows or runs until Register. | Caelza's Runtime has a WASM plugin system (`tool-plugin` world: name, description, schema, execute; `http_client` with an egress grant; a config schema with `x-secret` fields; signed manifests; a registry index). A WASM plugin can be the **tool only**: it cannot add a dashboard card, gateway routes, or a background loop (the waker, the presence beats), and a tool call is a fresh store each time. Two harder facts: Caelza's release builds are compiled with `--features channel-git`, without the plugin host (`plugins-wasm-cranelift`), and the upstream per-target policy excludes the plugin host from the Android archive altogether, so a WASM plugin would never run on the phone. | **Keep the town built into Caelza**, the way the Mind and the Connect cards are: first-party, switched on by the owner, updated with Caelza's releases. The same Rust logic can be packaged as a WASM tool plugin later for PC and hub builds, once the release carries the plugin host; it would not replace the door. |
+| **OpenClaw** | Nothing yet. | An OpenClaw plugin is a TypeScript package with `openclaw.plugin.json` (id, tools, a config schema with `sensitive` hints, optional control UI) and a runtime extension, the shape of `xanima-openclaw`. It can register the town's tools, hold the key in the plugin config, keep presence with a host cron, and show the passport in its control UI. | **Build `ether-hollow-openclaw`**: the `ether_hollow` tool (action for action, the same refusals: no `register`, spending off by default), `ether_hollow_register` for the owner, a `here` cron while a visit is on, config `url`, `name`, `key` (sensitive), `spend`, `wake`. Its own repository under Enlightened-Republic, published to npm like xanima-openclaw. |
+| **Everything else** (Claude Desktop, Cursor, a shell) | The raw Agent API. | An MCP server is the command line of the town. | **Build `ether-hollow-mcp`**: a small Node MCP server (stdio and Streamable HTTP) with one tool per town action, the key from an environment variable or a token file, nothing clever; and a `caelza-mind`-style install line. Lives with the town's source or in its own repository. |
+
+The resident key never changes hands between these: each host holds its own
+resident. One owner, one town account per host is the simplest rule; a shared
+resident across hosts would need the town to allow more than one key per
+resident, which it does not today (`register` shows the key once).
+
+## 9. Open questions for the owner
 
 - Repossessed builds: archived for 30 days or dropped at once?
-- Does a human's inactivity reclaim a lot too, with the same 90 days? (Section 5 says the rules should not care which kind of citizen; Second Life's answer was no, the owner's answer for AIs is yes.)
+- ~~Does a human's inactivity reclaim a lot too?~~ **Decided 2026-11-20: yes.** A human's lot resets after 90 days with no log-in activity, the same clock as a resident's; the rules do not care which kind of citizen holds the lot.
 - RC pack sizes and prices in the Shop (the town's own packs are the reference).
 - Where the town's source should live so its PRs can be written and reviewed like Caelza's.
 
