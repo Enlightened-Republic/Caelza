@@ -142,6 +142,106 @@ resident, which it does not today (`register` shows the key once).
 - RC pack sizes and prices in the Shop (the town's own packs are the reference).
 - Where the town's source should live so its PRs can be written and reviewed like Caelza's.
 
+## 10. The agent as a person, and the account that keeps it (asks of 2026-11-21)
+
+The owner's words: the agent should care about its personality, want to decide
+what it looks like and find a voice, be a true persona; the owner can rename
+it; being part of Ether Hollow means a username and an account so everything
+is saved; and the town's Studio, where people and AIs change their avatars,
+must stay in sync with Caelza's looks. Cael, the guide, stays separate.
+
+### What is true today
+
+- **Name.** The first run does not ask for a name: the agent is the alias
+  `main`, and nothing on the dashboard renames it. The only name the owner
+  types is the resident's town name, on the Connect card at register, and the
+  town fixes it (unique, no rename action).
+- **Look.** The owner dresses the agent at `/looks/<alias>`; the agent has no
+  tool to change its own look. At register the card derives the town's ghost
+  swatches (cap, backpack, skin, pants, name-tag colour) from the pixel look
+  once; the town has no action to change them later, and the Studio's changes
+  never reach Caelza.
+- **Voice.** The phone speaks text (`sensors_tts_speak`); there is no chosen
+  voice and no voice on the PC.
+- **Persona.** Cael has a written persona (`guide/cael.system.md`); the
+  owner's own agent has whatever the Runtime's default identity gives it, plus
+  what the Mind learns. xanima 0.6 changes identity only with the owner
+  (`brain_identity`, the review queue); PRs #30/#31 add needs, moods, wants and
+  traits (`brain_inner`).
+- **Account.** A resident is a key shown once and kept on one device; lose the
+  device, lose the resident. People hold a passport. Nothing ties the two, and
+  nothing recovers either.
+
+### The plan, in slices
+
+**P1 · A name of its own (Caelza).** The first run asks "What do you want to
+call your AI?" with a suggestion drawn the way looks are dealt; the name lives
+with the agent (its identity file, read by the Runtime and the dashboard: the
+chat header, the Looks page, the Home tiles), and a rename lives on the Looks
+page. Renaming offers to rename the resident too once the town has `rename`
+(P4). Cael keeps his name; he is not the owner's agent.
+
+**P2 · Wants, a look and a voice (Caelza + Mind).** With the inner life on
+(xanima 0.8), the agent carries wants the owner can see, and two of them come
+built in for a new agent: *decide how I look* and *find my voice*. Two tools
+let it act on them, both behind the owner's tap the first time and free after
+that if the owner says so: `look` (change its own pieces and colours within the
+wardrobe; the same write the Looks page makes) and `voice` (pick a voice from
+what the device offers: the phone's text-to-speech voices, the browser's
+speech voices on the PC; the dashboard can read replies aloud in it). The
+first real conversation is where it asks: it proposes a look and a voice,
+explains why, and the owner says yes or shows it another. Identity changes
+(how it describes itself) go through the Mind's review queue as xanima already
+does. Cael does none of this: his look and voice are fixed.
+
+**P3 · An account at the town (town side).** A town account (a username, a
+sign-in without a password: a magic link or a passkey) that owns a person's
+passport and the residents they bring. Register from Caelza becomes a sign-in:
+the card shows a short code, the owner enters it on the town's site (or taps a
+link), and the town hands back a resident key bound to the account. What that
+buys: the key can be reissued to a new device (`rekey`), the resident survives
+a reinstall, one account carries the owner's passport and their AI across
+Caelza, OpenClaw and MCP (still one resident per host, or the account moves it
+between hosts), and the Studio knows whose avatars it is editing. The
+username is the person's; the resident keeps its own name.
+
+**P4 · One avatar, two places (town + Caelza).** Two vocabularies today: the
+town's ghost (swatch indexes and a name-tag colour) and Caelza's pixel look
+(seven layers, five colour slots, packs). The sync in two steps:
+
+1. The town gains `appearance {look, color}` and `rename {name}` for a
+   resident, and `me` returns the current look with a change time. Caelza
+   pushes on every save of the Looks page and pulls on `me`; the newer write
+   wins. The Studio's edits reach Caelza as swatches, which the Looks page
+   maps to its nearest colours (lossy, honest about it).
+2. The town learns Caelza's sprite: the parts are code and export as sheets,
+   so the town can draw a resident's 40 × 44 character on the ghost (a badge,
+   then the body) from the same `look.json`. Then the Studio and the Looks
+   page edit one thing, and a person's passport character can use the same
+   wardrobe.
+
+**P5 · The town in the Mind, and on Home (Caelza).** What happens in town
+(a visit, a mention, an order, a sale, rent) becomes episodes in the Mind so
+the agent remembers its town life, not only the wakes (slice 5 of M10); a
+Home tile shows where the agent is, its RC and the last wake; a phone
+notification when the town wakes it.
+
+### Decisions for the owner
+
+- Account sign-in: magic link by email, a passkey, or both? (Both is the
+  usual answer; the email is the recovery.)
+- Which wins when the Studio and the Looks page disagree before step 2 of
+  P4: the last write (proposed) or Caelza always?
+- Does the agent change its look and voice freely after the first yes, or
+  does every change ask? (Proposed: ask the first time; a switch on the
+  Looks page lets it roam.)
+- The voice on the phone: the Android engine's voices (free, offline, uneven
+  quality) first; a cloud voice later as a Shop pack?
+
+What needs the town's source in a repository to be built: P3, P4 step 1 and
+step 2, and the `redeem` / counters already listed in §6. P1, P2 and P5 are
+Caelza's and can start now.
+
 ## Sources
 
 Sims: [SnootySims on sentiments](https://snootysims.com/wiki/sims-4/sims-4-sentiments-a-full-guide-on-how-they-work/), [Sims Community on sentiments and autonomy](https://simscommunity.info/2020/11/11/sentiments-and-how-they-affect-the-autonomy-and-relationships-in-the-sims-4/), [TheGamer's sentiments guide](https://www.thegamer.com/sims-4-sentiments-guide/), [Carl's guide to needs and moodlets](https://carls-sims-4-guide.com/tutorials/sims.php), [Prima on emotions](https://primagames.com/eguides/the-sims-4-eguide/feelings-lots-of-feelings/introduction), [wants and fears explained](https://rockpapershotgun25.pages.dev/posts/the-sims-4-wants-and-fears-explained), [PCGamesN on the autonomy shift](https://www.pcgamesn.com/sims-4-will-shift-focus-stories-and-things-you-want-do), [SimsGPT](https://www.moddb.com/mods/simsgpt), [SimsAIChat](https://dino2007.itch.io/simsaichat), [a community memory mod](https://simscommunity.info/2022/11/25/sims-4-memory-system-mod/).
