@@ -224,8 +224,10 @@ sessions, keeps what matters and forgets what stops mattering, and sleeps to
 consolidate. Ask the agent what it remembers, or tell it to forget something.
 The dashboard's Memory page shows the brains, what is waiting for review, and
 lets you recall or forget by hand. `caelza memory stats` is the command-line
-check. On a phone the app runs it; on a Linux hub `mind/install.sh` installs
-it; on a Windows PC `mind/windows-install.ps1` does, and the Start menu's
+check. On a phone the app does not run it: the phone joins the Mind your PC or
+hub runs (a code from its Memory page), and until then the agent's memory on
+the phone is the Runtime's own. On a Linux hub `mind/install.sh` installs the
+Mind; on a Windows PC `mind/windows-install.ps1` does, and the Start menu's
 Caelza starts it with the Runtime.
 
 ## How do I turn on long-term memory on the PC?

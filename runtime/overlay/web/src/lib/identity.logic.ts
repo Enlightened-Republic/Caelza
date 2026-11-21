@@ -110,3 +110,22 @@ export function withName(markdown: string | null | undefined, name: string): str
 export function displayName(markdown: string | null | undefined, alias: string): string {
   return parseName(markdown) ?? (alias === "cael" ? "Cael" : alias);
 }
+
+export const USER_FILE = "USER.md";
+
+/**
+ * A fresh USER.md for a new agent: it does not know its owner yet and will ask.
+ * Written at setup so the Runtime's own template, which names the owner "User",
+ * never fills in.
+ */
+export function userTemplate(): string {
+  return [
+    "# USER.md — who I'm helping",
+    "",
+    "I don't know my owner's name yet. When we first talk I ask, warmly and once,",
+    "and I use it from then on; what they tell me about themselves, what they do",
+    "and what they want from me, I remember. Until I know their name I say \"you\",",
+    "never \"User\".",
+    "",
+  ].join("\n");
+}

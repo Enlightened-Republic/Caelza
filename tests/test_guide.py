@@ -42,6 +42,34 @@ def test_cael_explains_and_never_acts():
     assert "cset risk_profiles.guide.deny_all_tools true" in SETUP
 
 
+def heredoc(name: str) -> str:
+    """A file model-setup.sh writes into Cael's workspace."""
+    _, _, rest = SETUP.partition(f"\"$ws/{name}\" <<'EOF'\n")
+    body, _, _ = rest.partition("\nEOF\n")
+    assert body, f"model-setup.sh must write Cael's {name}"
+    return body
+
+
+def test_cael_knows_the_owner_is_someone_and_never_says_user():
+    # The soul: he asks the owner's name once and never calls anyone "User"; the owner's agent is theirs.
+    assert "never call anyone\n\"User\"" in SOUL
+    assert "ask it, warmly and once" in SOUL
+    assert "Their own agent is theirs, not\nyou" in SOUL
+    # His USER.md and AGENTS.md, so the Runtime's templates (which name the owner "User") never fill in.
+    cli = (REPO_ROOT / "android" / "app" / "src" / "main" / "java" / "tech" / "enlightenedrepublic" / "caelza" / "runtime" / "CaelzaCli.kt").read_text()
+    user = heredoc("USER.md")
+    agents = heredoc("AGENTS.md")
+    for line in ("# USER.md — the owner", "I don't know my owner's name yet.", "never \"User\"."):
+        assert line in user, line
+        assert line.replace('"', '\\"') in cli, line
+    for line in ("# AGENTS.md — how Cael works", "I run no tools and change no settings."):
+        assert line in agents, line
+        assert line in cli, line
+    # A stock USER.md from an earlier install is replaced, on both installers.
+    assert "grep -q '\\*\\*Name:\\*\\* User' \"$ws/USER.md\"" in SETUP
+    assert "STOCK_USER.containsMatchIn(user.readText())" in cli
+
+
 def test_cael_facts_stay_in_step_with_the_runtime():
     # The facts Cael relies on name the real surfaces.
     for fact in ("caelza config set", "Shizuku", "xanima", "http://127.0.0.1:42617"):

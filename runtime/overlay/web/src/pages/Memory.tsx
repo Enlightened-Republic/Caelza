@@ -703,12 +703,12 @@ function NotEnabled({ status }: { status: MindStatus }) {
         <Brain className="mt-0.5 h-5 w-5 shrink-0 text-pc-accent" aria-hidden="true" />
         <div className="space-y-2 text-sm">
           <p className="text-pc-text">
-            The Runtime's memory is <code className="font-mono">{status.backend}</code>, not the Mind. The agent still remembers,
-            but there is no brain service to show here.
+            Memory here is the Runtime's own (<code className="font-mono">{status.backend}</code>): the agent remembers what you tell it
+            on this device. The Mind is the shared brain that follows it to every device; it runs on a PC or a hub, not on a phone.
           </p>
           <p className="text-pc-text-muted">
-            Local notes stored by the Runtime itself are on the dashboard under <em>Memories</em>. Turn the Mind on below, or
-            join one on another device.
+            What the Runtime kept is under <em>Memories</em>. On a PC, turn the Mind on below; on a phone, join the one your PC or hub
+            runs, with the code from its Memory page.
           </p>
         </div>
       </div>

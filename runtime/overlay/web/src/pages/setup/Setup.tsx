@@ -16,7 +16,9 @@ import { ArrowLeft, Download, Eye, EyeOff, ExternalLink, KeyRound, Sparkles } fr
 
 import {
   getCatalogModels,
+  getProp,
   getQuickstartState,
+  putProp,
   quickstartApply,
   quickstartFields,
   type ModelsResponse,
@@ -25,8 +27,8 @@ import {
 } from "@/lib/api";
 import { basePath } from "@/lib/basePath";
 import { rememberAgentName } from "@/lib/agentName";
-import { setAgentName } from "@/lib/identity";
-import { NAME_MAX, nameOk, suggestName } from "@/lib/identity.logic";
+import { setAgentName, setUserFile } from "@/lib/identity";
+import { NAME_MAX, nameOk, suggestName, userTemplate } from "@/lib/identity.logic";
 import { t } from "@/lib/i18n";
 import { Eyebrow, Mark, Wordmark } from "@/components/brand/CaelzaLockup";
 import {
@@ -124,8 +126,10 @@ interface Done {
   agent: string;
   /** What the agent is called: the name the owner gave it, else its alias. */
   label: string;
-  provider: StagedProvider;
+  provider?: StagedProvider;
   guide?: string;
+  /** The device's own first run made the agent and gave it this model; the wizard only named it. */
+  adopted?: string;
 }
 
 export default function Setup() {
@@ -143,6 +147,26 @@ export default function Setup() {
   const [deal, setDeal] = useState(0);
   const [agentLabel, setAgentLabel] = useState(() => suggestName(AGENT_NAME));
   const labelOk = nameOk(agentLabel);
+
+  // The phone's own first run already made `main` and gave it a model (the app
+  // writes it with `caelza config set`); then this wizard only names it, and
+  // never makes a second agent beside it.
+  const [adopt, setAdopt] = useState<{ provider: string } | null>(null);
+  useEffect(() => {
+    if (!state || !state.agents.includes(AGENT_NAME)) return;
+    let cancelled = false;
+    getProp(`agents.${AGENT_NAME}.model_provider`)
+      .then((p) => {
+        const provider = typeof p.value === "string" ? p.value.trim() : "";
+        if (!cancelled && provider) setAdopt({ provider });
+      })
+      .catch(() => {
+        /* no model yet: the doors follow as usual */
+      });
+    return () => {
+      cancelled = true;
+    };
+  }, [state]);
 
   // The key door.
   const [more, setMore] = useState(false);
@@ -327,6 +351,8 @@ export default function Setup() {
           // The agent is set up either way; the name can be given on the Looks page.
         }
       }
+      // Its USER.md, so the Runtime's own template (which names the owner "User") never fills in.
+      await setUserFile(res.agent.alias, userTemplate()).catch(() => undefined);
       setDone({ agent: res.agent.alias, label: named, provider: staged, guide });
       setScreen("done");
     } catch (e) {
@@ -334,6 +360,32 @@ export default function Setup() {
     } finally {
       setBusy(false);
     }
+  };
+
+  /** The agent the device made already exists and has its model: name it, and let it meet its owner. */
+  const adoptMain = async () => {
+    if (!adopt || busy) return;
+    setBusy(true);
+    setErrors([]);
+    try {
+      const label = agentLabel.trim();
+      await setAgentName(AGENT_NAME, label);
+      rememberAgentName(AGENT_NAME, label);
+      await setUserFile(AGENT_NAME, userTemplate()).catch(() => undefined);
+      // The quickstart never ran here; say it is done so nothing nudges towards it again.
+      await putProp("onboard_state.quickstart_completed", true).catch(() => undefined);
+      setDone({ agent: AGENT_NAME, label, adopted: adopt.provider });
+      setScreen("done");
+    } catch (e) {
+      setErrors([e instanceof Error ? e.message : String(e)]);
+    } finally {
+      setBusy(false);
+    }
+  };
+  const nameNext = () => {
+    if (!labelOk || busy) return;
+    if (adopt) void adoptMain();
+    else go("doors");
   };
 
   const tryKey = () => {
@@ -385,7 +437,7 @@ export default function Setup() {
   };
   const back: Partial<Record<Screen, Screen>> = { doors: "name", local: "doors", provider: "doors", model: "provider", key: "model" };
   const steps: Record<Screen, [number, number]> = {
-    name: [1, 3],
+    name: [1, adopt ? 1 : 3],
     doors: [2, 3],
     local: [3, 3],
     provider: [3, 5],
@@ -414,7 +466,7 @@ export default function Setup() {
             maxLength={NAME_MAX}
             onChange={(e) => setAgentLabel(e.target.value)}
             onKeyDown={onEnter(() => {
-              if (labelOk) go("doors");
+              if (labelOk) nameNext();
             })}
             autoCapitalize="words"
             autoCorrect="off"
@@ -427,8 +479,8 @@ export default function Setup() {
       );
       actions = (
         <>
-          <button type="button" className="cz-btn cz-btn-primary" disabled={!labelOk} onClick={() => go("doors")} data-setup-name-next>
-            {t("setup.next")}
+          <button type="button" className="cz-btn cz-btn-primary" disabled={!labelOk || busy} onClick={nameNext} data-setup-name-next>
+            {busy ? t("setup.working") : t("setup.next")}
           </button>
           <button
             type="button"
@@ -777,9 +829,11 @@ export default function Setup() {
     case "done":
       title = t("setup.title_done");
       body = done
-        ? done.guide
-          ? fill(t("setup.body_done_local"), { agent: done.label, model: done.provider.model, guide: done.guide })
-          : fill(t("setup.body_done"), { agent: done.label, model: done.provider.model, provider: providerLabel })
+        ? done.adopted
+          ? `${done.label} is yours. It runs on the model this device set up (${done.adopted}), and it does not know you yet: say hello, and tell it your name.`
+          : done.provider && done.guide
+            ? fill(t("setup.body_done_local"), { agent: done.label, model: done.provider.model, guide: done.guide })
+            : fill(t("setup.body_done"), { agent: done.label, model: done.provider?.model ?? "", provider: providerLabel })
         : null;
       actions = (
         <button
