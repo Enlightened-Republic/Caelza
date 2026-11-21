@@ -1,0 +1,69 @@
+name: tag release
+
+# Cuts a release from the Actions tab, for when nobody who can push tags is
+# at a keyboard: tags main's head as v<version> (the version bundle/manifest.toml
+# names, checked first) and starts release.yml on that tag. A tag pushed with
+# the workflow's own token does not start release.yml by itself (GitHub's rule
+# against runs triggering runs), so this workflow dispatches it on the tag;
+# release.yml reads GITHUB_REF_TYPE=tag either way and builds the same release.
+#
+#   Actions → tag release → Run workflow → version: 0.5.0
+#
+# Running it again for a version whose tag already points at main's head only
+# starts the release build again; a tag that points elsewhere is left alone.
+
+on:
+  workflow_dispatch:
+    inputs:
+      version:
+        description: "The version to release: must equal [caelza] version in bundle/manifest.toml (e.g. 0.5.0)"
+        required: true
+        type: string
+
+permissions:
+  contents: write
+  actions: write
+
+jobs:
+  tag:
+    name: Tag main and start the release
+    runs-on: ubuntu-latest
+    env:
+      VERSION: ${{ inputs.version }}
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: main
+          fetch-depth: 0
+      - name: The manifest names this version
+        run: |
+          case "$VERSION" in
+            *[!0-9.]*|"") echo "version must be digits and dots, got '$VERSION'"; exit 1 ;;
+          esac
+          v=$(python3 -c "import tomllib; print(tomllib.load(open('bundle/manifest.toml', 'rb'))['caelza']['version'])")
+          if [ "$v" != "$VERSION" ]; then
+            echo "bundle/manifest.toml says $v, not $VERSION: merge the release readiness first"
+            exit 1
+          fi
+      - name: Tag main as v${{ inputs.version }}
+        run: |
+          tag="v$VERSION"
+          head=$(git rev-parse HEAD)
+          if git fetch --quiet origin "refs/tags/$tag:refs/tags/$tag" 2>/dev/null; then
+            at=$(git rev-parse "$tag^{commit}")
+            if [ "$at" != "$head" ]; then
+              echo "$tag already exists at $at, not at main's $head; not moving it"
+              exit 1
+            fi
+            echo "$tag already points at main ($head); nothing to tag"
+          else
+            git tag "$tag" "$head"
+            git push origin "refs/tags/$tag"
+            echo "tagged $head as $tag"
+          fi
+      - name: Start release.yml on the tag
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          gh workflow run release.yml --ref "v$VERSION" --repo "$GITHUB_REPOSITORY"
+          echo "release.yml dispatched on v$VERSION; its run appears under Actions → release"
