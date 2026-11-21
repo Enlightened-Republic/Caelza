@@ -160,6 +160,10 @@ apply_overlay() {
   log "copying looks/catalog.json beside the Look renderer"
   mkdir -p "$WORK/web/src/looks"
   cp "$ROOT/looks/catalog.json" "$WORK/web/src/looks/catalog.json"
+  # The same catalog, embedded in the Runtime's `look` tool (the agent dresses itself from it).
+  log "copying looks/catalog.json beside the look tool"
+  mkdir -p "$WORK/crates/caelza-tools/src"
+  cp "$ROOT/looks/catalog.json" "$WORK/crates/caelza-tools/src/looks_catalog.json"
 }
 
 apply_assets() {

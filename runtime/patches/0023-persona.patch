@@ -1,0 +1,227 @@
+The free-will buddy (vision M10 §10, slice P2a): one yes from the owner and
+the agent dresses itself and shapes its own identity and soul.
+
+`[persona] free` joins the schema (the Looks page's "Let it be itself" switch;
+PersonaConfig, group Agent, default off). The `look` and `identity` tools from
+the overlay (crates/caelza-tools/src/look.rs, identity.rs) are declared,
+attributed as plugins, listed in the inventory and registered for every agent
+but Cael, the guide; the prompt's tool list gets their two lines (trimmed to
+the tools the agent has). The tools read the switch from the config file at
+each call, so the yes needs no restart. The docs' tool table gets their row,
+the dashboard's strings get the Looks page's switch card, and the web test list
+gets persona.logic.test.ts.
+
+--- a/crates/caelza-config/src/schema.rs
++++ b/crates/caelza-config/src/schema.rs
+@@ -441,6 +441,12 @@
+     #[group = "Integrations"]
+     pub ether_hollow: EtherHollowConfig,
+ 
++    /// The agent as a someone: its own hand on its look and its identity (`[persona]`).
++    #[serde(default)]
++    #[nested]
++    #[group = "Agent"]
++    pub persona: PersonaConfig,
++
+     /// Microsoft 365 Graph API integration (`[microsoft365]`).
+     #[serde(default)]
+     #[nested]
+@@ -8596,6 +8602,26 @@
+     }
+ }
+ 
++// ── Persona (the agent's own hand on its look and its identity) ──
++
++/// Persona settings (`[persona]` section).
++///
++/// Caelza's agents are someones: each has a name, a pixel look and an
++/// IDENTITY.md / SOUL.md the Runtime reads into every prompt. `free` is the
++/// owner's one yes: with it on, the `look` and `identity` tools act without
++/// asking, so the agent dresses itself and shapes its own files. The tools read
++/// it from the config file at each call, so the Looks page's switch reaches the
++/// agent with its next turn.
++#[derive(Debug, Clone, Default, Serialize, Deserialize, Configurable)]
++#[cfg_attr(feature = "schema-export", derive(schemars::JsonSchema))]
++#[prefix = "persona"]
++#[serde(default)]
++pub struct PersonaConfig {
++    /// Let the agent change its own look, IDENTITY.md and SOUL.md without
++    /// asking (the Looks page's "Let it be itself"). Default: `false`.
++    pub free: bool,
++}
++
+ // ── Microsoft 365 (Graph API integration) ───────────────────────
+ 
+ /// Microsoft 365 integration via Microsoft Graph API (`[microsoft365]` section).
+@@ -21371,6 +21397,7 @@
+             enroll: EnrollConfig::default(),
+             composio: ComposioConfig::default(),
+             ether_hollow: EtherHollowConfig::default(),
++            persona: PersonaConfig::default(),
+             microsoft365: Microsoft365Config::default(),
+             secrets: SecretsConfig::default(),
+             browser: BrowserConfig::default(),
+@@ -33944,6 +33971,7 @@
+             enroll: EnrollConfig::default(),
+             composio: ComposioConfig::default(),
+             ether_hollow: EtherHollowConfig::default(),
++            persona: PersonaConfig::default(),
+             microsoft365: Microsoft365Config::default(),
+             secrets: SecretsConfig::default(),
+             browser: BrowserConfig::default(),
+@@ -35382,6 +35410,7 @@
+             enroll: EnrollConfig::default(),
+             composio: ComposioConfig::default(),
+             ether_hollow: EtherHollowConfig::default(),
++            persona: PersonaConfig::default(),
+             microsoft365: Microsoft365Config::default(),
+             secrets: SecretsConfig::default(),
+             browser: BrowserConfig::default(),
+--- a/crates/caelza-runtime/src/agent/loop_.rs
++++ b/crates/caelza-runtime/src/agent/loop_.rs
+@@ -2025,6 +2025,17 @@
+                 "Act in Ether Hollow, the small 3D town you live in as a resident: `town` to see it, `move`, `look`, `read`, `note`, `react`, `list` to sell, `rent`/`post`/`reply`/`build` as a renter. One action per call; spending RC needs the owner's leave.",
+             ));
+         }
++        // Caelza: the agent's own hand on its look and its identity files (vision
++        // M10 §10). Registered for every agent but Cael; this list is trimmed to
++        // the tools the agent has before it reaches the prompt.
++        tool_descs.push((
++            "look",
++            "Your own pixel look: `show` what you wear and what the wardrobe holds, `set` pieces and colours, `reset` to the look dealt from your name. Acts on its own once your owner turned on \"Let it be itself\"; until then, show and ask.",
++        ));
++        tool_descs.push((
++            "identity",
++            "Your own IDENTITY.md and SOUL.md: `read` one, `write` one whole in your own words; the Name line stays as your owner set it. Acts on its own once your owner turned on \"Let it be itself\".",
++        ));
+         tool_descs.push((
+         "schedule",
+         "Manage scheduled tasks (create/list/get/cancel/pause/resume). Supports recurring cron and one-shot delays.",
+--- a/crates/caelza-runtime/src/tools/mod.rs
++++ b/crates/caelza-runtime/src/tools/mod.rs
+@@ -130,6 +130,8 @@
+ #[cfg(feature = "tool-project-intel")]
+ pub use caelza_tools::project_intel::ProjectIntelTool;
+ pub use caelza_tools::ether_hollow::EtherHollowTool;
++pub use caelza_tools::identity::IdentityTool;
++pub use caelza_tools::look::LookTool;
+ pub use caelza_tools::proxy_config::ProxyConfigTool;
+ #[cfg(feature = "tools-external")]
+ pub use caelza_tools::pushover::PushoverTool;
+@@ -1809,6 +1811,13 @@
+             Arc::new(EtherHollowTool::new(&root_config.ether_hollow))
+         );
+     }
++    // Caelza: the agent as a someone (vision M10 §10). Every agent but Cael,
++    // the guide, gets its own hand on its look and its identity files; the
++    // owner's `[persona] free` decides whether the hand may act.
++    if agent_alias != "cael" {
++        register_tool!("look", Arc::new(LookTool::new(&root_config, agent_alias)));
++        register_tool!("identity", Arc::new(IdentityTool::new(&root_config, agent_alias)));
++    }
+     register_tool!(
+         "canvas",
+         Arc::new(CanvasTool::new(canvas_store.unwrap_or_default()))
+--- a/crates/caelza-tools/src/attribution.rs
++++ b/crates/caelza-tools/src/attribution.rs
+@@ -48,6 +48,7 @@
+ use crate::hardware_memory_map::HardwareMemoryMapTool;
+ use crate::hardware_memory_read::HardwareMemoryReadTool;
+ use crate::http_request::HttpRequestTool;
++use crate::identity::IdentityTool;
+ #[cfg(feature = "tools-external")]
+ use crate::image_gen::ImageGenTool;
+ use crate::image_info::ImageInfoTool;
+@@ -57,6 +58,7 @@
+ #[cfg(feature = "tool-linkedin")]
+ use crate::linkedin::LinkedInTool;
+ use crate::llm_task::LlmTaskTool;
++use crate::look::LookTool;
+ use crate::mcp_tool::McpToolWrapper;
+ use crate::memory_export::MemoryExportTool;
+ use crate::memory_forget::MemoryForgetTool;
+@@ -185,6 +187,8 @@
+ tool_attribution!(WeatherTool, ToolKind::Plugin);
+ tool_attribution!(WebFetchTool, ToolKind::FetchUrl);
+ tool_attribution!(EtherHollowTool, ToolKind::Plugin);
++tool_attribution!(IdentityTool, ToolKind::Plugin);
++tool_attribution!(LookTool, ToolKind::Plugin);
+ #[cfg(feature = "tools-external")]
+ tool_attribution!(WebSearchTool, ToolKind::Search);
+ 
+--- a/crates/caelza-tools/src/inventory.rs
++++ b/crates/caelza-tools/src/inventory.rs
+@@ -452,6 +452,16 @@
+         compilation: BuiltinToolCompilation::Always,
+     },
+     BuiltinToolSpec {
++        name: "look",
++        tier: ToolTier::Optional,
++        compilation: BuiltinToolCompilation::Always,
++    },
++    BuiltinToolSpec {
++        name: "identity",
++        tier: ToolTier::Optional,
++        compilation: BuiltinToolCompilation::Always,
++    },
++    BuiltinToolSpec {
+         name: "pushover",
+         tier: ToolTier::Optional,
+         compilation: BuiltinToolCompilation::External,
+--- a/crates/caelza-tools/src/lib.rs
++++ b/crates/caelza-tools/src/lib.rs
+@@ -60,6 +60,7 @@
+ pub mod hardware_memory_read;
+ mod http_decode;
+ pub mod http_request;
++pub mod identity;
+ #[cfg(feature = "tools-external")]
+ pub mod image_gen;
+ pub mod image_info;
+@@ -71,6 +72,7 @@
+ #[cfg(feature = "tool-linkedin")]
+ pub mod linkedin_client;
+ pub mod llm_task;
++pub mod look;
+ pub mod mcp_client;
+ pub mod mcp_context;
+ pub mod mcp_deferred;
+--- a/docs/book/src/developing/tool-inventory.md
++++ b/docs/book/src/developing/tool-inventory.md
+@@ -244,6 +244,7 @@
+ | Channel companions | `discord_search`, `email_search`, `email_read` | No |
+ | Knowledge | `knowledge` | No |
+ | Caelza | `ether_hollow` | No: `[ether_hollow].enabled` is off until the owner registers the resident |
++| Caelza | `look`, `identity` | Yes, for every agent but Cael; they act only once `[persona].free` is on (the Looks page's "Let it be itself") |
+ 
+ Registration on a default config follows the config defaults:
+ `[browser].enabled`, `[http_request].enabled`, `[web_search].enabled`, and
+--- a/web/package.json
++++ b/web/package.json
+@@ -14,7 +14,7 @@
+     "typecheck": "npm run check:generated && tsc -b",
+     "build": "npm run check:generated && tsc -b && vite build",
+     "dev": "vite",
+-    "test": "node --experimental-strip-types --test src/pages/quickstart/runtime-selection.test.ts src/pages/quickstart/doors.logic.test.ts src/pages/setup/setup.logic.test.ts src/pages/setup/ollama.logic.test.ts src/pages/connect/connect.logic.test.ts src/pages/connect/world.logic.test.ts src/lib/identity.logic.test.ts src/looks/looks.logic.test.ts src/guide/guide.logic.test.ts src/pages/home.logic.test.ts src/pages/bodies.logic.test.ts src/pages/mind.logic.test.ts src/pages/mind.share.logic.test.ts src/pages/mind.install.logic.test.ts src/pages/quickstart/channel-fields.test.ts src/pages/acp-console/thought-stream.test.ts src/lib/contextBar.test.ts src/components/sections/secretMap.logic.test.ts src/pages/integrations.logic.test.ts src/lib/historyTrimNotice.test.ts src/components/runLogPresentation.test.ts src/pages/pluginCatalog.test.ts && npm run test:sops && npm run test:sop-editor && jiti src/pages/quickstart/channel-form.test.ts",
++    "test": "node --experimental-strip-types --test src/pages/quickstart/runtime-selection.test.ts src/pages/quickstart/doors.logic.test.ts src/pages/setup/setup.logic.test.ts src/pages/setup/ollama.logic.test.ts src/pages/connect/connect.logic.test.ts src/pages/connect/world.logic.test.ts src/lib/identity.logic.test.ts src/lib/persona.logic.test.ts src/looks/looks.logic.test.ts src/guide/guide.logic.test.ts src/pages/home.logic.test.ts src/pages/bodies.logic.test.ts src/pages/mind.logic.test.ts src/pages/mind.share.logic.test.ts src/pages/mind.install.logic.test.ts src/pages/quickstart/channel-fields.test.ts src/pages/acp-console/thought-stream.test.ts src/lib/contextBar.test.ts src/components/sections/secretMap.logic.test.ts src/pages/integrations.logic.test.ts src/lib/historyTrimNotice.test.ts src/components/runLogPresentation.test.ts src/pages/pluginCatalog.test.ts && npm run test:sops && npm run test:sop-editor && jiti src/pages/quickstart/channel-form.test.ts",
+     "test:sops": "node --experimental-strip-types --test src/hooks/useRunOverlay.logic.test.ts src/pages/runs.logic.test.ts",
+     "test:sop-editor": "node --experimental-strip-types --test src/pages/sopSavePlan.test.ts",
+     "test:permissions": "jiti src/components/ToolPermissionGrid.logic.test.ts && jiti src/pages/Tools.logic.test.ts && jiti src/lib/toolCatalog.logic.test.ts && jiti src/components/ToolCatalogWarningPanel.test.ts && jiti src/lib/validationWarnings.test.ts && jiti src/components/UpgradeDialog.logic.test.ts && npm run test:navigation",
+--- a/web/src/lib/i18n.ts
++++ b/web/src/lib/i18n.ts
+@@ -1036,6 +1036,15 @@
+     'name.saving': "Saving\u2026",
+     'name.saved': "Named. The agent knows from its next reply.",
+     'name.failed': "The name was not saved.",
++    'persona.card_title': "Let it be itself",
++    'persona.card_help': "Your AI wants to decide how it looks and who it is. Say yes once and it can dress itself and write its own identity and soul files, without asking you each time. Its name stays yours to change; turn this off whenever you like.",
++    'persona.switch': "Let it be itself",
++    'persona.loading': "Reading the switch\u2026",
++    'persona.on': "On. It can change its look and its soul on its own; you will see the look change here and in the chat.",
++    'persona.off': "Off. It can look at itself, but it asks you before changing anything.",
++    'persona.on_saved': "Yes said. The agent can shape itself from its next reply.",
++    'persona.off_saved': "Taken back. The agent asks before changing anything again.",
++    'persona.failed': "The switch was not saved.",
+     'setup.tag_strong': "strongest",
+     'setup.title_doors': "Hi, I'm Cael",
+     'setup.title_done': "That worked!",
