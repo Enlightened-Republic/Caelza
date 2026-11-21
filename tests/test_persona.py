@@ -54,7 +54,8 @@ def test_the_look_tool_embeds_the_one_catalog_and_knows_the_dashboards_layers_an
 
 
 def test_both_tools_wait_for_the_owners_one_yes_read_live_from_the_config():
-    assert 'v.get("persona").and_then(|p| p.get("free"))' in LOOK
+    assert "toml::from_str::<toml::Table>(&t)" in LOOK, "the whole config file, not one TOML value"
+    assert '.get("persona")\n                .and_then(|p| p.get("free"))' in LOOK
     assert "Let it be itself" in LOOK, "the refusal says where the yes is"
     assert "pub use crate::look::{Gate, NOT_FREE};" in IDENTITY
     assert "if !self.gate.is_free() {" in IDENTITY
