@@ -141,15 +141,27 @@ class RuntimeStore(val home: File) {
      */
     fun ensureBodyWiring(token: String, port: Int = BODY_PORT): Boolean {
         val config = ensureConfig()
-        val text = config.readText()
+        var text = config.readText()
+        var changed = false
+        // An `[agents.main]` another writer made first (the app's own first run sets its model with
+        // `caelza config set` before the Body is wired) gets the two lines it lacks; without them the
+        // Runtime refuses to start the agent ("risk_profile does not name a configured risk_profiles entry").
+        val repaired = repairMainAgent(text)
+        if (repaired != text) {
+            text = repaired
+            changed = true
+        }
         val add = StringBuilder()
         if (!BODY_SERVER_LINE.containsMatchIn(text)) add.append(bodyServerBlock(token, port))
         if (!text.contains("[mcp_bundles.body]")) add.append(BODY_BUNDLE)
         if (!AGENTS_MAIN.containsMatchIn(text)) add.append(AGENT_MAIN)
         if (!RISK_PHONE.containsMatchIn(text)) add.append(riskProfileBlock())
-        if (add.isEmpty()) return false
-        config.appendText((if (text.endsWith("\n") || text.isEmpty()) "" else "\n") + add)
-        return true
+        if (add.isNotEmpty()) {
+            text = text + (if (text.endsWith("\n") || text.isEmpty()) "" else "\n") + add
+            changed = true
+        }
+        if (changed) config.writeText(text)
+        return changed
     }
 
     private fun read(pointer: File): String? =
@@ -173,6 +185,26 @@ class RuntimeStore(val home: File) {
         private val PAIRING_OFF = Regex("""^([ \t]*)require_pairing\s*=\s*false[ \t]*$""", RegexOption.MULTILINE)
         private val AGENTS_MAIN = Regex("""^\s*\[agents\.main]""", RegexOption.MULTILINE)
         private val RISK_PHONE = Regex("""^\s*\[risk_profiles\.phone]""", RegexOption.MULTILINE)
+        private val NEXT_TABLE = Regex("""^\s*\[""", RegexOption.MULTILINE)
+        private val KEY_RISK = Regex("""^\s*risk_profile\s*=""", RegexOption.MULTILINE)
+        private val KEY_BUNDLES = Regex("""^\s*mcp_bundles\s*=""", RegexOption.MULTILINE)
+
+        /**
+         * An `[agents.main]` with no `risk_profile` or no `mcp_bundles` gets the phone's two lines,
+         * right under its header; everything else in the section stays. The section runs to the
+         * next `[...]` header (TOML tables, which is how the Runtime and `caelza config set` write).
+         */
+        fun repairMainAgent(text: String): String {
+            val header = AGENTS_MAIN.find(text) ?: return text
+            val lineEnd = text.indexOf('\n', header.range.last + 1).let { if (it < 0) text.length else it }
+            val sectionEnd = NEXT_TABLE.find(text, lineEnd + 1)?.range?.first ?: text.length
+            val section = text.substring(lineEnd, sectionEnd)
+            val missing = StringBuilder()
+            if (!KEY_RISK.containsMatchIn(section)) missing.append("\nrisk_profile = \"phone\"")
+            if (!KEY_BUNDLES.containsMatchIn(section)) missing.append("\nmcp_bundles = [\"body\"]")
+            if (missing.isEmpty()) return text
+            return text.substring(0, lineEnd) + missing + text.substring(lineEnd)
+        }
 
         fun bodyServerBlock(token: String, port: Int = BODY_PORT): String = """
             |

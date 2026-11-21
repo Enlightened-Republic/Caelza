@@ -47,8 +47,27 @@ class CaelzaCli(
             val ws = File(configDir, "agents/cael/workspace").apply { mkdirs() }
             File(ws, "SOUL.md").takeUnless { it.isFile }?.writeText(soul)
             File(ws, "IDENTITY.md").takeUnless { it.isFile }?.writeText(IDENTITY)
+            // The Runtime fills any missing file with its own template; its USER.md names the owner
+            // "User" and its AGENTS.md is a tool-user's checklist. Cael gets his own, and a stock USER.md
+            // (an install before v0.6.1) is replaced.
+            val user = File(ws, "USER.md")
+            if (!user.isFile || STOCK_USER.containsMatchIn(user.readText())) user.writeText(USER)
+            File(ws, "AGENTS.md").takeUnless { it.isFile }?.writeText(AGENTS)
             return ws
         }
+
+        /** Upstream's USER.md template as it renders: the line that calls the owner "User". */
+        val STOCK_USER = Regex("""\*\*Name:\*\*\s*User\s*$""", RegexOption.MULTILINE)
+
+        /** Cael's USER.md (model-setup.sh writes the same; tests/test_guide.py keeps them in step). */
+        const val USER = "# USER.md — the owner\n\n" +
+            "I don't know my owner's name yet. When we talk I ask, warmly and once, and I use it from then on;\n" +
+            "what they tell me about themselves I remember. Until I know it I say \"you\", never \"User\".\n"
+
+        /** Cael's AGENTS.md: the guide's way of working, in place of the tool-user's checklist. */
+        const val AGENTS = "# AGENTS.md — how Cael works\n\n" +
+            "Read SOUL.md (who I am) and USER.md (who I'm helping) first. I explain, encourage and point at the next step;\n" +
+            "I run no tools and change no settings. If I'm asked for something only the owner's agent can do, I say so and point at it.\n"
 
         /** The same card model-setup.sh writes (tests/test_guide.py and test_android_body.py keep them in step). */
         const val IDENTITY = "- **Name:** Cael\n" +

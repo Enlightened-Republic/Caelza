@@ -12,6 +12,7 @@ import {
   nameOk,
   parseName,
   suggestName,
+  userTemplate,
   withName,
 } from "./identity.logic.ts";
 
@@ -81,6 +82,15 @@ test("withName: replaces the line in place, adds one under the title, or writes 
   assert.equal(parseName(fresh), "Ember", "the wants do not add a second Name line");
   assert.equal(parseName(withName(fresh, "Juniper")), "Juniper");
   assert.equal(withName(null, " Quill "), identityTemplate("Quill"));
+});
+
+test("userTemplate: the agent does not know its owner yet, asks once, and never says \"User\"", () => {
+  const u = userTemplate();
+  assert.ok(u.startsWith("# USER.md"));
+  assert.ok(u.includes("I don't know my owner's name yet"));
+  assert.ok(u.includes("ask, warmly and once"));
+  assert.ok(u.includes('never "User"'));
+  assert.equal(u.includes("**Name:** User"), false, "upstream's template line never appears");
 });
 
 test("displayName: the Name line, Cael's proper name, else the alias", () => {

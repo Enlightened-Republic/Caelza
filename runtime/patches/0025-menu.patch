@@ -1,0 +1,23 @@
+The Plugins page leaves the sidebar (v0.6.1). No release builds the WASM
+plugin host (`plugins-wasm*` is off for every target, as upstream's own
+Android build has it), so the page only ever said "WASM plugins unavailable".
+The route stays for a direct URL; the menu entry and its icon import go.
+
+--- a/web/src/components/layout/Sidebar.tsx
++++ b/web/src/components/layout/Sidebar.tsx
+@@ -6,7 +6,6 @@
+ import {
+   Activity,
+   ArrowDownToLine,
+-  Blocks,
+   Bot,
+   Brain,
+   Cable,
+@@ -90,7 +89,6 @@
+       { to: '/sops', icon: Workflow, labelKey: 'nav.sops' },
+       { to: '/runs', icon: ListChecks, labelKey: 'nav.runs' },
+       { to: '/integrations', icon: Puzzle, labelKey: 'nav.integrations' },
+-      { to: '/plugins', icon: Blocks, labelKey: 'nav.plugins' },
+       { to: '/cron', icon: Clock, labelKey: 'nav.cron' },
+     ],
+   },

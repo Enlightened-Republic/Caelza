@@ -51,4 +51,38 @@ class BodyWiringTest {
         assertTrue("name = \"body\"" in text && "[mcp_bundles.body]" in text && "[risk_profiles.phone]" in text)
         assertEquals(42617, Gateway.port(store.configDir))
     }
+
+    /** The app's own first run writes `agents.main.model_provider` before the Body is wired (v0.6.0 left `main` with no profile). */
+    @Test
+    fun an_agent_the_first_run_made_first_gets_its_profile_and_its_body() {
+        val store = RuntimeStore(tmp.root)
+        store.configDir.mkdirs()
+        val own = "schema_version = 3\n\n[gateway]\nport = 42617\n\n[agents.main]\nmodel_provider = \"llamacpp.local\"\n\n" +
+            "[agents.cael]\nmodel_provider = \"llamacpp.guide\"\nrisk_profile = \"guide\"\n\n[risk_profiles.guide]\nlevel = \"readonly\"\ndeny_all_tools = true\n"
+        File(store.configDir, "config.toml").writeText(own)
+        assertTrue(store.ensureBodyWiring("abc"))
+        val text = File(store.configDir, "config.toml").readText()
+        assertTrue(text, text.contains("[agents.main]\nrisk_profile = \"phone\"\nmcp_bundles = [\"body\"]\nmodel_provider = \"llamacpp.local\"\n"))
+        assertEquals(1, Regex("\\[agents\\.main]").findAll(text).count())
+        assertTrue("[risk_profiles.phone]" in text && "[mcp_bundles.body]" in text && "name = \"body\"" in text)
+        // Cael's section and the guide profile are untouched.
+        assertTrue(text.contains("[agents.cael]\nmodel_provider = \"llamacpp.guide\"\nrisk_profile = \"guide\"\n"))
+        assertEquals(1, Regex("\\[risk_profiles\\.guide]").findAll(text).count())
+        assertFalse("nothing to add the second time", store.ensureBodyWiring("abc"))
+        assertEquals(text, File(store.configDir, "config.toml").readText())
+    }
+
+    @Test
+    fun repair_adds_only_what_the_section_lacks_and_leaves_other_sections_alone() {
+        val half = "[agents.main]\nrisk_profile = \"phone\"\nmodel_provider = \"x\"\n\n[agents.other]\nmodel_provider = \"y\"\n"
+        assertEquals(
+            "[agents.main]\nmcp_bundles = [\"body\"]\nrisk_profile = \"phone\"\nmodel_provider = \"x\"\n\n[agents.other]\nmodel_provider = \"y\"\n",
+            RuntimeStore.repairMainAgent(half),
+        )
+        val whole = "[agents.main]\nmcp_bundles = [\"body\"]\nrisk_profile = \"phone\"\n"
+        assertEquals(whole, RuntimeStore.repairMainAgent(whole))
+        val last = "[gateway]\nport = 1\n\n[agents.main]\nmodel_provider = \"x\""
+        assertEquals("[gateway]\nport = 1\n\n[agents.main]\nrisk_profile = \"phone\"\nmcp_bundles = [\"body\"]\nmodel_provider = \"x\"", RuntimeStore.repairMainAgent(last))
+        assertEquals("no main", RuntimeStore.repairMainAgent("no main"))
+    }
 }

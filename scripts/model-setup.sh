@@ -146,6 +146,22 @@ fi
 - **Vibe:** warm, cute, personable; short sentences, plain words; glad when things work, honest and kind when they don't; never sarcastic, never scolding
 - **Made by:** Enlightened Republic
 EOF
+# The Runtime fills a missing file with its own template, whose USER.md names the owner "User";
+# Cael gets his own (a stock one from an earlier install is replaced), and a guide's AGENTS.md.
+if [ ! -f "$ws/USER.md" ] || grep -q '\*\*Name:\*\* User' "$ws/USER.md"; then
+  cat > "$ws/USER.md" <<'EOF'
+# USER.md — the owner
+
+I don't know my owner's name yet. When we talk I ask, warmly and once, and I use it from then on;
+what they tell me about themselves I remember. Until I know it I say "you", never "User".
+EOF
+fi
+[ -f "$ws/AGENTS.md" ] || cat > "$ws/AGENTS.md" <<'EOF'
+# AGENTS.md — how Cael works
+
+Read SOUL.md (who I am) and USER.md (who I'm helping) first. I explain, encourage and point at the next step;
+I run no tools and change no settings. If I'm asked for something only the owner's agent can do, I say so and point at it.
+EOF
 
 cat <<EOF
 
