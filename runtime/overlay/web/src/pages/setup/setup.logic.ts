@@ -36,7 +36,7 @@ export interface Catalog {
 }
 
 /** The screens, one decision each. */
-export type Screen = "doors" | "local" | "provider" | "model" | "key" | "done";
+export type Screen = "name" | "doors" | "local" | "provider" | "model" | "key" | "done";
 
 /** The alias the key door writes: `<provider>.default`, the same one the app's first run writes. */
 export const KEY_ALIAS = "default";

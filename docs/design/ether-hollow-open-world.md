@@ -183,7 +183,13 @@ call your AI?" with a suggestion drawn the way looks are dealt; the name lives
 with the agent (its identity file, read by the Runtime and the dashboard: the
 chat header, the Looks page, the Home tiles), and a rename lives on the Looks
 page. Renaming offers to rename the resident too once the town has `rename`
-(P4). Cael keeps his name; he is not the owner's agent.
+(P4). Cael keeps his name; he is not the owner's agent. **Shipped 2026-11-21:**
+the name is the Name line of the agent's `IDENTITY.md`, written and read
+through upstream's `/api/personality` and read by the Runtime into every
+prompt; the first run's name screen (a dealt suggestion, Another name), the
+Looks page's Name card (not for Cael), the chat header and tabs, the Home tile
+and the town card's prefill (`runtime/patches/0022-agent-name.patch`,
+`web/src/lib/identity*.ts`, `agentName.tsx`).
 
 **P2 · Wants, a look and a voice (Caelza + Mind).** With the inner life on
 (xanima 0.8), the agent carries wants the owner can see, and two of them come

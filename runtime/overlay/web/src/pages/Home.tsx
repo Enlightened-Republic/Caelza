@@ -26,6 +26,7 @@ import { t } from '@/lib/i18n';
 import { getMindDigest, getMindStatus, type MindDigest, type MindStatus } from '@/lib/mind';
 import { listRuns, runStatusBadge, type SopRunSummary } from '@/lib/sops';
 import { AgentLook } from '@/looks/Look';
+import { useAgentName } from '@/lib/agentName';
 import type { Session, StatusResponse } from '@/types/api';
 import { usePolling } from '@/hooks/usePolling';
 import {
@@ -224,7 +225,7 @@ function AgentTile({ tile }: { tile: AgentTileData }) {
         <AgentLook alias={tile.alias} size={40} decorative />
       </span>
       <span className="min-w-0">
-        <span className="block truncate font-medium text-pc-text">{tile.alias}</span>
+        <span className="block truncate font-medium text-pc-text">{useAgentName(tile.alias)}</span>
         <span className="block text-xs text-pc-text-faint">{tile.line}</span>
       </span>
     </Link>
