@@ -33,6 +33,7 @@ import tech.enlightenedrepublic.caelza.runtime.RuntimeStore
 import tech.enlightenedrepublic.caelza.shizuku.ShizukuStatus
 import tech.enlightenedrepublic.caelza.update.AppUpdate
 import tech.enlightenedrepublic.caelza.update.AppUpdater
+import tech.enlightenedrepublic.caelza.voice.VoiceBridge
 import java.io.File
 
 /**
@@ -45,6 +46,8 @@ class MainActivity : AppCompatActivity() {
     private lateinit var store: RuntimeStore
     private var dashboardShown = false
     private var installing = false
+    /** The dashboard's way to the phone's text-to-speech voices (`window.caelzaVoice`). */
+    private var voiceBridge: VoiceBridge? = null
 
     private val shizukuListener = Shizuku.OnRequestPermissionResultListener { _, _ -> renderShizuku() }
     private val binderListener = Shizuku.OnBinderReceivedListener { renderShizuku() }
@@ -62,6 +65,8 @@ class MainActivity : AppCompatActivity() {
             settings.mediaPlaybackRequiresUserGesture = false
             webViewClient = TokenHandoff()
             WebView.setWebContentsDebuggingEnabled(BuildConfig.DEBUG)
+            // The WebView has no speechSynthesis; the dashboard speaks through the phone's engine instead.
+            voiceBridge = VoiceBridge(this@MainActivity, this).also { addJavascriptInterface(it, VoiceBridge.JS_NAME) }
         }
         onBackPressedDispatcher.addCallback(this) {
             if (binding.dashboard.visibility == View.VISIBLE && binding.dashboard.canGoBack()) binding.dashboard.goBack() else finish()
@@ -178,6 +183,8 @@ class MainActivity : AppCompatActivity() {
             Shizuku.removeBinderReceivedListener(binderListener)
         } catch (_: Throwable) {
         }
+        voiceBridge?.shutdown()
+        voiceBridge = null
         super.onDestroy()
     }
 

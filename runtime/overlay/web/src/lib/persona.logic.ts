@@ -6,7 +6,7 @@
 import type { PatchOp } from "@/lib/api";
 
 /** The tools the yes lets through: they refuse on their own while the switch is off. */
-export const PERSONA_TOOLS = ["look", "identity"] as const;
+export const PERSONA_TOOLS = ["look", "identity", "voice"] as const;
 
 /**
  * The config patch for the switch. A tool call runs with no one to answer a

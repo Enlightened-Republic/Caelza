@@ -122,6 +122,19 @@ voice, to shape those files itself. Its name stays yours: the tool keeps the
 Name line as you set it. Turn the switch off any time and it goes back to
 asking first. Cael, the guide, does none of this; his look is his own.
 
+## Can my agent talk, and pick its own voice?
+
+Yes. Every chat has a speaker button in its header; turn it on and the agent's
+replies are read aloud on that device. A PC uses the browser's own voices, the
+Caelza app uses the phone's, and once you paste an ElevenLabs key on the
+Connect page (**ElevenLabs voices**) the agent can speak in one of your
+ElevenLabs voices on every device (each reply read aloud costs credits on your
+ElevenLabs account). Which voice is the agent's to choose, with its `voice`
+tool, once **Let it be itself** is on; it says why it picked that one, and the
+reason shows in the Voice card on its Looks page, where you can also pick a
+voice yourself and hear it before saving. Cael's voice, like his look, is his
+own.
+
 ## What is the Shop, and what is a pack?
 
 The Shop (`/shop`) sells packs of pieces for the looks. Starter is always

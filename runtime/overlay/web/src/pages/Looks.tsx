@@ -16,6 +16,7 @@ import { t } from "@/lib/i18n";
 import { setAgentName } from "@/lib/identity";
 import { NAME_MAX, nameOk } from "@/lib/identity.logic";
 import { freeOps } from "@/lib/persona.logic";
+import VoiceCard from "@/pages/VoiceCard";
 import { AgentLook, Look, avatarPng, catalog, rememberLook, forgetLook, saveBlob } from "@/looks/Look";
 import {
   LAYERS,
@@ -351,6 +352,9 @@ function Customizer({ alias }: { alias: string }) {
           </label>
         </div>
       ) : null}
+
+      {/* The voice (P2b): what it sounds like when replies are read aloud; Cael's is his own. */}
+      {alias !== "cael" ? <VoiceCard alias={alias} onNote={setNote} /> : null}
 
       <div className="card cz-look-preview">
         <Look look={look} size={200} talking={talk} title={shown} />

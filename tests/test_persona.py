@@ -109,7 +109,7 @@ def test_the_looks_page_has_the_switch_for_everyone_but_cael():
     assert 'getProp("persona.free")' in LOOKS
     assert "await patchConfig(freeOps(on, profile, autoApprove));" in LOOKS
     assert LOOKS.count('{alias !== "cael" ? (') == 2, "the Name card and the switch, neither for Cael"
-    assert 'export const PERSONA_TOOLS = ["look", "identity"] as const;' in LOGIC
+    assert 'export const PERSONA_TOOLS = ["look", "identity", "voice"] as const;' in LOGIC
     assert 'path: "/persona/free"' in LOGIC and "/risk_profiles/${profile}/auto_approve" in LOGIC
     assert "freeOps" in LOGIC_TEST and "PERSONA_TOOLS" in LOGIC_TEST
 

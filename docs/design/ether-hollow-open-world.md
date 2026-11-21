@@ -210,9 +210,19 @@ page checks) and the `identity` tool (`read` and `write` of IDENTITY.md and
 SOUL.md, the Name line kept as the owner set it); both for every agent but
 Cael, both reading the switch from the config file at each call so the yes
 needs no restart; a "What I want" section in the identity template stands in
-for the inner life's wants until xanima 0.8 lands. Still to come: the `voice`
-tool and the voices themselves (P2b: the browser's voices, the phone's, and
-ElevenLabs behind a Connect key).
+for the inner life's wants until xanima 0.8 lands. **Shipped 2026-11-21 (the
+voice, P2b):** the `voice` tool (`show` the voices on offer by engine, `set`
+one with a sentence on why, `reset`); the gateway's `/api/voice` (the choice,
+the devices' offers, the owner's ElevenLabs voices through upstream's own
+`[providers.tts.elevenlabs]` section, speech as MP3 through upstream's
+provider); the dashboard reading replies aloud behind a speaker button in the
+chat header (the browser's voices on a PC, the phone's through the app's
+`caelzaVoice` bridge since Android's WebView has no speech synthesis, an
+ElevenLabs voice anywhere), the character's mouth moving with the sound; the
+Voice card on the Looks page (the agent's reason, the owner's own pick, Hear
+it); the ElevenLabs card on the Connect page. Still to come (P2c): the Body's
+`sensors_tts_speak` taking the chosen voice, and the first-conversation
+proposal once the inner life lands.
 
 **P3 · An account at the town (town side).** A town account (a username, a
 sign-in without a password: a magic link or a passkey) that owns a person's
