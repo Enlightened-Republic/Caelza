@@ -23,6 +23,7 @@ import {
 } from "@/lib/api";
 import { t } from "@/lib/i18n";
 import { fill } from "../setup/setup.logic";
+import VoiceCard from "./Voice";
 import WorldCard from "./World";
 import {
   HOME_ASSISTANT,
@@ -468,6 +469,9 @@ export default function Connect() {
 
         {/* Ether Hollow: the agent as a resident of the town. */}
         <WorldCard agent={agent} disabled={!ready} />
+
+        {/* ElevenLabs: a voice that sounds like a person, on every device (P2b). */}
+        <VoiceCard disabled={!ready} />
       </div>
     </div>
   );

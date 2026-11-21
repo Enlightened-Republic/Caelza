@@ -1,0 +1,227 @@
+The agent's voice (vision M10 §10, slice P2b): a `voice` tool beside `look`
+and `identity`, the gateway's /api/voice, and a chat that reads replies aloud.
+
+The `voice` tool from the overlay (crates/caelza-tools/src/voice.rs) is
+declared, attributed, listed and registered beside the other two for every
+agent but Cael, with its line in the prompt's tool list. The gateway gets
+api_voice.rs (overlay) and its routes: the devices' offers, the owner's
+ElevenLabs voices, the per-agent choice, and speech as MP3. The dashboard's
+AgentContext announces each committed reply (`caelza-agent-reply`), AgentChat
+mounts the speaker toggle and moves the character's mouth while it speaks, the
+strings get the voice.* set, and the web test list gets voice.logic.test.ts.
+
+--- a/crates/caelza-gateway/src/lib.rs
++++ b/crates/caelza-gateway/src/lib.rs
+@@ -18,6 +18,7 @@
+ pub mod api_mind;
+ pub mod api_mind_install;
+ pub mod api_world;
++pub mod api_voice;
+ pub mod api_mind_share;
+ pub mod api_oidc;
+ pub mod api_pairing;
+@@ -2410,6 +2411,20 @@
+             get(api_looks::handle_wardrobe_get).put(api_looks::handle_wardrobe_put),
+         )
+         .route("/api/looks/wardrobe/unlock", post(api_looks::handle_wardrobe_unlock))
++        // The voice (vision M10 §10): what the agent sounds like when a device
++        // reads its replies aloud; the devices' offers; the owner's ElevenLabs voices.
++        .route(
++            "/api/voice/offer",
++            get(api_voice::handle_offer_get).post(api_voice::handle_offer_post),
++        )
++        .route("/api/voice/elevenlabs", get(api_voice::handle_elevenlabs_get))
++        .route(
++            "/api/voice/{alias}",
++            get(api_voice::handle_voice_get)
++                .put(api_voice::handle_voice_put)
++                .delete(api_voice::handle_voice_delete),
++        )
++        .route("/api/voice/{alias}/speak", post(api_voice::handle_speak))
+         // The Connect page: the skills the Runtime carries, put on disk for an agent.
+         .route("/api/connect/skills", get(api_connect::handle_skills_get))
+         .route("/api/connect/skills/{name}", post(api_connect::handle_skill_install))
+--- a/crates/caelza-runtime/src/agent/loop_.rs
++++ b/crates/caelza-runtime/src/agent/loop_.rs
+@@ -2037,6 +2037,10 @@
+             "Your own IDENTITY.md and SOUL.md: `read` one, `write` one whole in your own words; the Name line stays as your owner set it. Acts on its own once your owner turned on \"Let it be itself\".",
+         ));
+         tool_descs.push((
++            "voice",
++            "Your own voice, for replies read aloud: `show` the voices on offer by engine (browser, phone, elevenlabs) and your choice, `set {engine, voice, why}` one with a sentence on why, `reset`. Acts on its own once your owner turned on \"Let it be itself\".",
++        ));
++        tool_descs.push((
+         "schedule",
+         "Manage scheduled tasks (create/list/get/cancel/pause/resume). Supports recurring cron and one-shot delays.",
+     ));
+--- a/crates/caelza-runtime/src/tools/mod.rs
++++ b/crates/caelza-runtime/src/tools/mod.rs
+@@ -132,6 +132,7 @@
+ pub use caelza_tools::ether_hollow::EtherHollowTool;
+ pub use caelza_tools::identity::IdentityTool;
+ pub use caelza_tools::look::LookTool;
++pub use caelza_tools::voice::VoiceTool;
+ pub use caelza_tools::proxy_config::ProxyConfigTool;
+ #[cfg(feature = "tools-external")]
+ pub use caelza_tools::pushover::PushoverTool;
+@@ -1817,6 +1818,7 @@
+     if agent_alias != "cael" {
+         register_tool!("look", Arc::new(LookTool::new(&root_config, agent_alias)));
+         register_tool!("identity", Arc::new(IdentityTool::new(&root_config, agent_alias)));
++        register_tool!("voice", Arc::new(VoiceTool::new(&root_config, agent_alias)));
+     }
+     register_tool!(
+         "canvas",
+--- a/crates/caelza-tools/src/attribution.rs
++++ b/crates/caelza-tools/src/attribution.rs
+@@ -59,6 +59,7 @@
+ use crate::linkedin::LinkedInTool;
+ use crate::llm_task::LlmTaskTool;
+ use crate::look::LookTool;
++use crate::voice::VoiceTool;
+ use crate::mcp_tool::McpToolWrapper;
+ use crate::memory_export::MemoryExportTool;
+ use crate::memory_forget::MemoryForgetTool;
+@@ -189,6 +190,7 @@
+ tool_attribution!(EtherHollowTool, ToolKind::Plugin);
+ tool_attribution!(IdentityTool, ToolKind::Plugin);
+ tool_attribution!(LookTool, ToolKind::Plugin);
++tool_attribution!(VoiceTool, ToolKind::Plugin);
+ #[cfg(feature = "tools-external")]
+ tool_attribution!(WebSearchTool, ToolKind::Search);
+ 
+--- a/crates/caelza-tools/src/inventory.rs
++++ b/crates/caelza-tools/src/inventory.rs
+@@ -462,6 +462,11 @@
+         compilation: BuiltinToolCompilation::Always,
+     },
+     BuiltinToolSpec {
++        name: "voice",
++        tier: ToolTier::Optional,
++        compilation: BuiltinToolCompilation::Always,
++    },
++    BuiltinToolSpec {
+         name: "pushover",
+         tier: ToolTier::Optional,
+         compilation: BuiltinToolCompilation::External,
+--- a/crates/caelza-tools/src/lib.rs
++++ b/crates/caelza-tools/src/lib.rs
+@@ -73,6 +73,7 @@
+ pub mod linkedin_client;
+ pub mod llm_task;
+ pub mod look;
++pub mod voice;
+ pub mod mcp_client;
+ pub mod mcp_context;
+ pub mod mcp_deferred;
+--- a/docs/book/src/developing/tool-inventory.md
++++ b/docs/book/src/developing/tool-inventory.md
+@@ -244,7 +244,7 @@
+ | Channel companions | `discord_search`, `email_search`, `email_read` | No |
+ | Knowledge | `knowledge` | No |
+ | Caelza | `ether_hollow` | No: `[ether_hollow].enabled` is off until the owner registers the resident |
+-| Caelza | `look`, `identity` | Yes, for every agent but Cael; they act only once `[persona].free` is on (the Looks page's "Let it be itself") |
++| Caelza | `look`, `identity`, `voice` | Yes, for every agent but Cael; they act only once `[persona].free` is on (the Looks page's "Let it be itself") |
+ 
+ Registration on a default config follows the config defaults:
+ `[browser].enabled`, `[http_request].enabled`, `[web_search].enabled`, and
+--- a/web/package.json
++++ b/web/package.json
+@@ -14,7 +14,7 @@
+     "typecheck": "npm run check:generated && tsc -b",
+     "build": "npm run check:generated && tsc -b && vite build",
+     "dev": "vite",
+-    "test": "node --experimental-strip-types --test src/pages/quickstart/runtime-selection.test.ts src/pages/quickstart/doors.logic.test.ts src/pages/setup/setup.logic.test.ts src/pages/setup/ollama.logic.test.ts src/pages/connect/connect.logic.test.ts src/pages/connect/world.logic.test.ts src/lib/identity.logic.test.ts src/lib/persona.logic.test.ts src/looks/looks.logic.test.ts src/guide/guide.logic.test.ts src/pages/home.logic.test.ts src/pages/bodies.logic.test.ts src/pages/mind.logic.test.ts src/pages/mind.share.logic.test.ts src/pages/mind.install.logic.test.ts src/pages/quickstart/channel-fields.test.ts src/pages/acp-console/thought-stream.test.ts src/lib/contextBar.test.ts src/components/sections/secretMap.logic.test.ts src/pages/integrations.logic.test.ts src/lib/historyTrimNotice.test.ts src/components/runLogPresentation.test.ts src/pages/pluginCatalog.test.ts && npm run test:sops && npm run test:sop-editor && jiti src/pages/quickstart/channel-form.test.ts",
++    "test": "node --experimental-strip-types --test src/pages/quickstart/runtime-selection.test.ts src/pages/quickstart/doors.logic.test.ts src/pages/setup/setup.logic.test.ts src/pages/setup/ollama.logic.test.ts src/pages/connect/connect.logic.test.ts src/pages/connect/world.logic.test.ts src/lib/identity.logic.test.ts src/lib/persona.logic.test.ts src/lib/voice.logic.test.ts src/looks/looks.logic.test.ts src/guide/guide.logic.test.ts src/pages/home.logic.test.ts src/pages/bodies.logic.test.ts src/pages/mind.logic.test.ts src/pages/mind.share.logic.test.ts src/pages/mind.install.logic.test.ts src/pages/quickstart/channel-fields.test.ts src/pages/acp-console/thought-stream.test.ts src/lib/contextBar.test.ts src/components/sections/secretMap.logic.test.ts src/pages/integrations.logic.test.ts src/lib/historyTrimNotice.test.ts src/components/runLogPresentation.test.ts src/pages/pluginCatalog.test.ts && npm run test:sops && npm run test:sop-editor && jiti src/pages/quickstart/channel-form.test.ts",
+     "test:sops": "node --experimental-strip-types --test src/hooks/useRunOverlay.logic.test.ts src/pages/runs.logic.test.ts",
+     "test:sop-editor": "node --experimental-strip-types --test src/pages/sopSavePlan.test.ts",
+     "test:permissions": "jiti src/components/ToolPermissionGrid.logic.test.ts && jiti src/pages/Tools.logic.test.ts && jiti src/lib/toolCatalog.logic.test.ts && jiti src/components/ToolCatalogWarningPanel.test.ts && jiti src/lib/validationWarnings.test.ts && jiti src/components/UpgradeDialog.logic.test.ts && npm run test:navigation",
+--- a/web/src/contexts/AgentContext.tsx
++++ b/web/src/contexts/AgentContext.tsx
+@@ -425,6 +425,8 @@
+               timestamp: new Date(),
+             },
+           ]);
++          // Caelza: the dashboard may read the reply aloud (lib/speech, vision M10 §10).
++          window.dispatchEvent(new CustomEvent('caelza-agent-reply', { detail: { alias: agentAlias, content: outcome.content } }));
+         } else if (outcome?.kind === 'diagnostic') {
+           // Clean completion with nothing at all — surface a one-off notice so
+           // the turn does not disappear. Mirrors caelcode's zc-turn-no-output
+--- a/web/src/lib/i18n.ts
++++ b/web/src/lib/i18n.ts
+@@ -1045,6 +1045,40 @@
+     'persona.on_saved': "Yes said. The agent can shape itself from its next reply.",
+     'persona.off_saved': "Taken back. The agent asks before changing anything again.",
+     'persona.failed': "The switch was not saved.",
++    'voice.read_on': "Reading replies aloud. Tap to stop.",
++    'voice.read_off': "Read replies aloud",
++    'voice.card_title': "Voice",
++    'voice.card_help': "How its replies sound when read aloud (the speaker button in the chat). It can pick a voice itself once \"Let it be itself\" is on, and tells you why; you can pick one here too and hear it first.",
++    'voice.none': "The device's own voice",
++    'voice.engine_browser': "this browser",
++    'voice.engine_phone': "this phone",
++    'voice.engine_elevenlabs': "ElevenLabs",
++    'voice.pick': "Voice",
++    'voice.device_default': "The device's own voice",
++    'voice.group_browser': "This browser's voices",
++    'voice.group_phone': "This phone's voices",
++    'voice.group_elevenlabs': "ElevenLabs voices",
++    'voice.hear': "Hear it",
++    'voice.save': "Save voice",
++    'voice.saving': "Saving\u2026",
++    'voice.saved': "Voice saved. Replies are read in it wherever reading aloud is on.",
++    'voice.failed': "The voice was not saved.",
++    'voice.sample': "Hi, I'm {agent}. This is how I sound.",
++    'voice.read_hint': "A browser or phone voice speaks only on the device that has it; an ElevenLabs voice speaks everywhere.",
++    'voice.no_voices_here': "This device offers no voices of its own. Add an ElevenLabs key on the Connect page and it can speak anywhere.",
++    'voice.eleven_title': "ElevenLabs voices",
++    'voice.eleven_body': "ElevenLabs makes voices that sound like people. Paste an API key from elevenlabs.io (treat it like a password; it is stored encrypted on this device) and your agent can choose one of your voices and speak in it on every device. Each reply read aloud costs credits on your ElevenLabs account.",
++    'voice.eleven_link': "Get a key at elevenlabs.io",
++    'voice.eleven_key': "ElevenLabs API key",
++    'voice.eleven_rule': "A key is one long word, 16 characters or more.",
++    'voice.eleven_connect': "Connect",
++    'voice.eleven_update': "Update key",
++    'voice.eleven_working': "Connecting\u2026",
++    'voice.eleven_saved': "Connected. {n} voices to choose from, on the Looks page or by the agent itself.",
++    'voice.eleven_failed': "The key was not saved.",
++    'voice.eleven_on': "Connected",
++    'voice.eleven_off': "Not connected",
++    'voice.eleven_voices': "{n} voices",
+     'setup.tag_strong': "strongest",
+     'setup.title_doors': "Hi, I'm Cael",
+     'setup.title_done': "That worked!",
+--- a/web/src/pages/AgentChat.tsx
++++ b/web/src/pages/AgentChat.tsx
+@@ -24,6 +24,7 @@
+ import SessionPicker from '@/components/SessionPicker';
+ import { AgentLook } from '@/looks/Look';
+ import { useAgentName } from '@/lib/agentName';
++import { SpeakToggle, useSpeech } from '@/lib/speech';
+ 
+ const DRAFT_KEY_PREFIX = 'agent-chat';
+ 
+@@ -137,6 +138,7 @@
+   const draftKey = `${DRAFT_KEY_PREFIX}.${agentAlias}.${sessionId}`;
+   // What the agent is called (its IDENTITY.md), the alias until that has loaded.
+   const agentLabel = useAgentName(agentAlias);
++  const speech = useSpeech(agentAlias);
+   const { draft, saveDraft, clearDraft } = useDraft(draftKey);
+   const [input, setInput] = useState(draft);
+   // Mirror of `input` for writers that run after an await (an attachment
+@@ -564,7 +566,7 @@
+       <div className="flex items-center justify-between flex-wrap gap-y-2 px-4 py-2 border-b border-pc-border bg-pc-surface">
+         <div className="flex items-center gap-2">
+           {/* The agent's look: it talks while the agent is answering (vision M8). */}
+-          <AgentLook alias={agentAlias} size={28} talking={typing} />
++          <AgentLook alias={agentAlias} size={28} talking={typing || speech.speaking} />
+           <span className="text-sm font-medium text-pc-text">{agentLabel}</span>
+           <Link
+             to={`/agent/${encodeURIComponent(agentAlias)}/workspace`}
+@@ -578,6 +580,7 @@
+ 
+         <div className="flex items-center gap-2 flex-wrap min-w-0">
+           <SessionPicker agentAlias={agentAlias} />
++          <SpeakToggle alias={agentAlias} />
+ 
+           <div className="relative" ref={modelDropdownRef}>
+             <button
