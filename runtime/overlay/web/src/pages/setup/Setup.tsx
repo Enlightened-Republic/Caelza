@@ -24,6 +24,9 @@ import {
   type QuickstartState,
 } from "@/lib/api";
 import { basePath } from "@/lib/basePath";
+import { rememberAgentName } from "@/lib/agentName";
+import { setAgentName } from "@/lib/identity";
+import { NAME_MAX, nameOk, suggestName } from "@/lib/identity.logic";
 import { t } from "@/lib/i18n";
 import { Eyebrow, Mark, Wordmark } from "@/components/brand/CaelzaLockup";
 import {
@@ -39,6 +42,7 @@ import {
   type Runner,
 } from "../quickstart/doors.logic";
 import {
+  AGENT_NAME,
   defaultModel,
   errorLines,
   extraRequiredFields,
@@ -118,6 +122,8 @@ const EMPTY_STATE = {
 
 interface Done {
   agent: string;
+  /** What the agent is called: the name the owner gave it, else its alias. */
+  label: string;
   provider: StagedProvider;
   guide?: string;
 }
@@ -126,10 +132,17 @@ export default function Setup() {
   const navigate = useNavigate();
   const [state, setState] = useState<QuickstartState | null>(null);
   const [stateFailed, setStateFailed] = useState(false);
-  const [screen, setScreen] = useState<Screen>("doors");
+  const [screen, setScreen] = useState<Screen>("name");
   const [busy, setBusy] = useState(false);
   const [errors, setErrors] = useState<string[]>([]);
   const [done, setDone] = useState<Done | null>(null);
+
+  // The name: one dealt from the alias, kept or replaced by the owner, written
+  // to the agent's IDENTITY.md once the agent exists (the Runtime reads that
+  // file into every prompt, so the agent knows its name from its first reply).
+  const [deal, setDeal] = useState(0);
+  const [agentLabel, setAgentLabel] = useState(() => suggestName(AGENT_NAME));
+  const labelOk = nameOk(agentLabel);
 
   // The key door.
   const [more, setMore] = useState(false);
@@ -303,7 +316,18 @@ export default function Setup() {
         setErrors(errorLines(res.errors));
         return;
       }
-      setDone({ agent: res.agent.alias, provider: staged, guide });
+      const label = agentLabel.trim();
+      let named = res.agent.alias;
+      if (nameOk(label)) {
+        try {
+          await setAgentName(res.agent.alias, label);
+          rememberAgentName(res.agent.alias, label);
+          named = label;
+        } catch {
+          // The agent is set up either way; the name can be given on the Looks page.
+        }
+      }
+      setDone({ agent: res.agent.alias, label: named, provider: staged, guide });
       setScreen("done");
     } catch (e) {
       setErrors([e instanceof Error ? e.message : String(e)]);
@@ -359,13 +383,14 @@ export default function Setup() {
     setErrors([]);
     setScreen(next);
   };
-  const back: Partial<Record<Screen, Screen>> = { local: "doors", provider: "doors", model: "provider", key: "model" };
+  const back: Partial<Record<Screen, Screen>> = { doors: "name", local: "doors", provider: "doors", model: "provider", key: "model" };
   const steps: Record<Screen, [number, number]> = {
-    doors: [1, 2],
-    local: [2, 2],
-    provider: [2, 4],
-    model: [3, 4],
-    key: [4, 4],
+    name: [1, 3],
+    doors: [2, 3],
+    local: [3, 3],
+    provider: [3, 5],
+    model: [4, 5],
+    key: [5, 5],
     done: [0, 0],
   };
 
@@ -377,6 +402,49 @@ export default function Setup() {
   let actions: ReactNode = null;
 
   switch (screen) {
+    case "name":
+      title = t("name.title");
+      body = t("name.body");
+      control = (
+        <label className="block">
+          <div className="cz-kicker">{t("name.label")}</div>
+          <input
+            className="cz-input"
+            value={agentLabel}
+            maxLength={NAME_MAX}
+            onChange={(e) => setAgentLabel(e.target.value)}
+            onKeyDown={onEnter(() => {
+              if (labelOk) go("doors");
+            })}
+            autoCapitalize="words"
+            autoCorrect="off"
+            spellCheck={false}
+            autoFocus
+            data-setup-name
+          />
+          {agentLabel.trim() !== "" && !labelOk ? <p className="cz-note">{t("name.rule")}</p> : null}
+        </label>
+      );
+      actions = (
+        <>
+          <button type="button" className="cz-btn cz-btn-primary" disabled={!labelOk} onClick={() => go("doors")} data-setup-name-next>
+            {t("setup.next")}
+          </button>
+          <button
+            type="button"
+            className="cz-btn-text"
+            onClick={() => {
+              setDeal((d) => d + 1);
+              setAgentLabel(suggestName(AGENT_NAME, deal + 1));
+            }}
+            data-setup-name-another
+          >
+            {t("name.another")}
+          </button>
+        </>
+      );
+      break;
+
     case "doors":
       title = t("setup.title_doors");
       body = t("setup.body_doors");
@@ -710,8 +778,8 @@ export default function Setup() {
       title = t("setup.title_done");
       body = done
         ? done.guide
-          ? fill(t("setup.body_done_local"), { agent: done.agent, model: done.provider.model, guide: done.guide })
-          : fill(t("setup.body_done"), { agent: done.agent, model: done.provider.model, provider: providerLabel })
+          ? fill(t("setup.body_done_local"), { agent: done.label, model: done.provider.model, guide: done.guide })
+          : fill(t("setup.body_done"), { agent: done.label, model: done.provider.model, provider: providerLabel })
         : null;
       actions = (
         <button

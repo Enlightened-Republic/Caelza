@@ -99,6 +99,16 @@ per slot (or choose any colour), watch the preview, then Save look. Undo puts
 the saved look back; Back to the default drops the saved look. A dimmed piece
 comes with a pack that is not in your wardrobe yet.
 
+## Can I name or rename my agent?
+
+Yes. The first run asks what to call your AI and deals a name you can keep or
+replace; later, open Looks (`/looks/<alias>`) and use the Name card. The name
+is the first line of the agent's own identity file, which the Runtime reads
+into every reply, so the agent knows its new name at once; the chat header,
+Home and the Looks page follow. In Ether Hollow the resident takes the same
+name when you register it (or a variant if the town already has one). Cael,
+the guide, keeps his name: your agent is not Cael.
+
 ## What is the Shop, and what is a pack?
 
 The Shop (`/shop`) sells packs of pieces for the looks. Starter is always

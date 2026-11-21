@@ -165,7 +165,7 @@ def test_the_page_stages_upstreams_shapes_and_the_wheel_is_a_listbox():
     assert "!mRows.some((r) => r.id === model)" in PAGE
     assert "if (live !== null && mRows.length === 0) setTyped(true);" in PAGE
     assert "live === null && mRows.length === 0" in PAGE
-    assert PAGE.count("onKeyDown={onEnter(") == 3
+    assert PAGE.count("onKeyDown={onEnter(") == 4, "the name, the typed model, the key and its extras"
     assert "quickstartApply(submission(" in PAGE
     assert 'to="/quickstart"' in PAGE, "the full wizard is one tap away"
     # Everything the owner is not asked takes a default the daemon lists.

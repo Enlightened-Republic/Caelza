@@ -10,8 +10,11 @@ import { ArrowLeft, Download, Lock, RotateCcw, Save, ShoppingBag, Undo2, Volume2
 
 import { Button, PageHeader } from "@/components/ui";
 import { loadAgentSummaries, type AgentSummary } from "@/lib/agents";
+import { AgentNameText, rememberAgentName, useAgentName } from "@/lib/agentName";
 import { deleteLook, getLook, getWardrobe, putLook } from "@/lib/api";
 import { t } from "@/lib/i18n";
+import { setAgentName } from "@/lib/identity";
+import { NAME_MAX, nameOk } from "@/lib/identity.logic";
 import { AgentLook, Look, avatarPng, catalog, rememberLook, forgetLook, saveBlob } from "@/looks/Look";
 import {
   LAYERS,
@@ -79,7 +82,9 @@ function Gallery() {
         {(agents ?? []).map((a) => (
           <Link key={a.alias} to={`/looks/${encodeURIComponent(a.alias)}`} className="card cz-look-agent">
             <AgentLook alias={a.alias} size={104} />
-            <div className="font-semibold text-sm text-pc-text truncate">{a.alias}</div>
+            <div className="font-semibold text-sm text-pc-text truncate">
+              <AgentNameText alias={a.alias} />
+            </div>
             <div className="text-xs" style={MUTED}>
               {t("looks.dress")}
             </div>
@@ -100,6 +105,29 @@ function Customizer({ alias }: { alias: string }) {
   const [busy, setBusy] = useState(false);
   const [exporting, setExporting] = useState(false);
   const [note, setNote] = useState<{ tone: "ok" | "error"; text: string } | null>(null);
+
+  // The name: the Name line of the agent's IDENTITY.md, which the Runtime reads
+  // into every prompt, so a rename reaches the agent with its next reply.
+  const shown = useAgentName(alias);
+  const [nameDraft, setNameDraft] = useState("");
+  const [nameBusy, setNameBusy] = useState(false);
+  useEffect(() => setNameDraft(shown), [shown]);
+  const nameDirty = nameDraft.trim() !== shown;
+  const saveName = async () => {
+    const next = nameDraft.trim();
+    if (nameBusy || !nameDirty || !nameOk(next)) return;
+    setNameBusy(true);
+    setNote(null);
+    try {
+      await setAgentName(alias, next);
+      rememberAgentName(alias, next);
+      setNote({ tone: "ok", text: t("name.saved") });
+    } catch (e) {
+      setNote({ tone: "error", text: `${t("name.failed")} ${e instanceof Error ? e.message : String(e)}` });
+    } finally {
+      setNameBusy(false);
+    }
+  };
 
   useEffect(() => {
     let cancelled = false;
@@ -201,7 +229,7 @@ function Customizer({ alias }: { alias: string }) {
         {t("looks.back")}
       </Link>
       <PageHeader
-        title={alias}
+        title={shown}
         description={t("looks.customize_help")}
         actions={
           <>
@@ -217,8 +245,44 @@ function Customizer({ alias }: { alias: string }) {
         }
       />
 
+      {alias !== "cael" ? (
+        <div className="card p-4 space-y-2" data-name-card>
+          <div className="cz-kicker">{t("name.card_title")}</div>
+          <p className="text-xs" style={MUTED}>
+            {t("name.card_help")}
+          </p>
+          <div className="flex items-center gap-2">
+            <input
+              className="cz-input"
+              value={nameDraft}
+              maxLength={NAME_MAX}
+              onChange={(e) => setNameDraft(e.target.value)}
+              onKeyDown={(e) => {
+                if (e.key === "Enter") {
+                  e.preventDefault();
+                  void saveName();
+                }
+              }}
+              aria-label={t("name.label")}
+              autoCapitalize="words"
+              autoCorrect="off"
+              spellCheck={false}
+              data-name-input
+            />
+            <Button variant="primary" size="sm" disabled={nameBusy || !nameDirty || !nameOk(nameDraft)} onClick={() => void saveName()} data-name-save>
+              {nameBusy ? t("name.saving") : t("name.save")}
+            </Button>
+          </div>
+          {nameDraft.trim() !== "" && !nameOk(nameDraft) ? (
+            <p className="text-xs" style={MUTED}>
+              {t("name.rule")}
+            </p>
+          ) : null}
+        </div>
+      ) : null}
+
       <div className="card cz-look-preview">
-        <Look look={look} size={200} talking={talk} title={alias} />
+        <Look look={look} size={200} talking={talk} title={shown} />
         <div className="flex flex-col gap-2">
           <Button variant="ghost" size="sm" onClick={() => setTalk((v) => !v)} aria-pressed={talk}>
             {talk ? <VolumeX className="h-4 w-4" /> : <Volume2 className="h-4 w-4" />}

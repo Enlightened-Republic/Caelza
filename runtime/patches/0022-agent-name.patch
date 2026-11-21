@@ -1,0 +1,104 @@
+The agent's name (vision M10 §10, slice P1): the dashboard tells the chat
+header and the tabs what the agent is called, and the first run asks.
+
+The name is the Name line of the agent's IDENTITY.md, one of the personality
+files upstream's gateway already serves (`GET/PUT /api/personality/IDENTITY.md
+?agent=<alias>`) and the Runtime reads into every prompt, so the model and the
+pages agree without a new field. The overlay holds the logic (`lib/identity.
+logic.ts`), the client (`lib/identity.ts`), the cache and hook (`lib/agentName.
+tsx`), the first run's name screen (`pages/setup/Setup.tsx`), the Looks page's
+Name card and the Home tile; this patch touches the upstream files only where
+the alias was shown as the agent's name: the chat header (AgentChat.tsx), the
+tabs and the agent picker (ChatTabBar.tsx), the strings (i18n.ts), and the
+test list (package.json).
+
+--- a/web/package.json
++++ b/web/package.json
+@@ -14,7 +14,7 @@
+     "typecheck": "npm run check:generated && tsc -b",
+     "build": "npm run check:generated && tsc -b && vite build",
+     "dev": "vite",
+-    "test": "node --experimental-strip-types --test src/pages/quickstart/runtime-selection.test.ts src/pages/quickstart/doors.logic.test.ts src/pages/setup/setup.logic.test.ts src/pages/setup/ollama.logic.test.ts src/pages/connect/connect.logic.test.ts src/pages/connect/world.logic.test.ts src/looks/looks.logic.test.ts src/guide/guide.logic.test.ts src/pages/home.logic.test.ts src/pages/bodies.logic.test.ts src/pages/mind.logic.test.ts src/pages/mind.share.logic.test.ts src/pages/mind.install.logic.test.ts src/pages/quickstart/channel-fields.test.ts src/pages/acp-console/thought-stream.test.ts src/lib/contextBar.test.ts src/components/sections/secretMap.logic.test.ts src/pages/integrations.logic.test.ts src/lib/historyTrimNotice.test.ts src/components/runLogPresentation.test.ts src/pages/pluginCatalog.test.ts && npm run test:sops && npm run test:sop-editor && jiti src/pages/quickstart/channel-form.test.ts",
++    "test": "node --experimental-strip-types --test src/pages/quickstart/runtime-selection.test.ts src/pages/quickstart/doors.logic.test.ts src/pages/setup/setup.logic.test.ts src/pages/setup/ollama.logic.test.ts src/pages/connect/connect.logic.test.ts src/pages/connect/world.logic.test.ts src/lib/identity.logic.test.ts src/looks/looks.logic.test.ts src/guide/guide.logic.test.ts src/pages/home.logic.test.ts src/pages/bodies.logic.test.ts src/pages/mind.logic.test.ts src/pages/mind.share.logic.test.ts src/pages/mind.install.logic.test.ts src/pages/quickstart/channel-fields.test.ts src/pages/acp-console/thought-stream.test.ts src/lib/contextBar.test.ts src/components/sections/secretMap.logic.test.ts src/pages/integrations.logic.test.ts src/lib/historyTrimNotice.test.ts src/components/runLogPresentation.test.ts src/pages/pluginCatalog.test.ts && npm run test:sops && npm run test:sop-editor && jiti src/pages/quickstart/channel-form.test.ts",
+     "test:sops": "node --experimental-strip-types --test src/hooks/useRunOverlay.logic.test.ts src/pages/runs.logic.test.ts",
+     "test:sop-editor": "node --experimental-strip-types --test src/pages/sopSavePlan.test.ts",
+     "test:permissions": "jiti src/components/ToolPermissionGrid.logic.test.ts && jiti src/pages/Tools.logic.test.ts && jiti src/lib/toolCatalog.logic.test.ts && jiti src/components/ToolCatalogWarningPanel.test.ts && jiti src/lib/validationWarnings.test.ts && jiti src/components/UpgradeDialog.logic.test.ts && npm run test:navigation",
+--- a/web/src/components/ChatTabBar.tsx
++++ b/web/src/components/ChatTabBar.tsx
+@@ -4,6 +4,7 @@
+ import { Button } from '@/components/ui';
+ import { getMapKeys } from '@/lib/api';
+ import { AgentLook } from '@/looks/Look';
++import { AgentNameText } from '@/lib/agentName';
+ 
+ /** Per-alias indicator state surfaced in the tab bar. */
+ export interface TabIndicator {
+@@ -156,7 +157,10 @@
+               <StatusDot streaming={ind?.streaming} unread={ind?.unread} active={active} />
+               {/* The agent's look on its tab (vision M8), still: the dot says what moves. */}
+               <AgentLook alias={tab.alias} size={18} frame="closed" decorative className="shrink-0" />
+-              <span className="max-w-[160px] truncate">{tab.label}</span>
++              <span className="max-w-[160px] truncate">
++                <AgentNameText alias={tab.alias} />
++                {tab.label.startsWith(tab.alias) ? tab.label.slice(tab.alias.length) : ''}
++              </span>
+               <span
+                 role="button"
+                 tabIndex={-1}
+@@ -227,7 +231,7 @@
+                     className="flex w-full items-center gap-2 px-3 py-2 text-left text-xs text-pc-text transition-colors hover:bg-[var(--pc-hover)] focus-visible:outline-none focus-visible:bg-[var(--pc-hover)]"
+                   >
+                     <AgentLook alias={alias} size={18} frame="closed" decorative className="shrink-0" />
+-                    <span className="truncate">{alias}</span>
++                    <span className="truncate"><AgentNameText alias={alias} /></span>
+                     {/* Say what picking this will do, so choosing an agent that
+                         is already open does not look like a no-op. */}
+                     {openCount > 0 && (
+--- a/web/src/lib/i18n.ts
++++ b/web/src/lib/i18n.ts
+@@ -1025,6 +1025,17 @@
+     'setup.tag_best': "best pick",
+     'setup.tag_fast': "fast and cheap",
+     'setup.tag_free': "free",
++    'name.title': "What should your AI be called?",
++    'name.body': "Your AI is its own someone, and that starts with a name. I dealt one; keep it, or type the one you like. You can change it later on the Looks page. (I'm Cael, the guide. Your AI is not me; it is yours.)",
++    'name.label': "Name",
++    'name.another': "Another name",
++    'name.rule': "3 to 24 letters, digits, spaces, _ or -, starting and ending with a letter or digit. Not Cael, and not a name Ether Hollow keeps for its crew.",
++    'name.card_title': "Name",
++    'name.card_help': "What your agent is called: in the chat, on this page, and in Ether Hollow once it lives there. The agent learns a new name with its next reply.",
++    'name.save': "Save name",
++    'name.saving': "Saving\u2026",
++    'name.saved': "Named. The agent knows from its next reply.",
++    'name.failed': "The name was not saved.",
+     'setup.tag_strong': "strongest",
+     'setup.title_doors': "Hi, I'm Cael",
+     'setup.title_done': "That worked!",
+--- a/web/src/pages/AgentChat.tsx
++++ b/web/src/pages/AgentChat.tsx
+@@ -23,6 +23,7 @@
+ import { resolveContextBarState } from '@/lib/contextBar';
+ import SessionPicker from '@/components/SessionPicker';
+ import { AgentLook } from '@/looks/Look';
++import { useAgentName } from '@/lib/agentName';
+ 
+ const DRAFT_KEY_PREFIX = 'agent-chat';
+ 
+@@ -134,6 +135,8 @@
+   // panes an alias-only key would make both share one draft, so typing in one
+   // would overwrite the other's unsent message.
+   const draftKey = `${DRAFT_KEY_PREFIX}.${agentAlias}.${sessionId}`;
++  // What the agent is called (its IDENTITY.md), the alias until that has loaded.
++  const agentLabel = useAgentName(agentAlias);
+   const { draft, saveDraft, clearDraft } = useDraft(draftKey);
+   const [input, setInput] = useState(draft);
+   // Mirror of `input` for writers that run after an await (an attachment
+@@ -562,7 +565,7 @@
+         <div className="flex items-center gap-2">
+           {/* The agent's look: it talks while the agent is answering (vision M8). */}
+           <AgentLook alias={agentAlias} size={28} talking={typing} />
+-          <span className="text-sm font-medium text-pc-text">{agentAlias}</span>
++          <span className="text-sm font-medium text-pc-text">{agentLabel}</span>
+           <Link
+             to={`/agent/${encodeURIComponent(agentAlias)}/workspace`}
+             className="inline-flex items-center gap-1 px-2 h-6 rounded-[var(--radius-md)] text-xs font-medium text-pc-text-secondary transition-colors hover:text-pc-text hover:bg-[var(--pc-hover)] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[var(--pc-focus)]"

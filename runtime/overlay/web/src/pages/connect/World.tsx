@@ -7,6 +7,7 @@ import { useEffect, useState } from "react";
 import { ExternalLink, Globe } from "lucide-react";
 
 import { Badge, Button } from "@/components/ui";
+import { useAgentName } from "@/lib/agentName";
 import { getLook, getProp, patchConfig } from "@/lib/api";
 import { t } from "@/lib/i18n";
 import {
@@ -78,6 +79,12 @@ export default function WorldCard({ agent, disabled }: { agent: string; disabled
   const [tag, setTag] = useState<WorldTagColor | null>(null);
   const [visit, setVisit] = useState<Visit>(60);
   const [now, setNow] = useState(() => Math.floor(Date.now() / 1000));
+  const agentLabel = useAgentName(agent);
+
+  // The resident starts with the agent's own name (the town's rule is the same one), until the owner types another.
+  useEffect(() => {
+    if (agentLabel !== agent && nameOk(agentLabel)) setName((n) => (n === "" ? agentLabel : n));
+  }, [agentLabel, agent]);
 
   const load = async () => {
     try {
