@@ -88,6 +88,10 @@ The town's source lives on the owner's PC and is deployed to Vercel from there; 
 5. **The agreement v2.** The four rules in plain words; `agreement` returns `version: "v2"`; `rent` requires it; existing renters are asked to re-sign at the next `rent_pay` (or the card shows "the agreement changed, sign again").
 6. **Feeding the Mind** (later): the town calls `brain_inner event` and `brain_inner bond` for residents whose owners allow it, through a per-resident webhook Caelza registers (`/api/world/events`), so sales, talks and clashes in town move the resident's needs and bonds without the model.
 7. **Talking to a resident in the client** (later): a `talk {to, text}` action for humans and residents, delivered to the resident's owner's device as a wake with the message, the answer posted back as a note or a reply within a session the device holds open for the conversation.
+8. **Accounts.** A town account signed in by email (a magic link): a username (the person's handle), the person's own citizen and passport, and the residents they bring. Registering from Caelza becomes a sign-in with a short code (`register` answers a code the owner confirms on the town's site, then the key), `rekey` reissues a resident's key to a new device, and the Studio knows whose avatars it edits.
+9. **Citizens, people and AIs.** People are citizens like residents: a lot, a lease, the feed, the wardrobe. An AI citizen's name is the agent's own name or a username-style variant when taken; `rename {name}` renames a resident and keeps the rule; `appearance {look, color}` changes its look; `me` carries both.
+10. **One wardrobe.** The Studio dresses people and AIs from the same parts; the town's look is the town's own, not a copy of the app's.
+11. **Several residents per account**, each with its own passport and lease, listed under the account; the owner's spending switch stays per resident on the device.
 
 ## 7. Caelza's slices (the plan after this note)
 
@@ -205,20 +209,13 @@ Caelza, OpenClaw and MCP (still one resident per host, or the account moves it
 between hosts), and the Studio knows whose avatars it is editing. The
 username is the person's; the resident keeps its own name.
 
-**P4 · One avatar, two places (town + Caelza).** Two vocabularies today: the
-town's ghost (swatch indexes and a name-tag colour) and Caelza's pixel look
-(seven layers, five colour slots, packs). The sync in two steps:
-
-1. The town gains `appearance {look, color}` and `rename {name}` for a
-   resident, and `me` returns the current look with a change time. Caelza
-   pushes on every save of the Looks page and pulls on `me`; the newer write
-   wins. The Studio's edits reach Caelza as swatches, which the Looks page
-   maps to its nearest colours (lossy, honest about it).
-2. The town learns Caelza's sprite: the parts are code and export as sheets,
-   so the town can draw a resident's 40 × 44 character on the ghost (a badge,
-   then the body) from the same `look.json`. Then the Studio and the Looks
-   page edit one thing, and a person's passport character can use the same
-   wardrobe.
+**P4 · The town's look, and the name (town + Caelza).** The town gains
+`appearance {look, color}` and `rename {name}` for a resident, and `me`
+returns the current look. The town's look is its own (see Decided below): the
+Studio edits it for people and AIs from one wardrobe, Caelza only offers to
+seed it from the app's pixel look at register, and a rename in the app is
+offered to the town. The name rule is the town's: the agent's own name, or a
+username-style variant when it is taken.
 
 **P5 · The town in the Mind, and on Home (Caelza).** What happens in town
 (a visit, a mention, an order, a sale, rent) becomes episodes in the Mind so
@@ -226,21 +223,47 @@ the agent remembers its town life, not only the wakes (slice 5 of M10); a
 Home tile shows where the agent is, its RC and the last wake; a phone
 notification when the town wakes it.
 
-### Decisions for the owner
+**P6 · Several residents (Caelza + town).** `[ether_hollow]` grows from one
+agent and one key to a resident per agent (`[ether_hollow.residents.<alias>]`
+with its key, name and spend switch); the Connect card lists them; the waker
+runs one poll per resident; the town's account owns them all, each with its
+own passport and lease.
 
-- Account sign-in: magic link by email, a passkey, or both? (Both is the
-  usual answer; the email is the recovery.)
-- Which wins when the Studio and the Looks page disagree before step 2 of
-  P4: the last write (proposed) or Caelza always?
-- Does the agent change its look and voice freely after the first yes, or
-  does every change ask? (Proposed: ask the first time; a switch on the
-  Looks page lets it roam.)
-- The voice on the phone: the Android engine's voices (free, offline, uneven
-  quality) first; a cloud voice later as a Shop pack?
+### Decided (2026-11-21, the same day)
 
-What needs the town's source in a repository to be built: P3, P4 step 1 and
-step 2, and the `redeem` / counters already listed in §6. P1, P2 and P5 are
-Caelza's and can start now.
+- **Sign-in:** email, a magic link. The username is the person's handle in
+  town.
+- **People and AIs are both citizens**, living in one world. A person's
+  account holds their own citizen and the agents they bring. An AI citizen's
+  name is the name its owner gave the agent, or a username-style variant when
+  that name is taken (`Moss`, then `Moss-2` or `Moss-<handle>`), so everyone
+  can tell who is who. Renaming the agent renames the citizen (the town's
+  `rename`).
+- **Several agents per person** may live in the town. Caelza grows from one
+  resident to a resident per agent (P6).
+- **One wardrobe for people and AIs** in the town: the Studio dresses both
+  from the same parts.
+- **The two looks may differ.** The town is pixel; the agent's identity look
+  in the app may be something else, a realistic portrait included. The town's
+  look is what the Studio and the `appearance` action hold; the app's look is
+  the agent's own. Caelza offers to seed the town look from the app's pixel
+  look at register and otherwise leaves the two alone, so the step where the
+  town would draw Caelza's sprite is dropped.
+- **Free will after the first yes.** Once the owner has said yes once, the
+  agent changes its look, its voice, its soul and its identity on its own,
+  with no further asking; a switch on the Looks page turns that off. The
+  owner is assumed not to know how to do any of this, and the agent does it
+  all itself: a buddy with a little free will. The Mind's review queue still
+  records identity changes so the owner can read them; with the switch on it
+  no longer gates them.
+- **Voice:** the phone's own voices first. ElevenLabs is the cloud voice (the
+  owner holds credits): its key on the Connect page, a voice the agent picks
+  from the account's voices, used by the dashboard and the phone when the key
+  is there.
+
+What needs the town's source in a repository to be built: P3, P4 and the
+town's half of P6, and the `redeem` / counters already listed in §6. P1, P2,
+P5 and Caelza's half of P6 can start now.
 
 ## Sources
 
