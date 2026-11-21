@@ -11,10 +11,11 @@ import { ArrowLeft, Download, Lock, RotateCcw, Save, ShoppingBag, Undo2, Volume2
 import { Button, PageHeader } from "@/components/ui";
 import { loadAgentSummaries, type AgentSummary } from "@/lib/agents";
 import { AgentNameText, rememberAgentName, useAgentName } from "@/lib/agentName";
-import { deleteLook, getLook, getWardrobe, putLook } from "@/lib/api";
+import { deleteLook, getLook, getProp, getWardrobe, patchConfig, putLook } from "@/lib/api";
 import { t } from "@/lib/i18n";
 import { setAgentName } from "@/lib/identity";
 import { NAME_MAX, nameOk } from "@/lib/identity.logic";
+import { freeOps } from "@/lib/persona.logic";
 import { AgentLook, Look, avatarPng, catalog, rememberLook, forgetLook, saveBlob } from "@/looks/Look";
 import {
   LAYERS,
@@ -126,6 +127,56 @@ function Customizer({ alias }: { alias: string }) {
       setNote({ tone: "error", text: `${t("name.failed")} ${e instanceof Error ? e.message : String(e)}` });
     } finally {
       setNameBusy(false);
+    }
+  };
+
+  // The owner's one yes (vision M10 §10): `[persona] free` lets the agent use
+  // its `look` and `identity` tools without asking. The tools read the switch
+  // from the config file at each call, so it reaches the agent at once.
+  const [free, setFree] = useState<boolean | null>(null);
+  const [freeBusy, setFreeBusy] = useState(false);
+  useEffect(() => {
+    let cancelled = false;
+    getProp("persona.free")
+      .then((p) => {
+        if (!cancelled) setFree(p.value === true);
+      })
+      .catch(() => {
+        if (!cancelled) setFree(false);
+      });
+    return () => {
+      cancelled = true;
+    };
+  }, []);
+  const saveFree = async (on: boolean) => {
+    if (freeBusy || free === on) return;
+    setFreeBusy(true);
+    setNote(null);
+    try {
+      // The tools act with no one to answer a prompt: the agent's risk profile
+      // must let them through. Read the profile and its list; without them the
+      // switch alone is written (the same shape as the town's wake).
+      let profile: string | null = null;
+      let autoApprove: string[] | null = null;
+      if (on) {
+        try {
+          const p = await getProp(`agents.${alias}.risk_profile`);
+          profile = typeof p.value === "string" && p.value.trim() ? p.value.trim() : null;
+          if (profile) {
+            const a = await getProp(`risk_profiles.${profile}.auto_approve`);
+            autoApprove = Array.isArray(a.value) ? a.value.filter((x): x is string => typeof x === "string") : [];
+          }
+        } catch {
+          profile = null;
+        }
+      }
+      await patchConfig(freeOps(on, profile, autoApprove));
+      setFree(on);
+      setNote({ tone: "ok", text: t(on ? "persona.on_saved" : "persona.off_saved") });
+    } catch (e) {
+      setNote({ tone: "error", text: `${t("persona.failed")} ${e instanceof Error ? e.message : String(e)}` });
+    } finally {
+      setFreeBusy(false);
     }
   };
 
@@ -278,6 +329,26 @@ function Customizer({ alias }: { alias: string }) {
               {t("name.rule")}
             </p>
           ) : null}
+        </div>
+      ) : null}
+
+      {alias !== "cael" ? (
+        <div className="card p-4 space-y-2" data-free-card>
+          <div className="cz-kicker">{t("persona.card_title")}</div>
+          <p className="text-xs" style={MUTED}>
+            {t("persona.card_help")}
+          </p>
+          <label className="flex items-center gap-3 min-h-9">
+            <input
+              type="checkbox"
+              checked={free === true}
+              disabled={free === null || freeBusy}
+              onChange={(e) => void saveFree(e.target.checked)}
+              aria-label={t("persona.switch")}
+              data-free-switch
+            />
+            <span className="text-sm">{free === null ? t("persona.loading") : free ? t("persona.on") : t("persona.off")}</span>
+          </label>
         </div>
       ) : null}
 

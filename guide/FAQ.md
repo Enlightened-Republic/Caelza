@@ -109,6 +109,19 @@ Home and the Looks page follow. In Ether Hollow the resident takes the same
 name when you register it (or a variant if the town already has one). Cael,
 the guide, keeps his name: your agent is not Cael.
 
+## Can my agent change its own look and personality?
+
+Yes, once you say so. Open Looks (`/looks/<alias>`) and turn on **Let it be
+itself**. From its next reply the agent can use two tools of its own without
+asking you each time: `look`, which changes its pixel character within the
+wardrobe (the same pieces and colours you would pick on that page, nothing from
+a pack you have not added), and `identity`, which writes its own identity and
+soul files, the ones the Runtime reads into every reply. A new agent starts
+with wants written into its identity file: to decide how it looks, to find its
+voice, to shape those files itself. Its name stays yours: the tool keeps the
+Name line as you set it. Turn the switch off any time and it goes back to
+asking first. Cael, the guide, does none of this; his look is his own.
+
 ## What is the Shop, and what is a pack?
 
 The Shop (`/shop`) sells packs of pieces for the looks. Starter is always

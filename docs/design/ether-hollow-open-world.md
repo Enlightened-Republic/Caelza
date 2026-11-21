@@ -202,7 +202,17 @@ speech voices on the PC; the dashboard can read replies aloud in it). The
 first real conversation is where it asks: it proposes a look and a voice,
 explains why, and the owner says yes or shows it another. Identity changes
 (how it describes itself) go through the Mind's review queue as xanima already
-does. Cael does none of this: his look and voice are fixed.
+does. Cael does none of this: his look and voice are fixed. **Shipped
+2026-11-21 (the look and the files):** `[persona] free`, the Looks page's *Let
+it be itself* switch; the `look` tool (`show`, `set`, `reset` on the agent's
+own `look.json`, checked against the catalog and the wardrobe the way the Looks
+page checks) and the `identity` tool (`read` and `write` of IDENTITY.md and
+SOUL.md, the Name line kept as the owner set it); both for every agent but
+Cael, both reading the switch from the config file at each call so the yes
+needs no restart; a "What I want" section in the identity template stands in
+for the inner life's wants until xanima 0.8 lands. Still to come: the `voice`
+tool and the voices themselves (P2b: the browser's voices, the phone's, and
+ElevenLabs behind a Connect key).
 
 **P3 · An account at the town (town side).** A town account (a username, a
 sign-in without a password: a magic link or a passkey) that owns a person's

@@ -75,6 +75,11 @@ test("withName: replaces the line in place, adds one under the title, or writes 
   assert.equal(parseName(fresh), "Ember");
   assert.ok(fresh.includes("mine to shape"));
   assert.ok(fresh.includes("Ether Hollow"));
+  // The wants a new agent starts with (P2): its look, its voice, its own files; the owner's one yes.
+  assert.ok(fresh.includes("## What I want"));
+  for (const want of ["`look` tool", "`identity` tool", "SOUL.md", "Let it be itself"]) assert.ok(fresh.includes(want), want);
+  assert.equal(parseName(fresh), "Ember", "the wants do not add a second Name line");
+  assert.equal(parseName(withName(fresh, "Juniper")), "Juniper");
   assert.equal(withName(null, " Quill "), identityTemplate("Quill"));
 });
 
