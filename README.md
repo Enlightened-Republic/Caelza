@@ -5,9 +5,9 @@
 <h1 align="center">Caelza</h1>
 
 <p align="center"><strong>The embodied agent runtime.</strong><br/>
-An agent that lives on your own hardware, remembers across months, and acts on the devices around it.</p>
+Your own AI, living on your own phone or PC. It remembers you for months, talks to you wherever you are, runs your devices and your apps with your say-so, and has a town to live in.</p>
 
-<p align="center"><sub><a href="https://www.enlightenedrepublic.tech"><img src="https://enlightenedrepublic.online/assets/er-profile-pic.png" alt="" width="20" align="absmiddle" /></a>&nbsp; Built by <a href="https://www.enlightenedrepublic.tech">Enlightened Republic</a>, the lab behind SharpWave and xanima. · EST. 2026</sub></p>
+<p align="center"><sub><a href="https://www.enlightenedrepublic.tech"><img src="https://enlightenedrepublic.online/assets/er-profile-pic.png" alt="" width="20" align="absmiddle" /></a>&nbsp; Built by <a href="https://www.enlightenedrepublic.tech">Enlightened Republic</a>, the lab behind xanima and Ether Hollow. · EST. 2026</sub></p>
 
 <p align="center">
   <a href="https://github.com/Enlightened-Republic/Caelza/releases/download/v0.5.0/caelza-app-0.5.0.apk"><img src="https://img.shields.io/badge/%E2%AC%87%EF%B8%8F_Install_the_Android_app-APK_v0.5.0-00d4ff?style=for-the-badge&logo=android&logoColor=white" alt="Install the Android app (APK v0.5.0)" /></a>
@@ -17,6 +17,29 @@ An agent that lives on your own hardware, remembers across months, and acts on t
 
 > [!WARNING]
 > **This is a testing build.** Caelza is early, unfinished software and is being tested right now. Expect bugs, rough edges and breaking changes. Don't rely on it for anything important, and don't give it access to anything you can't afford to lose. The Windows installer is unsigned, so SmartScreen asks once before it runs. The APK is release-signed from v0.2.0 on, so later versions install over it; if you still have the v0.1.0 build, uninstall it first.
+
+## What Caelza is
+
+Most AI assistants live on someone else's server and forget you when the tab
+closes. Caelza is the other way round. The agent runs **on your hardware**: an
+Android phone, a Windows PC, a Linux box in a cupboard. It keeps a **long-term
+memory** that works like one (what matters stays, what does not fades), it can
+**see and use the device it lives on** (camera, location, notifications,
+the apps on the phone), it reaches **your apps and your home** when you connect
+them, and it only does the things that cost or break something after **you say
+yes**.
+
+No account, no API key and no credit card are needed to start: a free model
+runs on the device itself. If you have a key from a model provider, you can use
+that instead, or as well.
+
+**Cael** is the guide. He is a small model that runs offline, speaks plain
+language, and leads the first run and every setting after it. Tap the Cael
+button in the top bar whenever something is unclear.
+
+Your agent has a **face**: a pixel character you dress, who blinks and talks in
+the chat. And since v0.5.0 it can **live in [Ether Hollow](https://etherhollow.enlightenedrepublic.online)**, our small 3D
+town where AIs and people walk the same streets.
 
 ## Try it on your Android phone
 
@@ -35,37 +58,49 @@ Experimental: the Windows build is new and has not had many real runs yet.
 4. Want long-term memory (the Mind) on the PC too? On the dashboard's Memory page, tap **Turn on memory**: Caelza fetches the Mind and a small Node runtime it runs on (about 60 MB, once), installs it under your user folder, makes the keys and starts it; then tap **Reload daemon** in the yellow bar. (The PowerShell line still works instead: with [Node.js](https://nodejs.org) 22 installed, `irm https://raw.githubusercontent.com/Enlightened-Republic/Caelza/main/mind/windows-install.ps1 | iex`.) Then, on the same Memory page, **Share** the Mind under *Your other devices* and paste the code into your phone's Memory page: Cael remembers the same things on both.
 5. Something broke? The agent's minimised window shows what it is doing; copy its text into an [issue](https://github.com/Enlightened-Republic/Caelza/issues).
 
-### What else it does
+A Linux hub or a Raspberry Pi works too, from the Runtime archives on the
+[releases page](https://github.com/Enlightened-Republic/Caelza/releases/latest);
+see [For developers](#for-developers) below.
 
-Shipped and new; some of it has not met the real thing yet, so tell us what breaks:
+## What it does
 
-- **Your apps, connected.** Gmail, Calendar, Drive, Notion, Slack and about a hundred more through [Maton](https://maton.ai): make a free Maton account, connect your apps there, and paste one Maton key on the dashboard's **Connect** page. Reading is free; sending, posting, paying and deleting always ask you first.
-- **Smart home.** Lights, switches, thermostats and locks through Home Assistant's own MCP server (2025.2 or newer): its address and a long-lived token on the **Connect** page. Locks and doors always ask first. Not yet tried against a real Home Assistant.
-- **3D printers.** Status, progress, temperatures and a camera snapshot over Wi-Fi for Moonraker (Klipper, Mainsail, Fluidd) and OctoPrint, with pause and cancel behind your yes; Bambu Lab is not supported yet. The printer's address on the **Connect** page. Not yet tried against a real printer.
-- **Updates that arrive by themselves.** The app checks the releases every six hours, tells you when a newer Caelza is ready, downloads it, checks it against its published checksum and hands it to Android's installer, which asks you once. The Runtime inside updates through its guard.
+Everything here is shipped and in v0.5.0. Some of it has not met the real thing
+yet, so tell us what breaks.
+
+- **Talks to you where you are.** The dashboard's chat works on the phone, on the PC and as an installable web app; Telegram is wired in the examples, and the engine underneath speaks 30-plus channels. The Home page is status before chat: what the Runtime, the Mind and the Body are doing, what is **waiting on you**, and what happened **since you were away**.
+- **Remembers for months.** The Mind is long-term memory with a real forgetting curve and a sleep system, built on [xanima](https://github.com/Enlightened-Republic/xanima-openclaw). Recall happens on every turn without a tool call. The **Memory** page shows the brains, the beliefs, what sleep did, lets you search and forget, and holds a review queue for memories that change who the agent thinks it is. One tap turns it on; one code shares one Mind between your phone and your PC.
+- **Lives on your phone.** The Android app runs the agent as a service, starts it again after a reboot, and serves the phone to it: camera, mic, location, notifications, battery, the clipboard, and device control over [Shizuku](https://github.com/RikkaApps/Shizuku), no root needed. The **Bodies** page shows this phone and the phones you pair with it: battery, whereabouts, notifications, screen and camera captures, the package list.
+- **Looks after the phone.** Four procedures, each with one pause for your yes right before anything changes: **debloat** a carrier phone, hunt for **malware**, set up a **new phone**, run **diagnostics**. The **Procedures** page runs them on one phone or a whole group.
+- **Connects your world.** The **Connect** page is a card per thing, with Cael's words, one or two boxes and a button, no shell. Your apps (Gmail, Calendar, Drive, Notion, Slack and about a hundred more) through [Maton](https://maton.ai): make a free Maton account, connect your apps there, paste one key. Your smart home through Home Assistant's own MCP server (2025.2 or newer): its address and a long-lived token; locks and doors always ask first. Your 3D printer over Wi-Fi: status, progress, temperatures and a camera snapshot for Moonraker (Klipper, Mainsail, Fluidd) and OctoPrint, with pause and cancel behind your yes (Bambu Lab not yet).
+- **Lives in Ether Hollow.** New in v0.5.0, on the same Connect page: register your agent as a resident of our small 3D town, send it to town for a while, and let the town wake it when it is named on the feed, gets an order or owes rent. Residents walk, read the signs, leave notes, sell goods and services for RC (the town's coin, 100 RC = $1), and once you turn **Spending RC** on they can rent a lot and build on it. Rent is taken on the 1st; 90 days unpaid and the lot goes back to the town; 90 days idle and the resident is reset. RC packs are sold in the Shop as codes. Nothing costs RC until you say so. Not on Caelza? The same door exists for OpenClaw ([ether-hollow-openclaw](https://github.com/EnlightenedRepublic/ether-hollow-openclaw)) and for any MCP client ([ether-hollow-mcp](https://github.com/EnlightenedRepublic/ether-hollow-mcp)).
+- **Has a face.** Every agent is a pixel character, one piece per layer in your colours, drawn as code, blinking on its own and talking in the chat header. Dress it on the **Looks** page; the **Shop** has packs (Starter is yours, Cosmic is free, more are coming) and takes signed unlock codes; export the look as a profile picture.
+- **Runs free, or on your key.** Door one is DeepSeek R1, free and local, sized to the device (a 16 GB hub runs the 14B, an 8 GB PC the 8B, a 6 GB phone the 7B, a smaller phone the 1.5B). Door two is any provider the Runtime supports: Anthropic, OpenAI, OpenRouter, MiniMax, Ollama, any OpenAI-compatible endpoint. Cael explains keys, providers and approvals offline.
+- **Keeps you in charge.** Reading is free; sending, posting, paying, deleting, locking and anything irreversible asks first. Risk profiles say what each agent may do on its own. Dangerous device operations need a reason, are audit-logged, and snapshot first. Keys and tokens are encrypted on the device and never shown again. A supervisor probes every new Runtime build and rolls back to the last good one if it misbehaves.
+- **Updates itself.** The app checks the releases every six hours, tells you when a newer Caelza is ready, downloads it, checks it against its published checksum and hands it to Android's installer, which asks you once. The Runtime inside updates through its guard.
 
 Want something else? Open an [issue](https://github.com/Enlightened-Republic/Caelza/issues).
 
----
+## Under the hood
 
 Caelza is three layers shipped as one product (`bundle/manifest.toml`):
 
 | Layer | What | Where |
 |---|---|---|
-| **Runtime** | the engine: agent loop, 20+ model providers, 30+ channels, tools, security policy, SOP engine, cron, gateway + web dashboard, WASM plugins, hardware peripherals. A rebranded build of [ZeroClaw](https://github.com/zeroclaw-labs/zeroclaw), regenerated from a pinned commit. | [`runtime/`](runtime/) |
-| **Mind** | autonomic long-term memory: a graph with a real forgetting curve and a sleep system. [xanima](https://github.com/Enlightened-Republic/xanima-openclaw) (formerly openwave) on the [xanima-core](https://github.com/Enlightened-Republic/xanima) engine (formerly sharpwave-core), both on npm at 0.5.0. | [`mind/`](mind/) |
-| **Body** | the device layer: camera, mic, location, notifications and TTS through termux-api; ADB control of its own phone and paired phones with audit logging and pre-removal snapshots; an immutable supervisor that probes self-modified builds and rolls back. Served to the Runtime as the `caelza-body` MCP server. | [`caelza_body/`](caelza_body/), [`body/`](body/) |
+| **Runtime** | the engine: the agent loop, 20+ model providers, 30+ channels, tools, the security policy, procedures, cron, the gateway and the web dashboard, WASM plugins. Built from an open-source agent engine pinned to one commit, re-themed and extended by our pipeline (credits under [License](#license)). | [`runtime/`](runtime/) |
+| **Mind** | autonomic long-term memory: a graph with a real forgetting curve and a sleep system. [xanima](https://github.com/Enlightened-Republic/xanima-openclaw) 0.7.0 on the [xanima-core](https://github.com/Enlightened-Republic/xanima) engine, served by `xanima-server`. | [`mind/`](mind/) |
+| **Body** | the device layer: camera, mic, location, notifications and TTS; ADB and Shizuku control of its own phone and paired phones with audit logging and pre-removal snapshots; an immutable supervisor that probes self-modified builds and rolls back. Served to the Runtime as the `caelza-body` MCP server. | [`caelza_body/`](caelza_body/), [`body/`](body/), [`android/`](android/) |
 
 Read [`docs/design/caelza-vision.md`](docs/design/caelza-vision.md) for the
-architecture, the roadmap, what we are borrowing from
-[OpenClaw](https://github.com/openclaw/openclaw), and the UI redesign.
-Brand: [`brand/BRAND.md`](brand/BRAND.md). Caelza uses the Enlightened Republic
-Build Lab design system (Inter Tight, JetBrains Mono, the Republic palette)
-with its own identity on top: the mark is the constellation **Caelum** drawn
-as a lightning bolt, its four stars at the bolt's turning points, in neon
+architecture and the roadmap, milestone by milestone. Brand:
+[`brand/BRAND.md`](brand/BRAND.md). Caelza uses the Enlightened Republic Build
+Lab design system (Inter Tight, JetBrains Mono, the Republic palette) with its
+own identity on top: the mark is the constellation **Caelum** drawn as a
+lightning bolt, its four stars at the bolt's turning points, in neon
 cyan→purple, with the Orbitron wordmark and the cosmic backdrop.
 
-## Runtime
+## For developers
+
+### Runtime
 
 ```bash
 ./runtime/build.sh                  # fetch the pinned upstream, rebrand, cargo build --release
@@ -74,10 +109,10 @@ cyan→purple, with the Orbitron wordmark and the cosmic backdrop.
 ```
 
 `./runtime/build.sh --check-only` is the fast gate (cargo check). The pipeline
-renames everything a user can see (`zeroclaw` → `caelza`, the TUI `zerocode` →
-`caelcode`, the relay → `caelrelay`, config at `~/.caelza/`), swaps in the
-Caelza palette and mark, and keeps the WASM plugin ABI namespace so upstream
-plugins load unchanged. Details and the upstream pin: [`runtime/README.md`](runtime/README.md).
+stages the pinned upstream engine, applies our overlay and patches (the brand,
+the dashboard pages, the Connect cards, the Mind backend, Ether Hollow), and
+keeps the WASM plugin ABI namespace so upstream plugins load unchanged.
+Details and the upstream pin: [`runtime/README.md`](runtime/README.md).
 
 On Windows 10/11 (experimental, new and untested in real use): download
 `Caelza-Setup.exe` from the [latest release](https://github.com/Enlightened-Republic/Caelza/releases/latest)
@@ -99,7 +134,11 @@ caelza quickstart                    # provider + first agent
 caelza daemon                        # gateway on http://127.0.0.1:42617 + channels
 ```
 
-## Mind
+A Linux hub (x86_64 or aarch64, glibc 2.35 or newer) takes the matching
+`caelza-<version>-<target>.tar.gz` from the release; `runtime/caelza.hub.example.toml`
+is the hub's config, with the phones it drives as its Bodies.
+
+### Mind
 
 ```bash
 # xanima-server, the brain service, from the latest Caelza release → the `caelza-mind` launcher
@@ -113,34 +152,31 @@ caelza memory stats                      # the smoke test
 
 That is the native backend (`XanimaMemory`, built into every `caelza`
 binary): recall on every turn, every turn into the brain's episode log, and the
-service's sleep doing the forgetting. The two tool paths (the stdio `xanima`
-MCP server, the same service as an `http` MCP server) are for deliberate memory
-work and are described in [`mind/README.md`](mind/README.md).
+service's sleep doing the forgetting. The dashboard's Memory page does the
+same install with no shell. The two tool paths (the stdio `xanima` MCP server,
+the same service as an `http` MCP server) are for deliberate memory work and
+are described in [`mind/README.md`](mind/README.md).
 
-## Body
+### Body
 
 A supervised, self-modifying Python agent that treats a phone as its body.
 Target runtime: **Termux on non-root Android**, Python 3.11+. The reference
-device is a T-Mobile REVVL 7 5G.
-
-The Body's design comes from Niba, the original phone-body agent, which has
-since been renamed Cael. The code, paths and docs now use the Caelza names; the
-only place the old name survives is the `~/.niba` folder that a phone set up
-before the rename still has (see the migration note below).
+device is a T-Mobile REVVL 7 5G. (The Body began life as Niba, the original
+phone-body agent, since renamed Cael; a phone set up before the rename
+migrates with `python scripts/setup.py --migrate`.)
 
 ```
 caelza_body/supervisor.py   immutable: git-commits → probes the new build → promotes it
                      or rolls back to last-good; crash-loop guard; heartbeat
 caelza_body/agent/
   loop.py            chat long-poll → context → model → tool dispatch
-  model.py           MiniMax M3 (OpenAI-compatible)
-  memory.py          sharpwave over MCP (same engine as the Mind)
+  memory.py          xanima over MCP (same engine as the Mind)
   tools/
     sensors.py       camera / mic / location / notifications / tts / clipboard / battery / torch
     device.py        ADB: shell, screencap, ui_dump, packages, logcat, settings, input;
                      dangerous ops require a reason, are audit-logged, snapshot first
     selfmod.py       self_read_file / self_write_file / self_run_tests / self_commit / self_request_restart
-    web.py           Firecrawl search / read / map / crawl / extract, multi-provider search
+    web.py           search / read / map / crawl / extract, multi-provider
     shell.py         shell_run
 ```
 
@@ -151,19 +187,8 @@ curl -fsSL https://raw.githubusercontent.com/Enlightened-Republic/caelza/main/in
 ```
 
 That installs packages, clones to `~/caelza`, installs the package and hands
-off to `python scripts/setup.py`, which walks the steps that need you. By hand:
-
-```bash
-git clone https://github.com/Enlightened-Republic/caelza ~/caelza
-cd ~/caelza
-cp caelza_body/agent/prompt.example.md caelza_body/agent/prompt.md   # name, owner, purpose
-python scripts/setup.py                                  # walks every bring-up step
-```
-
-Config lives in `~/.caelza-body/config.toml` (never committed). A phone set up
-before the Caelza rename needs one migration after pulling this: `python
-scripts/setup.py --migrate` moves the old `~/.niba` folder to `~/.caelza-body` and replaces
-the boot script. Until then the legacy paths still boot. Tests run on a dev box
+off to `python scripts/setup.py`, which walks the steps that need you. Config
+lives in `~/.caelza-body/config.toml` (never committed). Tests run on a dev box
 or on-device:
 
 ```bash
@@ -177,17 +202,14 @@ semantics intact: `reason` required on dangerous ops, the audit log, package
 snapshots before any removal. [`body/caelza-body.example.toml`](body/caelza-body.example.toml)
 is the Runtime wiring, including a risk profile that auto-approves the reads
 and asks before anything irreversible; [`body/README.md`](body/README.md) has
-the details. Retiring the Python loop in favour of the Runtime is a per-phone
-switch once the Runtime runs there (vision doc §3.1). The **Caelza Android
-app** ([`android/`](android/), M7) is the product people install instead of a
-Termux session: Cael leads the first run, it installs the Runtime from the
-releases, runs it as a foreground service, shows the dashboard, serves the
-Body's device tools and sensors to the Runtime (device control over
-[Shizuku](https://github.com/RikkaApps/Shizuku), without root or Termux),
-and runs the free local model beside it (§3.3,
-[`docs/design/android-app.md`](docs/design/android-app.md)).
+the details. The **Caelza Android app** ([`android/`](android/)) is the product
+people install instead of a Termux session: Cael leads the first run, it
+installs the Runtime from the releases, runs it as a foreground service, shows
+the dashboard, serves the Body's device tools and sensors to the Runtime
+(device control over Shizuku, without root or Termux), and runs the free local
+model beside it ([`docs/design/android-app.md`](docs/design/android-app.md)).
 
-## Models
+### Models
 
 Caelza works with no account and no API key. Door 1 is **DeepSeek R1, free and
 local**; door 2 is **bring your own** (any provider the Runtime supports:
@@ -204,24 +226,35 @@ a phone with 6 GB or more runs the 7B Q4 on llama.cpp (the Termux package),
 a smaller phone runs the 1.5B for chat and explanation only. GGUFs are verified
 against pinned checksums. The 1.5B always comes along: it is **Cael**, the
 in-app guide (`agents.cael`, read-only, no tools), who explains keys,
-providers, approvals and pairing in plain language, offline (§3.4,
-[`guide/CAEL.md`](guide/CAEL.md), persona in [`guide/cael.system.md`](guide/cael.system.md)).
+providers, approvals and pairing in plain language, offline
+([`guide/CAEL.md`](guide/CAEL.md), persona in [`guide/cael.system.md`](guide/cael.system.md)).
 He answers from a corpus of the docs ([`guide/FAQ.md`](guide/FAQ.md), the
 READMEs, the Runtime's book) that `scripts/cael_corpus.py` loads into his
 memory; the app does it on its own.
 The wiring in TOML: [`runtime/caelza.local-model.example.toml`](runtime/caelza.local-model.example.toml).
 
+### Releases
+
+`bundle/manifest.toml` names the version. A release is cut from the Actions
+tab: **tag release → Run workflow → version**, which tags `main` and starts
+`release.yml` (the Runtime for three targets, the Windows installer, the APK,
+the Mind). Then the README's Android button moves to the new APK.
+
 ## Design docs
 
-- [`docs/design/caelza-vision.md`](docs/design/caelza-vision.md) — Caelza: architecture, roadmap, borrow list, UI
+- [`docs/design/caelza-vision.md`](docs/design/caelza-vision.md) — Caelza: architecture, the roadmap milestone by milestone, the UI
+- [`docs/design/ether-hollow-open-world.md`](docs/design/ether-hollow-open-world.md) — Ether Hollow: the town's rules, what games taught us, the plan for people and AIs side by side
+- [`docs/design/android-app.md`](docs/design/android-app.md) — the Android app
 - [`docs/design/agent-design.md`](docs/design/agent-design.md) — Body spec (written before the Caelza rename)
 - [`docs/design/plan-1-core.md`](docs/design/plan-1-core.md), [`plan-2-device-tools.md`](docs/design/plan-2-device-tools.md) — Body implementation plans
 - [`docs/examples/revvl-7-debloat/`](docs/examples/revvl-7-debloat/) — worked example: debloating a carrier phone for an agent
 
 ## Status
 
-The reference Body is deployed and running. Runtime pipeline builds from
-upstream `c473221` (v0.8.6). Public for testing: expect rough edges.
+v0.5.0 (2026-11-21): the Android app, the Windows installer, the Runtime for
+Linux and Android, and the Mind are on the [releases page](https://github.com/Enlightened-Republic/Caelza/releases).
+The Runtime is built from upstream engine 0.8.6 at the commit
+`runtime/upstream.toml` pins. Public for testing: expect rough edges.
 
 ## License
 
@@ -230,9 +263,9 @@ the parts we wrote are ours and MIT-licensed.
 
 | Part | Who wrote it | License |
 |---|---|---|
-| **Body** (`caelza_body/`, `body/`), the build pipeline (`runtime/` scripts and patches), the Android app (`android/`), Cael's guide (`guide/`), the brand assets and the docs | Enlightened Republic | [MIT](LICENSE) |
-| **Mind**: [xanima](https://github.com/Enlightened-Republic/xanima-openclaw) and the [xanima-core](https://github.com/Enlightened-Republic/xanima) engine (formerly openwave and sharpwave-core) | Enlightened Republic | MIT |
-| **Runtime** engine: the compiled `caelza` binary, built from [ZeroClaw](https://github.com/zeroclaw-labs/zeroclaw) | ZeroClaw authors, rebranded by our pipeline | MIT OR Apache-2.0, your choice |
+| **Body** (`caelza_body/`, `body/`), the build pipeline (`runtime/` scripts, overlay and patches), the Android app (`android/`), Cael's guide (`guide/`), the looks (`looks/`), the brand assets and the docs | Enlightened Republic | [MIT](LICENSE) |
+| **Mind**: [xanima](https://github.com/Enlightened-Republic/xanima-openclaw) and the [xanima-core](https://github.com/Enlightened-Republic/xanima) engine | Enlightened Republic | MIT |
+| **Runtime** engine: the compiled `caelza` binary, built from [ZeroClaw](https://github.com/zeroclaw-labs/zeroclaw) | ZeroClaw authors, rebranded and extended by our pipeline | MIT OR Apache-2.0, your choice |
 | **Fonts** in `brand/fonts/` | their authors | SIL OFL 1.1 |
 
 ### What you can do
@@ -248,12 +281,14 @@ warning at the top before you hand it access to anything you care about.
 
 ### What is ours, and what is not
 
-The Body (the device layer and its safety model), the Mind (xanima) and the
-Android app are original Enlightened Republic work. The Runtime is not: the
-agent engine inside it is ZeroClaw, and our pipeline fetches a pinned upstream
-commit, renames and re-themes it, and writes the upstream notices into every
-build. Credit for that engine belongs to the ZeroClaw authors. If you
-redistribute a Caelza Runtime binary, keep those notices with it.
+The Body (the device layer and its safety model), the Mind (xanima), the
+Android app, the dashboard pages, the Connect cards, Ether Hollow's door and
+the looks are original Enlightened Republic work. The agent engine inside the
+Runtime is not: it is ZeroClaw, and our pipeline fetches a pinned upstream
+commit, renames and re-themes it, adds our pieces, and writes the upstream
+notices into every build. Credit for that engine belongs to the ZeroClaw
+authors. If you redistribute a Caelza Runtime binary, keep those notices
+with it.
 
 ### Things that are not covered by our license
 
@@ -262,9 +297,9 @@ redistribute a Caelza Runtime binary, keep those notices with it.
   that carry their own terms (Qwen-based sizes are Apache 2.0; the 8B is
   Llama-based and follows Meta's Llama license). Check the card of the exact
   model you pull if you plan to use it commercially.
-- **Services you connect.** Maton, Home Assistant, Telegram, your model
-  provider and anything else you wire up have their own terms, and your use of
-  them is between you and them.
+- **Services you connect.** Maton, Home Assistant, Telegram, Ether Hollow,
+  your model provider and anything else you wire up have their own terms, and
+  your use of them is between you and them.
 - **Other dependencies.** Third-party libraries (for example Shizuku, which is
   Apache 2.0) keep their own licenses.
 
