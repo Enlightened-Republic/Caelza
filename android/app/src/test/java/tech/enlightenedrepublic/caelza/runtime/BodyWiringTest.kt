@@ -46,8 +46,10 @@ class BodyWiringTest {
         File(store.configDir, "config.toml").writeText(own)
         assertTrue(store.ensureBodyWiring("abc"))
         val text = File(store.configDir, "config.toml").readText()
-        assertTrue(text.startsWith(own))
+        // The agent keeps its own lines and gains the Body it lacked (its profile it had).
+        assertTrue(text, text.startsWith("schema_version = 3\n\n[gateway]\nport = 42617\n\n[agents.main]\nmcp_bundles = [\"body\"]\nchannels = [\"telegram.home\"]\nrisk_profile = \"phone\"\n"))
         assertEquals(1, Regex("\\[agents\\.main]").findAll(text).count())
+        assertEquals(1, Regex("risk_profile = ").findAll(text.substringBefore("[risk_profiles")).count())
         assertTrue("name = \"body\"" in text && "[mcp_bundles.body]" in text && "[risk_profiles.phone]" in text)
         assertEquals(42617, Gateway.port(store.configDir))
     }
