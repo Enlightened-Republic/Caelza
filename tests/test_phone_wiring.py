@@ -57,7 +57,7 @@ def test_the_setup_adopts_the_devices_agent_instead_of_making_a_second():
 
 def test_cael_gets_his_own_user_and_agents_files():
     assert "if (!user.isFile || STOCK_USER.containsMatchIn(user.readText())) user.writeText(USER)" in CLI
-    assert 'File(ws, "AGENTS.md").takeUnless { it.isFile }?.writeText(AGENTS)' in CLI
+    assert 'if (!agents.isFile || agents.readText().contains("I run no tools")) agents.writeText(AGENTS)' in CLI
     assert 'never \\"User\\"' in CLI
 
 
