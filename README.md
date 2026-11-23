@@ -10,7 +10,7 @@ Your own AI, living on your own phone or PC. It remembers you for months, talks 
 <p align="center"><sub><a href="https://www.enlightenedrepublic.tech"><img src="https://enlightenedrepublic.online/assets/er-profile-pic.png" alt="" width="20" align="absmiddle" /></a>&nbsp; Built by <a href="https://www.enlightenedrepublic.tech">Enlightened Republic</a>, the lab behind xanima and Ether Hollow. · EST. 2026</sub></p>
 
 <p align="center">
-  <a href="https://github.com/Enlightened-Republic/Caelza/releases/download/v0.7.0/caelza-app-0.7.0.apk"><img src="https://img.shields.io/badge/%E2%AC%87%EF%B8%8F_Install_the_Android_app-APK_v0.7.0-00d4ff?style=for-the-badge&logo=android&logoColor=white" alt="Install the Android app (APK v0.7.0)" /></a>
+  <a href="https://github.com/Enlightened-Republic/Caelza/releases/download/v0.8.0/caelza-app-0.8.0.apk"><img src="https://img.shields.io/badge/%E2%AC%87%EF%B8%8F_Install_the_Android_app-APK_v0.8.0-00d4ff?style=for-the-badge&logo=android&logoColor=white" alt="Install the Android app (APK v0.8.0)" /></a>
   &nbsp;
   <a href="https://github.com/Enlightened-Republic/Caelza/releases/latest/download/Caelza-Setup.exe"><img src="https://img.shields.io/badge/%E2%AC%87%EF%B8%8F_Install_on_Windows-Setup.exe_latest-7b6bff?style=for-the-badge" alt="Install on Windows (Caelza-Setup.exe, latest release)" /></a>
 </p>
@@ -43,7 +43,7 @@ town where AIs and people walk the same streets.
 
 ## Try it on your Android phone
 
-1. On your phone, tap the **Install the Android app** button above (or [download the APK](https://github.com/Enlightened-Republic/Caelza/releases/download/v0.7.0/caelza-app-0.7.0.apk)).
+1. On your phone, tap the **Install the Android app** button above (or [download the APK](https://github.com/Enlightened-Republic/Caelza/releases/download/v0.8.0/caelza-app-0.8.0.apk)).
 2. Open the downloaded file. If Android asks, allow your browser or Files app to **install unknown apps**, then tap **Install**.
 3. Open **Caelza** and follow Cael's first-run screens. The app downloads the runtime on first run, so connect to Wi-Fi first.
 4. Something broke? Use **Logs** in the app to share a bug report.
@@ -64,7 +64,7 @@ see [For developers](#for-developers) below.
 
 ## What it does
 
-Everything here is shipped and in v0.7.0. Some of it has not met the real thing
+Everything here is shipped and in v0.8.0. Some of it has not met the real thing
 yet, so tell us what breaks.
 
 - **Talks to you where you are.** The dashboard's chat works on the phone, on the PC and as an installable web app; Telegram is wired in the examples, and the engine underneath speaks 30-plus channels. The Home page is status before chat: what the Runtime, the Mind and the Body are doing, what is **waiting on you**, and what happened **since you were away**.
@@ -251,6 +251,14 @@ the Mind). Then the README's Android button moves to the new APK.
 - [`docs/examples/revvl-7-debloat/`](docs/examples/revvl-7-debloat/) — worked example: debloating a carrier phone for an agent
 
 ## Status
+
+v0.8.0 (2026-11-23): the town, remembered. Your agent remembers its town life
+(each wake and what it did about it, each visit, what you did for it there) as
+episodes in its memory; the last wake survives a restart; Home's Town tile says
+where it is, its RC and the last wake; the phone tells you when the town wakes
+it. Several of your agents can live in town, each with its own name, key and
+spending switch, and the Connect card picks which one. The Body speaks in the
+voice the agent chose.
 
 v0.7.0 (2026-11-23): Cael meets you. Cael, the guide, leads the first
 conversation (who you are, what you want from an AI, a name) and then gives

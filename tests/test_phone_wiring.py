@@ -81,5 +81,5 @@ def test_the_memory_page_and_the_faq_say_what_a_phone_does_about_the_mind():
 
 
 def test_the_release_notes_carry_the_phone_fix():
-    assert MANIFEST["caelza"]["version"] == "0.7.0"
+    assert MANIFEST["caelza"]["version"] == "0.8.0"
     assert "v0.6.1 fixed the phone's first run" in RELEASE
