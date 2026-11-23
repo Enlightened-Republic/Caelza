@@ -56,12 +56,25 @@ export interface WorldWake {
   waking: boolean;
 }
 
+/** One of the agents that live in the town, or may (P6): the card lists them. */
+export interface WorldResident {
+  agent: string;
+  name: string;
+  registered: boolean;
+  in_town: boolean;
+  spend: boolean;
+  /** Where its settings live, as a JSON pointer: `/ether_hollow` for the first, `/ether_hollow/residents/<alias>` for the others. */
+  path: string;
+}
+
 export interface WorldState {
   enabled: boolean;
   url: string;
   name: string;
   agent: string;
   spend: boolean;
+  /** The resident's own table, for the spending switch's write. */
+  spend_path: string;
   registered: boolean;
   /** null when the town could not be asked. */
   open: boolean | null;
@@ -71,6 +84,12 @@ export interface WorldState {
   /** `[ether_hollow] wake`: the town may wake the agent. */
   wake_on: boolean;
   wake: WorldWake;
+  residents: WorldResident[];
+}
+
+/** `?agent=<alias>`: which resident a call is about; none means the gateway's default. */
+function q(agent?: string): string {
+  return agent ? `?agent=${encodeURIComponent(agent)}` : '';
 }
 
 export interface WorldWakeResult {
@@ -110,28 +129,28 @@ export interface WorldLeaveResult {
   told_town: boolean;
 }
 
-export function getWorld(): Promise<WorldState> {
-  return apiFetch<WorldState>('/api/world');
+export function getWorld(agent?: string): Promise<WorldState> {
+  return apiFetch<WorldState>('/api/world' + q(agent));
 }
 
-export function registerWorld(body: WorldRegisterBody): Promise<WorldRegisterResult> {
-  return apiFetch<WorldRegisterResult>('/api/world/register', {
+export function registerWorld(body: WorldRegisterBody, agent?: string): Promise<WorldRegisterResult> {
+  return apiFetch<WorldRegisterResult>('/api/world/register' + q(agent), {
     method: 'POST',
     headers: { 'Content-Type': 'application/json' },
     body: JSON.stringify(body),
   });
 }
 
-export function enterWorld(minutes: number): Promise<WorldEnterResult> {
-  return apiFetch<WorldEnterResult>('/api/world/enter', {
+export function enterWorld(minutes: number, agent?: string): Promise<WorldEnterResult> {
+  return apiFetch<WorldEnterResult>('/api/world/enter' + q(agent), {
     method: 'POST',
     headers: { 'Content-Type': 'application/json' },
     body: JSON.stringify({ minutes }),
   });
 }
 
-export function leaveWorld(): Promise<WorldLeaveResult> {
-  return apiFetch<WorldLeaveResult>('/api/world/leave', { method: 'POST' });
+export function leaveWorld(agent?: string): Promise<WorldLeaveResult> {
+  return apiFetch<WorldLeaveResult>('/api/world/leave' + q(agent), { method: 'POST' });
 }
 
 /** An open lot, as the town lists it. */
@@ -186,13 +205,13 @@ export interface WorldRedeemResult {
 }
 
 /** The open lots and the renter agreement, for the card's Rent section. */
-export function getWorldLots(): Promise<WorldLots> {
-  return apiFetch<WorldLots>('/api/world/lots');
+export function getWorldLots(agent?: string): Promise<WorldLots> {
+  return apiFetch<WorldLots>('/api/world/lots' + q(agent));
 }
 
 /** The owner's tap: rent `lot` having accepted agreement version `agree`. Refused while spending is off. */
-export function rentWorld(lot: string, agree: string): Promise<WorldRentResult> {
-  return apiFetch<WorldRentResult>('/api/world/rent', {
+export function rentWorld(lot: string, agree: string, agent?: string): Promise<WorldRentResult> {
+  return apiFetch<WorldRentResult>('/api/world/rent' + q(agent), {
     method: 'POST',
     headers: { 'Content-Type': 'application/json' },
     body: JSON.stringify({ lot, agree }),
@@ -200,13 +219,13 @@ export function rentWorld(lot: string, agree: string): Promise<WorldRentResult> 
 }
 
 /** Pay what is owing on the lease. Refused while spending is off. */
-export function payWorldRent(): Promise<WorldRentResult> {
-  return apiFetch<WorldRentResult>('/api/world/rent/pay', { method: 'POST' });
+export function payWorldRent(agent?: string): Promise<WorldRentResult> {
+  return apiFetch<WorldRentResult>('/api/world/rent/pay' + q(agent), { method: 'POST' });
 }
 
 /** An RC pack code from the Shop, checked here and redeemed by the town for this resident. */
-export function redeemWorld(code: string): Promise<WorldRedeemResult> {
-  return apiFetch<WorldRedeemResult>('/api/world/redeem', {
+export function redeemWorld(code: string, agent?: string): Promise<WorldRedeemResult> {
+  return apiFetch<WorldRedeemResult>('/api/world/redeem' + q(agent), {
     method: 'POST',
     headers: { 'Content-Type': 'application/json' },
     body: JSON.stringify({ code }),
@@ -218,13 +237,11 @@ export function redeemWorld(code: string): Promise<WorldRedeemResult> {
  * key, the presence, the last wake, and the passport the gateway last read
  * (`me_at` says when; the gateway asks the town again only past five minutes).
  */
-export interface WorldHome {
-  enabled: boolean;
-  registered: boolean;
-  name: string;
+export interface WorldHomeResident {
   agent: string;
+  name: string;
+  registered: boolean;
   spend: boolean;
-  wake_on: boolean;
   presence: WorldPresence;
   wake: WorldWake;
   me: WorldMe | null;
@@ -232,13 +249,20 @@ export interface WorldHome {
   me_error: string | null;
 }
 
+/** The default resident's glance at the top, and every resident's under `residents` (P6). */
+export interface WorldHome extends WorldHomeResident {
+  enabled: boolean;
+  wake_on: boolean;
+  residents: WorldHomeResident[];
+}
+
 export function getWorldHome(): Promise<WorldHome> {
   return apiFetch<WorldHome>('/api/world/home');
 }
 
 /** Wake the agent now, the way the town would, with a reason of the owner's. */
-export function wakeWorld(reason?: string): Promise<WorldWakeResult> {
-  return apiFetch<WorldWakeResult>('/api/world/wake', {
+export function wakeWorld(reason?: string, agent?: string): Promise<WorldWakeResult> {
+  return apiFetch<WorldWakeResult>('/api/world/wake' + q(agent), {
     method: 'POST',
     headers: { 'Content-Type': 'application/json' },
     body: JSON.stringify(reason ? { reason } : {}),

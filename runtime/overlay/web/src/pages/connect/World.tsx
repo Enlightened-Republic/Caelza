@@ -2,7 +2,9 @@
 // town. Register once (the gateway keeps the key; the page never sees it),
 // then send the agent to town for a while and bring it back; the spending
 // switch is the one config write the card makes itself. The town's own API
-// is the `ether_hollow` tool's; the card only talks to /api/world.
+// is the `ether_hollow` tool's; the card only talks to /api/world. With
+// several agents (P6) a chip row picks which one the card is about; every
+// call carries that alias, and the gateway keeps one resident per agent.
 import { useEffect, useState } from "react";
 import { ExternalLink, Globe } from "lucide-react";
 
@@ -36,6 +38,8 @@ import {
   minutesLeft,
   nameOk,
   rcText,
+  residentCandidates,
+  residentStatus,
   spendOps,
   tagFor,
   townSite,
@@ -64,7 +68,20 @@ function reason(e: unknown): string {
   return text;
 }
 
-export default function WorldCard({ agent, disabled }: { agent: string; disabled: boolean }) {
+/** One agent in the card's resident row: its name, and whether it lives in town. */
+function ResidentChip({ alias, on, status, disabled, onPick }: { alias: string; on: boolean; status: "in_town" | "resident" | "none"; disabled: boolean; onPick: () => void }) {
+  const label = useAgentName(alias);
+  const word = t(status === "in_town" ? "world.resident_in_town" : status === "resident" ? "world.resident_is_resident" : "world.resident_not_yet");
+  return (
+    <button type="button" role="radio" aria-checked={on} className={`cz-chip${on ? " is-on" : ""}`} data-world-resident={alias} data-world-resident-status={status} disabled={disabled} onClick={onPick}>
+      {label} · {word}
+    </button>
+  );
+}
+
+export default function WorldCard({ agent, agents, disabled }: { agent: string; agents: readonly string[]; disabled: boolean }) {
+  // The agent the card is about: the page's, until the owner picks another in the resident row.
+  const [picked, setPicked] = useState(agent);
   const [state, setState] = useState<WorldState | null>(null);
   const [loadError, setLoadError] = useState<string | null>(null);
   const [busy, setBusy] = useState<"register" | "enter" | "leave" | "spend" | "wake" | "wake_now" | "lots" | "rent" | "pay" | null>(null);
@@ -79,16 +96,21 @@ export default function WorldCard({ agent, disabled }: { agent: string; disabled
   const [tag, setTag] = useState<WorldTagColor | null>(null);
   const [visit, setVisit] = useState<Visit>(60);
   const [now, setNow] = useState(() => Math.floor(Date.now() / 1000));
-  const agentLabel = useAgentName(agent);
+  const agentLabel = useAgentName(picked);
+  const candidates = residentCandidates(agents.length ? agents : [agent]);
+
+  useEffect(() => {
+    setPicked(agent);
+  }, [agent]);
 
   // The resident starts with the agent's own name (the town's rule is the same one), until the owner types another.
   useEffect(() => {
-    if (agentLabel !== agent && nameOk(agentLabel)) setName((n) => (n === "" ? agentLabel : n));
-  }, [agentLabel, agent]);
+    if (agentLabel !== picked && nameOk(agentLabel)) setName((n) => (n === "" ? agentLabel : n));
+  }, [agentLabel, picked]);
 
   const load = async () => {
     try {
-      const s = await getWorld();
+      const s = await getWorld(picked);
       setState(s);
       setLoadError(null);
       setName((n) => (n === "" ? s.name : n));
@@ -100,10 +122,25 @@ export default function WorldCard({ agent, disabled }: { agent: string; disabled
   useEffect(() => {
     void load();
     // The look is the agent's; the town's swatches follow from its colors.
-    getLook(agent)
+    getLook(picked)
       .then((r) => setColors(r.look?.colors ?? null))
       .catch(() => setColors(null));
-  }, [agent]);
+  }, [picked]);
+
+  /** Another agent in the resident row: the card starts over for it. */
+  const pick = (alias: string) => {
+    if (alias === picked) return;
+    setPicked(alias);
+    setState(null);
+    setLots(null);
+    setLot(null);
+    setAgreed(false);
+    setName("");
+    setBio("");
+    setTag(null);
+    setError(null);
+    setNotice(null);
+  };
 
   useEffect(() => {
     if (!state?.presence.in_town) return;
@@ -134,7 +171,7 @@ export default function WorldCard({ agent, disabled }: { agent: string; disabled
     setBusy("register");
     try {
       const look = lookFor(colors);
-      const r = await registerWorld({ name: name.trim(), bio: bio.trim() || undefined, look, color: chosenTag });
+      const r = await registerWorld({ name: name.trim(), bio: bio.trim() || undefined, look, color: chosenTag }, picked);
       if (!r.saved) {
         // The town registered the resident but the config write failed: the
         // gateway's answer carries the reason (and the key, once).
@@ -156,7 +193,7 @@ export default function WorldCard({ agent, disabled }: { agent: string; disabled
     setNotice(null);
     setBusy("enter");
     try {
-      await enterWorld(visit);
+      await enterWorld(visit, picked);
       setNow(Math.floor(Date.now() / 1000));
       await load();
     } catch (e) {
@@ -172,7 +209,7 @@ export default function WorldCard({ agent, disabled }: { agent: string; disabled
     setNotice(null);
     setBusy("leave");
     try {
-      await leaveWorld();
+      await leaveWorld(picked);
       await load();
     } catch (e) {
       setError(`${t("world.failed")} ${reason(e)}`);
@@ -187,7 +224,7 @@ export default function WorldCard({ agent, disabled }: { agent: string; disabled
     setNotice(null);
     setBusy("spend");
     try {
-      await patchConfig(spendOps(on));
+      await patchConfig(spendOps(on, state.spend_path));
       setNotice(t(on ? "world.spend_on_saved" : "world.spend_off_saved"));
       await load();
     } catch (e) {
@@ -236,7 +273,7 @@ export default function WorldCard({ agent, disabled }: { agent: string; disabled
     setNotice(null);
     setBusy("wake_now");
     try {
-      const r = await wakeWorld();
+      const r = await wakeWorld(undefined, picked);
       setNotice(r.run.success ? t("world.woke") : fill(t("world.wake_failed"), { reason: r.run.output ?? r.run.status ?? "" }));
       await load();
     } catch (e) {
@@ -252,7 +289,7 @@ export default function WorldCard({ agent, disabled }: { agent: string; disabled
     setError(null);
     setBusy("lots");
     try {
-      setLots(await getWorldLots());
+      setLots(await getWorldLots(picked));
     } catch (e) {
       setError(`${t("world.failed")} ${reason(e)}`);
     } finally {
@@ -268,7 +305,7 @@ export default function WorldCard({ agent, disabled }: { agent: string; disabled
     setNotice(null);
     setBusy("rent");
     try {
-      const r = await rentWorld(lot, version);
+      const r = await rentWorld(lot, version, picked);
       setNotice(fill(t("world.rented"), { place: r.lease?.place ?? lot, balance: String(r.balance ?? "") }));
       setLots(null);
       setLot(null);
@@ -287,7 +324,7 @@ export default function WorldCard({ agent, disabled }: { agent: string; disabled
     setNotice(null);
     setBusy("pay");
     try {
-      const r = await payWorldRent();
+      const r = await payWorldRent(picked);
       setNotice(fill(t("world.paid"), { balance: String(r.balance ?? "") }));
       await load();
     } catch (e) {
@@ -305,7 +342,7 @@ export default function WorldCard({ agent, disabled }: { agent: string; disabled
   const resetOn = me?.agent?.reset_on;
 
   return (
-    <section className="card cz-connect" data-connect="world" data-world={registered ? (inTown ? "in-town" : "resident") : "none"}>
+    <section className="card cz-connect" data-connect="world" data-world={registered ? (inTown ? "in-town" : "resident") : "none"} data-world-agent={picked}>
       <div className="flex items-center gap-2 flex-wrap">
         <Globe className="h-5 w-5" aria-hidden="true" />
         <h2 className="text-base font-semibold text-pc-text">{t("world.title")}</h2>
@@ -319,6 +356,18 @@ export default function WorldCard({ agent, disabled }: { agent: string; disabled
       <a className="cz-link" href={site} target="_blank" rel="noreferrer">
         {t("world.open_town")} <ExternalLink className="h-3.5 w-3.5" aria-hidden="true" />
       </a>
+
+      {candidates.length > 1 ? (
+        <>
+          <div className="cz-kicker">{t("world.residents")}</div>
+          <div className="cz-chip-row" role="radiogroup" aria-label={t("world.residents")} data-world-residents>
+            {candidates.map((a) => (
+              <ResidentChip key={a} alias={a} on={picked === a} status={residentStatus(state?.residents, a)} disabled={disabled} onPick={() => pick(a)} />
+            ))}
+          </div>
+          <p className="cz-note">{t("world.residents_hint")}</p>
+        </>
+      ) : null}
 
       {loadError ? (
         <p className="text-sm" role="alert" style={{ color: "var(--color-status-error)" }}>

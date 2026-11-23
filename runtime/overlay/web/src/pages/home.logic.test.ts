@@ -275,4 +275,14 @@ test('the Town tile says where the agent is, its RC and the last wake', () => {
   assert.ok(shown.endsWith('…'));
   // The town could not be read and nothing older is known: the tile says so.
   assert.match(townTile({ ...resident, me: null, me_error: 'the town answered 503' }, null, nowSecs).sublabel, /could not be read/);
+  // Several residents (P6): counted, each named with where it is; one resident among the list reads as before.
+  const pip = { ...resident, name: 'Pip', presence: { in_town: true }, wake: { ...woke, last_at: nowSecs - 600 }, me: { passport: { rc: 40 }, lease: { owing: true } } };
+  const two = townTile({ ...resident, residents: [resident, pip] }, null, nowSecs);
+  assert.equal(two.value, '1 of 2 in town');
+  assert.equal(two.sublabel, 'Moss at home · 1240 RC · Pip in town · 40 RC · Pip: rent owing · Pip woke 10 min ago');
+  assert.equal(two.tone, 'warn');
+  const calm = townTile({ ...resident, residents: [resident, { ...pip, presence: { in_town: false }, me: { passport: { rc: 40 } } }] }, null, nowSecs);
+  assert.equal(calm.value, '2 residents at home');
+  assert.equal(calm.tone, 'neutral');
+  assert.equal(townTile({ ...resident, residents: [resident, { ...pip, registered: false }] }, null, nowSecs).value, 'At home');
 });

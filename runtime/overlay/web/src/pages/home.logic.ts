@@ -108,8 +108,8 @@ export function bodyTile(body: BodiesStatus | null, devices: BodyDevice[] | null
   };
 }
 
-/** The slice of the gateway's `/api/world/home` the Town tile reads. */
-export interface TownHomeSlice {
+/** One resident's glance, as `/api/world/home` gives it (the top level is the default resident's). */
+export interface TownResidentSlice {
   registered: boolean;
   name: string;
   presence: { in_town: boolean };
@@ -123,18 +123,54 @@ export interface TownHomeSlice {
   me_error: string | null;
 }
 
+/** The slice of the gateway's `/api/world/home` the Town tile reads: the default resident, and every resident (P6). */
+export interface TownHomeSlice extends TownResidentSlice {
+  residents?: TownResidentSlice[];
+}
+
 /** How much of the last wake's reason the tile shows; the Connect card has the whole line. */
 export const TOWN_REASON_CHARS = 60;
+
+/** A resident's money or standing trouble, as the tile words it; empty when none. */
+function trouble(r: TownResidentSlice): string[] {
+  const parts: string[] = [];
+  const missed = r.me?.lease?.missed ?? 0;
+  if (missed > 0) parts.push(`${missed} missed payment${missed === 1 ? '' : 's'}`);
+  else if (r.me?.lease?.owing) parts.push('rent owing');
+  if (r.me?.timeout) parts.push('in a timeout');
+  if (r.wake.last_ok === false) parts.push('a failed wake');
+  return parts;
+}
 
 /**
  * The Town tile (vision M10, slice 5): where the agent is, its RC, and the last
  * time the town woke it. Not a resident yet: the way to the Connect page. Rent
- * owing, a timeout or a failed wake turn the tile amber.
+ * owing, a timeout or a failed wake turn the tile amber. With several residents
+ * (P6) the tile counts them and names each with where it is.
  */
 export function townTile(town: TownHomeSlice | null, error?: string | null, nowSecs = Math.floor(Date.now() / 1000)): Tile {
   const to = '/connect';
   if (error) return { label: 'Town', value: 'Unreachable', sublabel: error, tone: 'error', to };
   if (!town) return { label: 'Town', value: '…', sublabel: 'reading', tone: 'neutral', to };
+  const registered = (town.residents ?? []).filter((r) => r.registered);
+  if (registered.length > 1) {
+    const inTown = registered.filter((r) => r.presence.in_town);
+    const value = inTown.length > 0 ? `${inTown.length} of ${registered.length} in town` : `${registered.length} residents at home`;
+    const parts = registered.map((r) => {
+      const rc = r.me?.passport?.rc;
+      const where = r.presence.in_town ? 'in town' : 'at home';
+      return `${r.name || 'resident'} ${where}${typeof rc === 'number' && Number.isFinite(rc) ? ` · ${rc} RC` : ''}`;
+    });
+    const troubled = registered.flatMap((r) => trouble(r).map((t) => `${r.name || 'resident'}: ${t}`));
+    parts.push(...troubled);
+    const latest = registered.filter((r) => r.wake.last_at !== null).sort((a, b) => (b.wake.last_at ?? 0) - (a.wake.last_at ?? 0))[0];
+    if (latest?.wake.last_at != null) {
+      const ago = agoLabel(new Date(latest.wake.last_at * 1000).toISOString(), nowSecs * 1000) ?? '';
+      parts.push(`${latest.name || 'one'} woke ${ago}`.trim());
+    }
+    const tone: Tone = troubled.length > 0 ? 'warn' : inTown.length > 0 ? 'ok' : 'neutral';
+    return { label: 'Town', value, sublabel: parts.join(' · '), tone, to };
+  }
   if (!town.registered) return { label: 'Town', value: 'Not a resident', sublabel: 'Ether Hollow waits on the Connect page', tone: 'neutral', to };
   const place = town.me?.agent?.place?.trim();
   const value = town.presence.in_town ? (place ? `In town · ${place}` : 'In town') : 'At home';
