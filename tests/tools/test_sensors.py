@@ -15,6 +15,8 @@ def fake_termux(tmp_path, monkeypatch):
     make("termux-tts-speak", 'exit 0')
     make("termux-clipboard-get", 'echo cliptext')
     monkeypatch.setenv("PATH", f"{bindir}{os.pathsep}{os.environ['PATH']}")
+    # No Runtime beside the Body unless a test writes one (the agent's chosen voice).
+    monkeypatch.setenv(sensors.RUNTIME_DIR_ENV, str(tmp_path / ".caelza"))
     tools.reset(); media.PENDING_MEDIA.clear()
     sensors.configure(tmp_path); sensors.register()
     return tmp_path
@@ -102,6 +104,88 @@ def test_location_accuracy_backcompat(tmp_path, monkeypatch):
     monkeypatch.setattr(s, "_run", lambda argv, timeout=30: (seen.setdefault("argv", argv), "{}")[1])
     tools.dispatch("sensors_location", {"accuracy": "fine"})
     assert seen["argv"] == ["termux-location", "-p", "gps"]
+
+
+# --- the agent's own voice (P2c) -------------------------------------------------
+
+def _runtime(tmp_path, voice=None, config='[agents.main]\nmcp_bundles = ["body"]\nrisk_profile = "phone"\n', offered=None, alias="main"):
+    """A Runtime config dir beside the Body: the agent carrying it, its voice.json, the phone's offer."""
+    cfg = tmp_path / ".caelza"
+    (cfg / "agents" / alias).mkdir(parents=True, exist_ok=True)
+    (cfg / "config.toml").write_text(config)
+    if voice is not None:
+        (cfg / "agents" / alias / sensors.VOICE_FILE).write_text(json.dumps(voice))
+    if offered is not None:
+        (cfg / sensors.OFFERED_FILE).write_text(json.dumps(offered))
+    return cfg
+
+
+def _capture(monkeypatch):
+    seen = {}
+    monkeypatch.setattr(sensors, "_run", lambda argv, timeout=30: (seen.setdefault("argv", list(argv)), "")[1])
+    return seen
+
+
+PHONE_OFFER = {"version": 1, "engines": {"phone": {"voices": [
+    {"id": "en-gb-x-gba-local", "name": "en-GB · en-gb-x-gba-local", "lang": "en-GB"},
+    {"id": "en-us-x-iom-local", "name": "en-US · en-us-x-iom-local", "lang": "en-US"}]}}}
+
+
+def test_tts_speaks_in_the_chosen_phone_voice(fake_termux, monkeypatch):
+    _runtime(fake_termux, voice={"engine": "phone", "voice": "en-gb-x-gba-local", "rate": 1.2, "pitch": 0.9}, offered=PHONE_OFFER)
+    seen = _capture(monkeypatch)
+    assert tools.dispatch("sensors_tts_speak", {"text": "hello"}) == "spoken"
+    assert seen["argv"] == ["termux-tts-speak", "-l", "en", "-n", "GB", "-r", "1.2", "-p", "0.9", "hello"]
+
+
+def test_tts_without_a_choice_is_the_plain_command(fake_termux, monkeypatch):
+    seen = _capture(monkeypatch)
+    assert tools.dispatch("sensors_tts_speak", {"text": "hello"}) == "spoken"
+    assert seen["argv"] == ["termux-tts-speak", "hello"]
+    # A Runtime with no voice.json is the same.
+    _runtime(fake_termux)
+    seen.clear()
+    tools.dispatch("sensors_tts_speak", {"text": "hello"})
+    assert seen["argv"] == ["termux-tts-speak", "hello"]
+
+
+def test_tts_elevenlabs_voice_is_spoken_by_the_phone_and_the_answer_says_so(fake_termux, monkeypatch):
+    _runtime(fake_termux, voice={"engine": "elevenlabs", "voice": "21m00Tcm4TlvDq8ikWAM", "name": "Rachel"})
+    seen = _capture(monkeypatch)
+    assert tools.dispatch("sensors_tts_speak", {"text": "hello"}) == sensors.ELEVENLABS_ELSEWHERE
+    assert seen["argv"] == ["termux-tts-speak", "hello"]
+
+
+def test_tts_argv_takes_the_locale_apart_bounds_the_numbers_and_leaves_other_engines_alone():
+    assert sensors.tts_argv("x", {"engine": "phone", "voice": "v", "lang": "zh-Hant-TW", "rate": 9, "pitch": 0.1}) == \
+        ["termux-tts-speak", "-l", "zh", "-n", "TW", "-r", "2", "-p", "0.5", "x"]
+    assert sensors.tts_argv("x", {"engine": "phone", "voice": "v", "lang": "es-419", "rate": "fast"}) == ["termux-tts-speak", "-l", "es", "-n", "419", "x"]
+    assert sensors.tts_argv("x", {"engine": "phone", "voice": "v"}) == ["termux-tts-speak", "x"]
+    assert sensors.tts_argv("x", {"engine": "browser", "voice": "Samantha", "rate": 1.5}) == ["termux-tts-speak", "x"]
+    assert sensors.tts_argv("x", None) == ["termux-tts-speak", "x"]
+
+
+def test_body_agent_is_the_one_carrying_the_body_and_main_wins():
+    assert sensors.body_agent("") == "main"
+    assert sensors.body_agent('[agents.main]\nmodel_provider = "x"\n') == "main"
+    assert sensors.body_agent('[agents.cael]\nrisk_profile = "guide"\n\n[agents.moss]\nmcp_bundles = ["body"]\n') == "moss"
+    assert sensors.body_agent('[agents.moss]\nmcp_bundles = ["body"]\n\n[agents.main]\nmcp_bundles = ["body", "other"]\n') == "main"
+    assert sensors.body_agent('[mcp_bundles.body]\nservers = ["body"]\n\n[agents.cael]\nmcp_bundles = ["notes"]\n') == "main"
+    assert sensors.body_agent("not = toml = [") == "main"
+
+
+def test_chosen_voice_reads_the_body_agents_file_and_fills_the_language(tmp_path):
+    cfg = _runtime(tmp_path, voice={"engine": "phone", "voice": "en-us-x-iom-local"}, offered=PHONE_OFFER,
+                   config='[agents.cael]\nrisk_profile = "guide"\n\n[agents.moss]\nmcp_bundles = ["body"]\n', alias="moss")
+    (cfg / "agents" / "main").mkdir()
+    (cfg / "agents" / "main" / sensors.VOICE_FILE).write_text(json.dumps({"engine": "phone", "voice": "en-gb-x-gba-local"}))
+    choice = sensors.chosen_voice(cfg)
+    assert choice["voice"] == "en-us-x-iom-local" and choice["lang"] == "en-US", "moss carries the Body, not main"
+    assert sensors.chosen_voice(tmp_path / "nowhere") is None
+    (cfg / "agents" / "moss" / sensors.VOICE_FILE).write_text('{"engine": "radio", "voice": "x"}')
+    assert sensors.chosen_voice(cfg) is None
+    (cfg / "agents" / "moss" / sensors.VOICE_FILE).write_text("not json")
+    assert sensors.chosen_voice(cfg) is None
 
 
 def test_ipgeo_falls_back_to_second_service(monkeypatch):

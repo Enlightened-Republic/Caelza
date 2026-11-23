@@ -128,6 +128,48 @@ def test_the_phone_offers_its_voices_through_a_bridge_the_webview_can_reach():
     assert "class VoiceCatalogTest" in CATALOG_TEST
 
 
+def test_the_body_speaks_in_the_chosen_voice():
+    """P2c: both Bodies read the agent's voice.json and speak in it; the app fetches an ElevenLabs voice from the gateway."""
+    body = ANDROID / "body"
+    choice = (ANDROID / "voice" / "VoiceChoice.kt").read_text()
+    body_voice = (body / "BodyVoice.kt").read_text()
+    sensors = (body / "Sensors.kt").read_text()
+    android_sensors = (body / "AndroidSensors.kt").read_text()
+    body_tools = (body / "BodyTools.kt").read_text()
+    service = (ANDROID / "RuntimeService.kt").read_text()
+    python = (REPO_ROOT / "caelza_body" / "agent" / "tools" / "sensors.py").read_text()
+    # One file, one shape, both Bodies.
+    assert 'const val FILE = "voice.json"' in choice and 'VOICE_FILE = "voice.json"' in python
+    assert 'val ENGINES = setOf("browser", "phone", "elevenlabs")' in choice and 'VOICE_ENGINES = ("browser", "phone", "elevenlabs")' in python
+    assert "fun bodyAgent(configToml: String): String" in choice and "def body_agent(config_text: str) -> str:" in python
+    assert "const val MIN = 0.5f" in choice and "const val MAX = 2f" in choice and "VOICE_RANGE = (0.5, 2.0)" in python
+    # The app: the engine takes the voice; ElevenLabs comes from the gateway with the app's own token, never logged.
+    assert "fun ttsSpeak(text: String, voice: VoiceChoice? = null)" in sensors and "fun play(audio: File)" in sensors
+    assert "private fun applyVoice(engine: TextToSpeech, voice: VoiceChoice?)" in android_sensors
+    assert "engine.setSpeechRate(voice?.rate ?: 1f)" in android_sensors and "engine.setPitch(voice?.pitch ?: 1f)" in android_sensors
+    assert "override fun play(audio: File)" in android_sensors and "MediaPlayer()" in android_sensors
+    assert '"http://127.0.0.1:${port()}/api/voice/$alias/speak"' in body_voice
+    assert "const val MAX_SPEAK_CHARS = 2000" in body_voice, "the gateway's cap, so the phone speaks longer texts"
+    assert 'conn.setRequestProperty("Authorization", "Bearer $token")' in body_voice and "Log." not in body_voice
+    assert 'if (choice?.engine != "elevenlabs") {' in body_tools and "sensors.play(file)" in body_tools
+    assert "the ElevenLabs voice did not come:" in body_tools
+    assert "BodyVoice(store.configDir, port = { Gateway.port(store.configDir) }, token = ::gatewayToken)" in service
+    # Termux: the locale, speed and pitch go to termux-tts-speak; ElevenLabs is spoken by the phone and the answer says so.
+    assert 'RUNTIME_DIR_ENV = "CAELZA_CONFIG_DIR"' in python and "def tts_argv(text: str, choice: dict | None) -> list[str]:" in python
+    assert 'argv += ["-l", language]' in python and 'argv += ["-n", region]' in python and 'argv += ["-r", rate]' in python and 'argv += ["-p", pitch]' in python
+    assert "return ELEVENLABS_ELSEWHERE" in python
+    # The same words in the app's tests and the docs.
+    tests = REPO_ROOT / "android" / "app" / "src" / "test" / "java" / "tech" / "enlightenedrepublic" / "caelza"
+    assert "class VoiceChoiceTest" in (tests / "voice" / "VoiceChoiceTest.kt").read_text()
+    assert "class BodyVoiceTest" in (tests / "body" / "BodyVoiceTest.kt").read_text()
+    assert "fun an_elevenlabs_voice_is_fetched_from_the_gateway_and_played_or_the_phone_speaks_and_says_why" in (tests / "body" / "SensorToolsTest.kt").read_text()
+    assert "in the agent's chosen voice (`agents/<alias>/voice.json`" in (REPO_ROOT / "docs" / "design" / "android-app.md").read_text()
+    assert "**In the agent's own voice.**" in (REPO_ROOT / "body" / "README.md").read_text()
+    assert "When the agent speaks through its\nBody on the phone" in FAQ
+    p2 = NOTE.split("**P2 · Wants, a look and a voice")[1].split("**P3 ·")[0]
+    assert "Shipped 2026-11-23 (the Body, P2c)" in " ".join(p2.split())
+
+
 def test_the_manifest_the_faq_the_readme_the_note_and_the_corpus_agree():
     patch = MANIFEST["components"]["runtime"]["voice_patch"]
     assert (REPO_ROOT / patch).is_file() and patch.endswith("0024-voice.patch")

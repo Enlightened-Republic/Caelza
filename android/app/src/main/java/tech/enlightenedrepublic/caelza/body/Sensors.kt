@@ -2,6 +2,7 @@ package tech.enlightenedrepublic.caelza.body
 
 import org.json.JSONArray
 import org.json.JSONObject
+import tech.enlightenedrepublic.caelza.voice.VoiceChoice
 import java.io.File
 import java.net.HttpURLConnection
 import java.net.URL
@@ -41,8 +42,14 @@ interface Sensors {
     /** `seconds` of microphone audio as .m4a, written to `into`; blocks for the duration. */
     fun micRecord(seconds: Int, into: File)
 
-    /** Speak and return once spoken. */
-    fun ttsSpeak(text: String)
+    /**
+     * Speak and return once spoken; `voice` is the agent's chosen phone voice (the
+     * engine's name for it, speed, pitch), null for the engine's own.
+     */
+    fun ttsSpeak(text: String, voice: VoiceChoice? = null)
+
+    /** Play a sound file (the agent's ElevenLabs voice, as the gateway spoke it) and return once it ends. */
+    fun play(audio: File)
 
     fun torch(on: Boolean)
 }

@@ -23,6 +23,8 @@ class BodyTools(
     private val home: BodyHome,
     private val sensors: Sensors,
     private val now: () -> Instant = Instant::now,
+    /** The agent's chosen voice for `sensors_tts_speak` (P2c); the phone's own without one. */
+    private val voice: BodyVoice = BodyVoice.NONE,
 ) {
     enum class Safety { READ_ONLY, DESTRUCTIVE, NEUTRAL }
 
@@ -114,7 +116,7 @@ class BodyTools(
         "sensors_mic_record" -> { a -> sensor(a, name) { micRecord(a.optInt("seconds", 8)) } }
         "sensors_location" -> { a -> sensor(a, name) { location(a.optString("mode", "quick"), a.optString("accuracy", "")) } }
         "sensors_notifications" -> { a -> sensor(a, name) { sensors.notifications().toString() } }
-        "sensors_tts_speak" -> { a -> sensor(a, name) { sensors.ttsSpeak(a.getString("text")); "spoken" } }
+        "sensors_tts_speak" -> { a -> sensor(a, name) { speak(a.getString("text")) } }
         "sensors_clipboard_get" -> { a -> sensor(a, name) { sensors.clipboardGet() } }
         "sensors_clipboard_set" -> { a -> sensor(a, name) { sensors.clipboardSet(a.getString("text")); "set" } }
         "sensors_battery" -> { a -> sensor(a, name) { sensors.battery().toString() } }
@@ -145,6 +147,34 @@ class BodyTools(
         } catch (e: SensorUnavailable) {
             ToolResult("error: ${e.message}")
         }
+    }
+
+    /**
+     * `sensors_tts_speak` in the agent's own voice (P2c): its phone voice by name, its
+     * ElevenLabs voice as MP3 from the gateway (played, then the file is gone), the phone's own
+     * voice otherwise, and when the gateway cannot speak, with the answer saying why.
+     */
+    private fun speak(text: String): String {
+        val choice = voice.choice()
+        if (choice?.engine != "elevenlabs") {
+            sensors.ttsSpeak(text, choice?.takeIf { it.engine == "phone" })
+            return "spoken"
+        }
+        val audio = voice.elevenLabs(voice.alias(), text)
+        val bytes = audio.getOrNull()
+        if (bytes == null) {
+            sensors.ttsSpeak(text, null)
+            return "spoken (in the phone's own voice; the ElevenLabs voice did not come: ${audio.exceptionOrNull()?.message ?: "no reason given"})"
+        }
+        home.tmp.mkdirs()
+        val file = File(home.tmp, "say-${System.nanoTime()}.mp3")
+        try {
+            file.writeBytes(bytes)
+            sensors.play(file)
+        } finally {
+            file.delete()
+        }
+        return "spoken"
     }
 
     /** `sensors_location`: quick is the wifi network plus a city from the public IP; gps / network are coordinates. */

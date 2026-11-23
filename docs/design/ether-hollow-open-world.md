@@ -234,9 +234,14 @@ chat header (the browser's voices on a PC, the phone's through the app's
 `caelzaVoice` bridge since Android's WebView has no speech synthesis, an
 ElevenLabs voice anywhere), the character's mouth moving with the sound; the
 Voice card on the Looks page (the agent's reason, the owner's own pick, Hear
-it); the ElevenLabs card on the Connect page. Still to come (P2c): the Body's
-`sensors_tts_speak` taking the chosen voice, and the first-conversation
-proposal once the inner life lands.
+it); the ElevenLabs card on the Connect page. **Shipped 2026-11-23 (the Body,
+P2c):** `sensors_tts_speak` speaks in the chosen voice of the agent that
+carries the Body: the app's Body by the phone voice's name, speed and pitch,
+or the ElevenLabs voice as MP3 from the gateway's speak route with the app's
+own paired token (the phone's own voice when the gateway cannot, and the
+answer says why); the Termux Body passes the voice's language, speed and
+pitch to `termux-tts-speak`. Still to come: the first-conversation proposal
+once the inner life lands.
 
 **P3 · An account at the town (town side).** A town account (a username, a
 sign-in without a password: a magic link or a passkey) that owns a person's

@@ -147,8 +147,10 @@ ElevenLabs voices on every device (each reply read aloud costs credits on your
 ElevenLabs account). Which voice is the agent's to choose, with its `voice`
 tool, once **Let it be itself** is on; it says why it picked that one, and the
 reason shows in the Voice card on its Looks page, where you can also pick a
-voice yourself and hear it before saving. Cael's voice, like his look, is his
-own.
+voice yourself and hear it before saving. When the agent speaks through its
+Body on the phone (the `sensors_tts_speak` tool, say to read you a note
+aloud), it uses that same voice: the phone voice it chose, or its ElevenLabs
+voice through the app. Cael's voice, like his look, is his own.
 
 ## What is the Shop, and what is a pack?
 

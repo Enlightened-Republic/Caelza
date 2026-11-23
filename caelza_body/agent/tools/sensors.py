@@ -1,6 +1,9 @@
 from __future__ import annotations
 
+import json
+import os
 import time
+import tomllib
 from pathlib import Path
 
 import httpx
@@ -63,6 +66,103 @@ def _run(argv, timeout: int = 30) -> str:
 
 def _ts() -> str:
     return time.strftime("%Y%m%d-%H%M%S") + f"-{int(time.time() * 1000) % 1000:03d}"
+
+
+# --- the agent's own voice (vision M10 §10, slice P2c) ---------------------------
+#
+# The agent chooses its voice with its `voice` tool (or the owner does, on the
+# Looks page); the choice is `agents/<alias>/voice.json` under the Runtime's
+# config dir, the devices' offers `voices.json` beside it. On Termux the phone's
+# engine takes a locale, a speed and a pitch, not a voice name, so a phone voice
+# becomes `-l`, `-n`, `-r`, `-p`; an ElevenLabs voice speaks through the app and
+# the dashboard, and the phone's own voice stands in here.
+
+#: The Runtime's config dir: $CAELZA_CONFIG_DIR, else ~/.caelza (`caelza --config-dir`'s default).
+RUNTIME_DIR_ENV = "CAELZA_CONFIG_DIR"
+VOICE_FILE = "voice.json"
+OFFERED_FILE = "voices.json"
+VOICE_ENGINES = ("browser", "phone", "elevenlabs")
+#: Speed and pitch as the browsers and the app bound them (1 is the voice as it comes).
+VOICE_RANGE = (0.5, 2.0)
+ELEVENLABS_ELSEWHERE = ("spoken (in the phone's own voice; the ElevenLabs voice speaks through "
+                        "the app and the dashboard)")
+
+
+def runtime_config_dir() -> Path:
+    return Path(os.environ.get(RUNTIME_DIR_ENV) or (Path.home() / ".caelza"))
+
+
+def body_agent(config_text: str) -> str:
+    """The agent carrying the Body: the `[agents.<alias>]` whose `mcp_bundles`
+    names "body"; `main` when it is one of several, and when none does."""
+    try:
+        agents = tomllib.loads(config_text).get("agents") or {}
+    except (tomllib.TOMLDecodeError, AttributeError):
+        return "main"
+    carriers = [alias for alias, cfg in agents.items()
+                if isinstance(cfg, dict) and "body" in (cfg.get("mcp_bundles") or [])]
+    if not carriers or "main" in carriers:
+        return "main"
+    return carriers[0]
+
+
+def chosen_voice(config_dir: Path | None = None) -> dict | None:
+    """`agents/<alias>/voice.json` for the agent carrying the Body, its `lang`
+    filled from the phone's offer; None when there is no choice (or no Runtime)."""
+    root = Path(config_dir) if config_dir else runtime_config_dir()
+    try:
+        config_text = (root / "config.toml").read_text()
+    except OSError:
+        config_text = ""
+    alias = body_agent(config_text)
+    try:
+        choice = json.loads((root / "agents" / alias / VOICE_FILE).read_text())
+    except (OSError, ValueError):
+        return None
+    if (not isinstance(choice, dict) or choice.get("engine") not in VOICE_ENGINES
+            or not isinstance(choice.get("voice"), str) or not choice["voice"].strip()):
+        return None
+    if choice["engine"] == "phone" and not choice.get("lang"):
+        try:
+            voices = json.loads((root / OFFERED_FILE).read_text())["engines"]["phone"]["voices"]
+        except (OSError, ValueError, KeyError, TypeError):
+            voices = []
+        for v in voices:
+            if isinstance(v, dict) and v.get("id") == choice["voice"] and v.get("lang"):
+                choice["lang"] = v["lang"]
+                break
+    return choice
+
+
+def _bounded(value) -> str | None:
+    try:
+        f = float(value)
+    except (TypeError, ValueError):
+        return None
+    return f"{min(max(f, VOICE_RANGE[0]), VOICE_RANGE[1]):g}"
+
+
+def tts_argv(text: str, choice: dict | None) -> list[str]:
+    """`termux-tts-speak` for `text`: with a phone voice its language and region
+    (`-l`, `-n`, from the voice's `lang` tag), speed and pitch (`-r`, `-p`); the
+    plain command otherwise (an ElevenLabs or browser voice is not the phone's)."""
+    argv = ["termux-tts-speak"]
+    if choice and choice.get("engine") == "phone":
+        parts = str(choice.get("lang") or "").split("-")
+        language = parts[0]
+        region = next((p for p in parts[1:] if (len(p) == 2 and p.isalpha()) or (len(p) == 3 and p.isdigit())), "")
+        if language:
+            argv += ["-l", language]
+        if region:
+            argv += ["-n", region]
+        rate = _bounded(choice.get("rate"))
+        if rate is not None:
+            argv += ["-r", rate]
+        pitch = _bounded(choice.get("pitch"))
+        if pitch is not None:
+            argv += ["-p", pitch]
+    argv.append(text)
+    return argv
 
 
 def _ipgeo() -> dict:
@@ -174,8 +274,13 @@ def register() -> None:
          "required": ["text"]},
     )
     def sensors_tts_speak(text: str):
-        res = _run(["termux-tts-speak", text])
-        return res if res.startswith("error:") else "spoken"
+        choice = chosen_voice()
+        res = _run(tts_argv(text, choice))
+        if res.startswith("error:"):
+            return res
+        if choice and choice.get("engine") == "elevenlabs":
+            return ELEVENLABS_ELSEWHERE
+        return "spoken"
 
     @tools.tool(
         "sensors_clipboard_get",

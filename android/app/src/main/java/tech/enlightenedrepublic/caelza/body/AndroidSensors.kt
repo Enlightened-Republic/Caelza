@@ -17,7 +17,9 @@ import android.hardware.camera2.CaptureRequest
 import android.location.Location
 import android.location.LocationListener
 import android.location.LocationManager
+import android.media.AudioAttributes
 import android.media.ImageReader
+import android.media.MediaPlayer
 import android.media.MediaRecorder
 import android.net.wifi.WifiManager
 import android.os.BatteryManager
@@ -28,10 +30,12 @@ import android.os.Looper
 import android.os.SystemClock
 import android.speech.tts.TextToSpeech
 import android.speech.tts.UtteranceProgressListener
+import android.util.Log
 import android.util.Size
 import android.view.Surface
 import org.json.JSONArray
 import org.json.JSONObject
+import tech.enlightenedrepublic.caelza.voice.VoiceChoice
 import java.io.File
 import java.text.SimpleDateFormat
 import java.util.Date
@@ -408,8 +412,9 @@ class AndroidSensors(context: Context) : Sensors {
         return engine
     }
 
-    override fun ttsSpeak(text: String) {
+    override fun ttsSpeak(text: String, voice: VoiceChoice?) {
         val engine = engine()
+        applyVoice(engine, voice)
         val done = CompletableFuture<Boolean>()
         val id = "caelza-${System.nanoTime()}"
         engine.setOnUtteranceProgressListener(object : UtteranceProgressListener() {
@@ -440,6 +445,65 @@ class AndroidSensors(context: Context) : Sensors {
         if (!spoken) throw SensorUnavailable("the text-to-speech engine reported an error")
     }
 
+    /**
+     * The agent's phone voice by its name (P2c), else the engine's own; speed and pitch as
+     * chosen, 1 as the voice comes. A name the engine no longer has is its own voice, not an
+     * error: the agent picked from this phone's offer, and the offer can change.
+     */
+    private fun applyVoice(engine: TextToSpeech, voice: VoiceChoice?) {
+        try {
+            val wanted = voice?.takeIf { it.engine == "phone" }?.let { v -> engine.voices?.firstOrNull { it.name == v.voice } }
+            if (wanted != null) engine.voice = wanted else engine.defaultVoice?.let { engine.voice = it }
+        } catch (e: Exception) {
+            Log.w(TAG, "the engine would not take the voice", e)
+        }
+        engine.setSpeechRate(voice?.rate ?: 1f)
+        engine.setPitch(voice?.pitch ?: 1f)
+    }
+
+    // --- sound --------------------------------------------------------------------------
+
+    override fun play(audio: File) {
+        val done = CompletableFuture<Boolean>()
+        val player = MediaPlayer()
+        handler.post {
+            try {
+                player.setAudioAttributes(
+                    AudioAttributes.Builder().setUsage(AudioAttributes.USAGE_ASSISTANT).setContentType(AudioAttributes.CONTENT_TYPE_SPEECH).build(),
+                )
+                player.setDataSource(audio.path)
+                player.setOnCompletionListener { done.complete(true) }
+                player.setOnErrorListener { _, _, _ ->
+                    done.complete(false)
+                    true
+                }
+                player.prepare()
+                player.start()
+            } catch (e: Exception) {
+                Log.w(TAG, "the sound would not play", e)
+                done.complete(false)
+            }
+        }
+        val played = try {
+            done.get(PLAY_TIMEOUT_S, TimeUnit.SECONDS)
+        } catch (_: TimeoutException) {
+            release(player)
+            throw SensorUnavailable("playing did not finish within ${PLAY_TIMEOUT_S}s")
+        }
+        release(player)
+        if (!played) throw SensorUnavailable("this phone could not play the sound")
+    }
+
+    private fun release(player: MediaPlayer) {
+        handler.post {
+            try {
+                player.stop()
+            } catch (_: Exception) {
+            }
+            player.release()
+        }
+    }
+
     // --- torch ---------------------------------------------------------------------------
 
     override fun torch(on: Boolean) {
@@ -462,6 +526,9 @@ class AndroidSensors(context: Context) : Sensors {
         const val CAMERA_TIMEOUT_S = 20L
         const val LOCATION_TIMEOUT_S = 45L
         const val TTS_TIMEOUT_S = 60L
+        /** An ElevenLabs reply of the gateway's 2000 characters is about two minutes of speech. */
+        const val PLAY_TIMEOUT_S = 150L
+        private const val TAG = "AndroidSensors"
 
         private val HEALTH = mapOf(
             BatteryManager.BATTERY_HEALTH_UNKNOWN to "UNKNOWN", BatteryManager.BATTERY_HEALTH_GOOD to "GOOD",

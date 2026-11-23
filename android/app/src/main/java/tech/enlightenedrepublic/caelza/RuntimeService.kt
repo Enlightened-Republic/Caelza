@@ -27,6 +27,7 @@ import tech.enlightenedrepublic.caelza.body.BodyHome
 import tech.enlightenedrepublic.caelza.body.BodyServer
 import tech.enlightenedrepublic.caelza.body.BodyShell
 import tech.enlightenedrepublic.caelza.body.BodyTools
+import tech.enlightenedrepublic.caelza.body.BodyVoice
 import tech.enlightenedrepublic.caelza.body.ShizukuShell
 import tech.enlightenedrepublic.caelza.guide.CaelCorpus
 import tech.enlightenedrepublic.caelza.model.LlamaRuntime
@@ -262,7 +263,8 @@ class RuntimeService : Service() {
             val home = BodyHome(File(filesDir, BodyHome.DIR_NAME))
             home.prune()
             token = home.token()
-            val tools = BodyTools(BodyShell(ShizukuShell()), home, AndroidSensors(applicationContext))
+            val voice = BodyVoice(store.configDir, port = { Gateway.port(store.configDir) }, token = ::gatewayToken)
+            val tools = BodyTools(BodyShell(ShizukuShell()), home, AndroidSensors(applicationContext), voice = voice)
             val server = BodyServer(tools, token, log = { Log.w(TAG, it) })
             server.start()
             bodyServer = server
@@ -287,6 +289,21 @@ class RuntimeService : Service() {
         bodyServer = null
         _body.value = BodyState()
     }
+
+    /**
+     * The app's own paired token, for the Body to fetch the agent's ElevenLabs voice from the
+     * gateway (BodyVoice): "" when the gateway needs none, null when there is none to be had
+     * (the Body then speaks in the phone's own voice and says so).
+     */
+    private fun gatewayToken(): String? =
+        when (val paired = GatewayPairing.forStore(store).ensureToken(Gateway.port(store.configDir))) {
+            is GatewayPairing.Outcome.Paired -> paired.token
+            is GatewayPairing.Outcome.Off -> ""
+            is GatewayPairing.Outcome.Failed -> {
+                Log.w(TAG, "gateway pairing for the Body's voice: ${paired.detail}")
+                null
+            }
+        }
 
     private fun startRuntime() {
         stopping = false
