@@ -45,16 +45,24 @@ class CaelzaCli(
          */
         fun writeCaelPersona(configDir: File, soul: String): File {
             val ws = File(configDir, "agents/cael/workspace").apply { mkdirs() }
-            File(ws, "SOUL.md").takeUnless { it.isFile }?.writeText(soul)
-            File(ws, "IDENTITY.md").takeUnless { it.isFile }?.writeText(IDENTITY)
+            // Our own earlier texts are refreshed (an install before v0.7.0 has a Cael with no tool and
+            // no meeting); a soul the owner rewrote (not starting with our first line) is left alone.
+            val soulFile = File(ws, "SOUL.md")
+            if (!soulFile.isFile || staleSoul(soulFile.readText())) soulFile.writeText(soul)
+            val identity = File(ws, "IDENTITY.md")
+            if (!identity.isFile || identity.readText().contains("never acts")) identity.writeText(IDENTITY)
             // The Runtime fills any missing file with its own template; its USER.md names the owner
             // "User" and its AGENTS.md is a tool-user's checklist. Cael gets his own, and a stock USER.md
             // (an install before v0.6.1) is replaced.
             val user = File(ws, "USER.md")
             if (!user.isFile || STOCK_USER.containsMatchIn(user.readText())) user.writeText(USER)
-            File(ws, "AGENTS.md").takeUnless { it.isFile }?.writeText(AGENTS)
+            val agents = File(ws, "AGENTS.md")
+            if (!agents.isFile || agents.readText().contains("I run no tools")) agents.writeText(AGENTS)
             return ws
         }
+
+        /** Our soul from before Cael had his tool: ours by its first line, and no `shape_agent` in it. */
+        fun staleSoul(text: String): Boolean = text.startsWith("You are Cael, the guide inside Caelza") && !text.contains("shape_agent")
 
         /** Upstream's USER.md template as it renders: the line that calls the owner "User". */
         val STOCK_USER = Regex("""\*\*Name:\*\*\s*User\s*$""", RegexOption.MULTILINE)

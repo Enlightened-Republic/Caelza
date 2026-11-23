@@ -113,6 +113,10 @@ def test_caels_files_are_the_same_on_every_installer():
     assert joined(agents_ts) == joined(agents_kt)
     assert "gives the owner's agent who it is when they first meet" in joined(identity_ts)
     assert "- **Role:** the guide inside Caelza; explains and encourages, and gives the owner's agent who it is when they first meet" in MODEL_SETUP
+    # An install from before: our old soul, card and AGENTS.md are refreshed on both installers; the owner's own are kept.
+    assert "fun staleSoul(text: String): Boolean" in CLI and 'identity.readText().contains("never acts")' in CLI and 'agents.readText().contains("I run no tools")' in CLI
+    assert "grep -q shape_agent \"$ws/SOUL.md\"" in MODEL_SETUP
+    assert "grep -q 'never acts' \"$ws/IDENTITY.md\"" in MODEL_SETUP and "grep -q 'I run no tools' \"$ws/AGENTS.md\"" in MODEL_SETUP
 
 
 def test_the_dashboard_makes_cael_on_a_pc_and_ends_with_meet_cael():

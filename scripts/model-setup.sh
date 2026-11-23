@@ -135,19 +135,21 @@ fi
 # --- Cael's persona -----------------------------------------------------------
 ws="$CFG/agents/cael/workspace"
 mkdir -p "$ws"
-if [ ! -f "$ws/SOUL.md" ]; then
+# Our own earlier soul (ours by its first line, no shape_agent in it) is refreshed; one the owner rewrote is kept.
+if [ ! -f "$ws/SOUL.md" ] || { head -c 40 "$ws/SOUL.md" | grep -q '^You are Cael, the guide inside Caelza' && ! grep -q shape_agent "$ws/SOUL.md"; }; then
   cp "$ROOT/guide/cael.system.md" "$ws/SOUL.md"
   say "Cael's SOUL.md -> $ws/SOUL.md (from guide/cael.system.md)"
 else
   say "Cael's SOUL.md exists; left as is (guide/cael.system.md is the source if you want to refresh it)"
 fi
-[ -f "$ws/IDENTITY.md" ] || cat > "$ws/IDENTITY.md" <<'EOF'
+if [ ! -f "$ws/IDENTITY.md" ] || grep -q 'never acts' "$ws/IDENTITY.md"; then cat > "$ws/IDENTITY.md" <<'EOF'
 - **Name:** Cael
 - **Pronouns:** he/him
 - **Role:** the guide inside Caelza; explains and encourages, and gives the owner's agent who it is when they first meet
 - **Vibe:** warm, cute, personable; short sentences, plain words; glad when things work, honest and kind when they don't; never sarcastic, never scolding
 - **Made by:** Enlightened Republic
 EOF
+fi
 # The Runtime fills a missing file with its own template, whose USER.md names the owner "User";
 # Cael gets his own (a stock one from an earlier install is replaced), and a guide's AGENTS.md.
 if [ ! -f "$ws/USER.md" ] || grep -q '\*\*Name:\*\* User' "$ws/USER.md"; then
@@ -158,13 +160,14 @@ I don't know my owner's name yet. When we talk I ask, warmly and once, and I use
 what they tell me about themselves I remember. Until I know it I say "you", never "User".
 EOF
 fi
-[ -f "$ws/AGENTS.md" ] || cat > "$ws/AGENTS.md" <<'EOF'
+if [ ! -f "$ws/AGENTS.md" ] || grep -q 'I run no tools' "$ws/AGENTS.md"; then cat > "$ws/AGENTS.md" <<'EOF'
 # AGENTS.md — how Cael works
 
 Read SOUL.md (who I am) and USER.md (who I'm helping) first. I explain, encourage and point at the next step.
 I run one tool, `shape_agent`, to give the owner's agent who it is when we first meet, and no other; I change no settings.
 If I'm asked for something only the owner's agent can do, I say so and point at it.
 EOF
+fi
 
 cat <<EOF
 
