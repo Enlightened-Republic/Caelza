@@ -128,9 +128,8 @@ def test_the_gateway_keeps_the_key_and_the_presence():
     assert 'Some(&json!({"action": "here"}))' in API and API.count('{"action": "leave"}') == 2
     # The key is read live at every beat, so a removed key stops the ghost.
     assert "let Some(key) = live_key(&state) else {" in API
-    # Every route is behind pairing.
-    # Nine routes, every one behind pairing: get, register, enter, leave, wake, lots, rent, rent/pay, redeem.
-    assert API.count("require_auth(&state, &headers)") == 9
+    # Ten routes, every one behind pairing: get, register, enter, leave, wake, lots, rent, rent/pay, redeem, home.
+    assert API.count("require_auth(&state, &headers)") == 10
     assert "caelza_log::record!" not in API
 
 
@@ -243,6 +242,63 @@ def test_the_town_wakes_the_agent_through_a_cron_job_it_never_schedules():
     assert "wake your agent" in CORPUS and CORPUS == APP_CORPUS
     assert MANIFEST["components"]["runtime"]["world_wake_patch"] == "runtime/patches/0020-world-wake.patch"
     assert "**Slice 3 (the town wakes the agent):**" in VISION.split("| **M10 Ether Hollow** |", 1)[1].split("\n", 1)[0]
+
+
+HOME_PATCH = (REPO_ROOT / "runtime" / "patches" / "0027-world-home.patch").read_text()
+HOME_PAGE = (OVERLAY / "web" / "src" / "pages" / "Home.tsx").read_text()
+HOME_LOGIC = (OVERLAY / "web" / "src" / "pages" / "home.logic.ts").read_text()
+HOME_LOGIC_TEST = (OVERLAY / "web" / "src" / "pages" / "home.logic.test.ts").read_text()
+NOTE = (REPO_ROOT / "docs" / "design" / "ether-hollow-open-world.md").read_text()
+APP = REPO_ROOT / "android" / "app" / "src"
+APP_KT = APP / "main" / "java" / "tech" / "enlightenedrepublic" / "caelza"
+TOWN_WAKE_KT = (APP_KT / "world" / "TownWake.kt").read_text()
+WATCHER_KT = (APP_KT / "world" / "TownWatcher.kt").read_text()
+SERVICE_KT = (APP_KT / "RuntimeService.kt").read_text()
+CAELZA_APP_KT = (APP_KT / "CaelzaApp.kt").read_text()
+STRINGS = (APP / "main" / "res" / "values" / "strings.xml").read_text()
+TOWN_WAKE_TEST = (APP / "test" / "java" / "tech" / "enlightenedrepublic" / "caelza" / "world" / "TownWakeTest.kt").read_text()
+
+
+def test_the_town_lives_in_the_mind_on_home_and_on_the_phone():
+    """Slice 5, the Caelza half: episodes for the resident agent, the last wake in a file, Home's tile, the phone's word."""
+    files = re.findall(r"^\+\+\+ b/(.+)$", HOME_PATCH, flags=re.M)
+    assert files == ["crates/caelza-gateway/src/lib.rs"], files
+    assert '+        .route("/api/world/home", get(api_world::handle_world_home))' in HOME_PATCH
+    assert MANIFEST["components"]["runtime"]["world_home_patch"] == "runtime/patches/0027-world-home.patch"
+    # The Mind: daily entries under town:, for wakes, visits and the owner's taps, through the agent's own memory handle.
+    assert 'pub const MEMORY_PREFIX: &str = "town:";' in API and "MemoryCategory::Daily" in API
+    for key in ('format!("wake:{at}")', 'format!("visit:{since}")', 'format!("registered:{at}")', 'format!("rent:{at}")', 'format!("paid:{at}")', 'format!("redeem:{at}")'):
+        assert key in API, key
+    assert "caelza_memory::create_memory_for_agent(&config, &alias, api_key.as_deref())" in API
+    for fn in ("pub fn wake_episode(", "pub fn visit_episode(", "pub fn owner_episode(", "pub fn remember(", "fn remember_visit("):
+        assert fn in API, fn
+    assert "I looked and nothing needed doing." in API
+    # The last wake in its file, back into the state when the gateway starts; the glance's five minutes.
+    assert 'pub const WORLD_DIR: &str = "world";' in API and 'pub const LAST_WAKE_FILE: &str = "last-wake.json";' in API
+    assert "if let Some(last) = load_last_wake(&root) {" in API and "let _ = save_last_wake(" in API
+    assert "pub const GLANCE_MAX_AGE: Duration = Duration::from_secs(300);" in API and "pub async fn handle_world_home(" in API
+    # Home: the client, the tile, the fourth column.
+    assert "export function getWorldHome(): Promise<WorldHome> {" in CLIENT and "'/api/world/home'" in CLIENT
+    assert "export function townTile(" in HOME_LOGIC and "export const TOWN_REASON_CHARS = 60;" in HOME_LOGIC
+    assert "townTile(town.data, town.error)" in HOME_PAGE and "getWorldHome()," in HOME_PAGE
+    assert 'className="grid gap-3 md:grid-cols-2 lg:grid-cols-4" data-testid="home-tiles"' in HOME_PAGE
+    assert "townTile(" in HOME_LOGIC_TEST and "TOWN_REASON_CHARS" in HOME_LOGIC_TEST
+    # The phone: the file watched, its own channel, the strings, the test.
+    assert 'const val DIR = "world"' in TOWN_WAKE_KT and 'const val FILE = "last-wake.json"' in TOWN_WAKE_KT
+    assert "FileObserver(dir.path, CLOSE_WRITE or MOVED_TO)" in WATCHER_KT and "prefs.getLong(KEY_SHOWN_AT, 0L)" in WATCHER_KT
+    assert "startTownWatcher()" in SERVICE_KT and "stopTownWatcher()" in SERVICE_KT
+    assert 'const val TOWN_CHANNEL_ID = "town"' in SERVICE_KT and "NotificationCompat.Builder(this, TOWN_CHANNEL_ID)" in SERVICE_KT
+    assert "RuntimeService.TOWN_CHANNEL_ID" in CAELZA_APP_KT and "NotificationManager.IMPORTANCE_DEFAULT" in CAELZA_APP_KT
+    for key in ("town_channel_name", "town_channel_description", "town_woke_title", "town_your_agent"):
+        assert f'<string name="{key}">' in STRINGS, key
+    assert "class TownWakeTest" in TOWN_WAKE_TEST
+    # The docs, the FAQ and the corpus.
+    section = " ".join(FAQ.split("## Can Cael live in Ether Hollow?", 1)[1].split("\n## ", 1)[0].split())
+    assert "remembers its town life" in section and "Town tile" in section and "tells you when the town wakes your agent" in section
+    assert "remembers its town life" in CORPUS and CORPUS == APP_CORPUS
+    p5 = " ".join(NOTE.split("**P5 · The town in the Mind, and on Home (Caelza).**", 1)[1].split("**P6 ·", 1)[0].split())
+    assert "Shipped 2026-11-23 (the Caelza half)" in p5
+    assert "**Slice 5 (the town in the Mind, and on Home; the Caelza half, 2026-11-23):**" in VISION.split("| **M10 Ether Hollow** |", 1)[1].split("\n", 1)[0]
 
 
 SHOP = (OVERLAY / "web" / "src" / "pages" / "Shop.tsx").read_text()

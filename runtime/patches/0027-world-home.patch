@@ -1,0 +1,10 @@
+--- a/crates/caelza-gateway/src/lib.rs
++++ b/crates/caelza-gateway/src/lib.rs
+@@ -2393,6 +2393,7 @@
+         .route("/api/world/rent", post(api_world::handle_world_rent))
+         .route("/api/world/rent/pay", post(api_world::handle_world_rent_pay))
+         .route("/api/world/redeem", post(api_world::handle_world_redeem))
++        .route("/api/world/home", get(api_world::handle_world_home))
+         // The Body (caelza-body over MCP) for the dashboard's Bodies page;
+         // the gateway owns the connection and makes the tool calls.
+         .route("/api/bodies/status", get(api_bodies::handle_bodies_status))

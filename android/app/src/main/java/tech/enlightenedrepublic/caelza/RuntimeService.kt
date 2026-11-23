@@ -37,6 +37,8 @@ import tech.enlightenedrepublic.caelza.runtime.CrashLoop
 import tech.enlightenedrepublic.caelza.runtime.GatewayPairing
 import tech.enlightenedrepublic.caelza.runtime.Gateway
 import tech.enlightenedrepublic.caelza.runtime.RuntimeStore
+import tech.enlightenedrepublic.caelza.world.TownWake
+import tech.enlightenedrepublic.caelza.world.TownWatcher
 import java.io.File
 import java.util.concurrent.TimeUnit
 
@@ -305,8 +307,48 @@ class RuntimeService : Service() {
             }
         }
 
+    /** The town woke the agent (vision M10, slice 5): the gateway's last-wake file, watched while the Runtime runs, becomes a notification. */
+    private var townWatcher: TownWatcher? = null
+
+    private fun startTownWatcher() {
+        if (townWatcher != null) return
+        townWatcher = try {
+            TownWatcher(this, store.configDir) { wake -> notifyTownWake(wake) }.also { it.start() }
+        } catch (e: Exception) {
+            Log.w(TAG, "the town watcher did not start", e)
+            null
+        }
+    }
+
+    private fun stopTownWatcher() {
+        townWatcher?.stop()
+        townWatcher = null
+    }
+
+    private fun notifyTownWake(wake: TownWake) {
+        val open = PendingIntent.getActivity(
+            this, 1, Intent(this, MainActivity::class.java),
+            PendingIntent.FLAG_UPDATE_CURRENT or PendingIntent.FLAG_IMMUTABLE,
+        )
+        val who = wake.name.ifBlank { getString(R.string.town_your_agent) }
+        val notification = NotificationCompat.Builder(this, TOWN_CHANNEL_ID)
+            .setSmallIcon(R.drawable.ic_launcher_monochrome)
+            .setContentTitle(getString(R.string.town_woke_title, who))
+            .setContentText(wake.reason)
+            .setStyle(NotificationCompat.BigTextStyle().bigText("${wake.reason}\n${wake.outcome()}"))
+            .setContentIntent(open)
+            .setAutoCancel(true)
+            .build()
+        try {
+            NotificationManagerCompat.from(this).notify(TOWN_NOTIFICATION_ID, notification)
+        } catch (_: SecurityException) {
+            // Notifications denied: Home's Town tile and the Connect card still show the wake.
+        }
+    }
+
     private fun startRuntime() {
         stopping = false
+        startTownWatcher()
         job = scope.launch {
             try {
                 supervise()
@@ -323,6 +365,7 @@ class RuntimeService : Service() {
 
     private fun stopRuntime() {
         stopping = true
+        stopTownWatcher()
         generation++
         job?.cancel()
         job = null
@@ -504,6 +547,9 @@ class RuntimeService : Service() {
         private const val CORPUS_HEALTH_TRIES = 90
         const val CHANNEL_ID = "runtime"
         const val NOTIFICATION_ID = 1
+        /** Ether Hollow woke the agent: its own channel, so the owner can mute it apart from the Runtime's. */
+        const val TOWN_CHANNEL_ID = "town"
+        const val TOWN_NOTIFICATION_ID = 2
         const val ACTION_START = "tech.enlightenedrepublic.caelza.START"
         const val ACTION_STOP = "tech.enlightenedrepublic.caelza.STOP"
         const val ACTION_RESTART = "tech.enlightenedrepublic.caelza.RESTART"

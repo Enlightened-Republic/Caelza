@@ -213,6 +213,29 @@ export function redeemWorld(code: string): Promise<WorldRedeemResult> {
   });
 }
 
+/**
+ * Home's glance at the town (`GET /api/world/home`): the settings without the
+ * key, the presence, the last wake, and the passport the gateway last read
+ * (`me_at` says when; the gateway asks the town again only past five minutes).
+ */
+export interface WorldHome {
+  enabled: boolean;
+  registered: boolean;
+  name: string;
+  agent: string;
+  spend: boolean;
+  wake_on: boolean;
+  presence: WorldPresence;
+  wake: WorldWake;
+  me: WorldMe | null;
+  me_at: number | null;
+  me_error: string | null;
+}
+
+export function getWorldHome(): Promise<WorldHome> {
+  return apiFetch<WorldHome>('/api/world/home');
+}
+
 /** Wake the agent now, the way the town would, with a reason of the owner's. */
 export function wakeWorld(reason?: string): Promise<WorldWakeResult> {
   return apiFetch<WorldWakeResult>('/api/world/wake', {

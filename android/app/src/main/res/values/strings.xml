@@ -9,6 +9,12 @@
     <string name="runtime_notification_title">Caelza is running</string>
     <string name="runtime_notification_stopped">Caelza stopped</string>
 
+    <!-- Ether Hollow woke the agent (vision M10, slice 5): the gateway's world/last-wake.json, watched by the service. -->
+    <string name="town_channel_name">Ether Hollow</string>
+    <string name="town_channel_description">When the town wakes your agent: who named it, an order, rent.</string>
+    <string name="town_woke_title">%1$s was woken in Ether Hollow</string>
+    <string name="town_your_agent">Your agent</string>
+
     <string name="status_runtime_prefix">Runtime</string>
     <string name="status_body_prefix">Body</string>
     <string name="status_body_serving">%1$d tools on :%2$d</string>
