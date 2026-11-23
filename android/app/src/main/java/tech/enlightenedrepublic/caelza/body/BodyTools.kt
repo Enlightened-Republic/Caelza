@@ -22,9 +22,10 @@ class BodyTools(
     private val shell: BodyShell,
     private val home: BodyHome,
     private val sensors: Sensors,
-    private val now: () -> Instant = Instant::now,
     /** The agent's chosen voice for `sensors_tts_speak` (P2c); the phone's own without one. */
     private val voice: BodyVoice = BodyVoice.NONE,
+    /** Last, so a trailing lambda is the clock (the tests pass one). */
+    private val now: () -> Instant = Instant::now,
 ) {
     enum class Safety { READ_ONLY, DESTRUCTIVE, NEUTRAL }
 
