@@ -4,7 +4,7 @@
 
 [caelza]
 name = "Caelza"
-version = "0.6.1"   # the release tag is v<version>; release.yml stamps it into the Runtime's crates (runtime/lib/stamp_version.py)
+version = "0.7.0"   # the release tag is v<version>; release.yml stamps it into the Runtime's crates (runtime/lib/stamp_version.py)
 tagline = "The embodied agent runtime."
 repo = "https://github.com/Enlightened-Republic/caelza"
 license = "MIT OR Apache-2.0"   # runtime; Mind and Body are MIT
@@ -117,6 +117,7 @@ agent_name_patch = "runtime/patches/0022-agent-name.patch"   # the agent's name 
 persona_patch = "runtime/patches/0023-persona.patch"         # [persona] free in the schema; the look and identity tools registered for every agent but Cael, their rows and prompt lines; the Looks page's strings; the test list
 voice_patch = "runtime/patches/0024-voice.patch"             # the voice tool registered beside them; the gateway's /api/voice routes (api_voice.rs is in the overlay); the chat reads replies aloud (AgentContext's reply event, AgentChat's speaker); the voice strings; the test list
 menu_patch = "runtime/patches/0025-menu.patch"               # the Plugins page leaves the sidebar: no release builds the WASM plugin host, so the page only said "unavailable"
+meet_patch = "runtime/patches/0026-meet.patch"               # Cael's one tool, shape_agent (overlay crates/caelza-tools/src/shape_agent.rs), registered for him alone; its rows and prompt line
 # M5: the Procedures library runs a procedure by hand; a phone playbook's Run asks which phone and sends it as the trigger payload.
 procedures_run = "runtime/overlay/web/src/pages/Procedures.tsx"   # RunDialog over POST /api/sops/{name}/run (upstream's endpoint); the agent uses sop_execute
 

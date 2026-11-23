@@ -99,6 +99,21 @@ per slot (or choose any colour), watch the preview, then Save look. Undo puts
 the saved look back; Back to the default drops the saved look. A dimmed piece
 comes with a pack that is not in your wardrobe yet.
 
+## Who is Cael, and what happens when I first talk to him?
+
+Cael is the guide inside Caelza: the small, warm character who explains what a
+key is, why an approval appeared, what the next step is. He is also the first
+one you meet. When your agent is new, Cael leads the first conversation: he
+says who he is, asks your name, asks what brought you here and what you want
+your AI to do for you, and how it should talk to you; then he offers a name,
+and once you agree he gives your agent who it is (its name, its soul in a few
+paragraphs from what you told him, and what it knows about you). That is the
+one thing Cael does besides talk; he runs no other tools and changes no
+settings. Say hello to your agent afterwards: it knows you from its first
+reply. You can rename it on the Looks page, and **Let it be itself** there lets
+it keep shaping itself. If you would rather skip the questions, tell him; a
+name is enough.
+
 ## Can I name or rename my agent?
 
 Yes. The first run asks what to call your AI and deals a name you can keep or

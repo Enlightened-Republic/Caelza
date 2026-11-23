@@ -81,4 +81,30 @@ class CaelzaCliTest {
         CaelzaCli.writeCaelPersona(config, "You are Cael.\n")
         assertEquals("the owner's own edit\n", File(ws, "SOUL.md").readText())
     }
+
+    /** An install from before v0.7.0 has our old Cael (no tool, no meeting): his files are refreshed, the owner's own are kept. */
+    @Test
+    fun caels_old_files_are_refreshed_and_the_owners_own_are_kept() {
+        val config = File(tmp.root, ".caelza")
+        val ws = File(config, "agents/cael/workspace").apply { mkdirs() }
+        val oldSoul = "You are Cael, the guide inside Caelza, an agent runtime by Enlightened Republic.\nYou do not run tools.\n"
+        val newSoul = "You are Cael, the guide inside Caelza, an agent runtime by Enlightened Republic.\nYou have one tool, `shape_agent`.\n"
+        File(ws, "SOUL.md").writeText(oldSoul)
+        File(ws, "IDENTITY.md").writeText("- **Name:** Cael\n- **Role:** the guide inside Caelza; explains and encourages, never acts\n")
+        File(ws, "USER.md").writeText("# USER.md — Who You're Helping\n\n- **Name:** User\n")
+        File(ws, "AGENTS.md").writeText("# AGENTS.md — how Cael works\n\nI run no tools and change no settings.\n")
+        CaelzaCli.writeCaelPersona(config, newSoul)
+        assertEquals(newSoul, File(ws, "SOUL.md").readText())
+        assertEquals(CaelzaCli.IDENTITY, File(ws, "IDENTITY.md").readText())
+        assertEquals(CaelzaCli.USER, File(ws, "USER.md").readText())
+        assertEquals(CaelzaCli.AGENTS, File(ws, "AGENTS.md").readText())
+        // Already current, or the owner's own: left alone.
+        File(ws, "SOUL.md").writeText("I am a Cael of my owner's own making.\n")
+        File(ws, "USER.md").writeText("- **Name:** Sam\n")
+        CaelzaCli.writeCaelPersona(config, newSoul)
+        assertEquals("I am a Cael of my owner's own making.\n", File(ws, "SOUL.md").readText())
+        assertEquals("- **Name:** Sam\n", File(ws, "USER.md").readText())
+        assertTrue(CaelzaCli.staleSoul(oldSoul))
+        assertTrue(!CaelzaCli.staleSoul(newSoul) && !CaelzaCli.staleSoul("the owner's own edit\n"))
+    }
 }

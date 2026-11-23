@@ -27,6 +27,8 @@ import {
 } from "@/lib/api";
 import { basePath } from "@/lib/basePath";
 import { rememberAgentName } from "@/lib/agentName";
+import { createCael } from "@/lib/cael";
+import { GUIDE } from "@/lib/cael.logic";
 import { setAgentName, setUserFile } from "@/lib/identity";
 import { NAME_MAX, nameOk, suggestName, userTemplate } from "@/lib/identity.logic";
 import { t } from "@/lib/i18n";
@@ -130,6 +132,8 @@ interface Done {
   guide?: string;
   /** The device's own first run made the agent and gave it this model; the wizard only named it. */
   adopted?: string;
+  /** Cael, the guide, is here to meet the owner. */
+  cael?: boolean;
 }
 
 export default function Setup() {
@@ -353,7 +357,17 @@ export default function Setup() {
       }
       // Its USER.md, so the Runtime's own template (which names the owner "User") never fills in.
       await setUserFile(res.agent.alias, userTemplate()).catch(() => undefined);
-      setDone({ agent: res.agent.alias, label: named, provider: staged, guide });
+      // Cael, the guide, on a PC (the app makes him on a phone): he meets the owner next.
+      let cael = (state?.agents ?? []).includes(GUIDE);
+      if (!cael) {
+        try {
+          await createCael(res.agent.model_provider);
+          cael = true;
+        } catch {
+          // The agent works without him; Cael can be made later.
+        }
+      }
+      setDone({ agent: res.agent.alias, label: named, provider: staged, guide, cael });
       setScreen("done");
     } catch (e) {
       setErrors([e instanceof Error ? e.message : String(e)]);
@@ -374,7 +388,7 @@ export default function Setup() {
       await setUserFile(AGENT_NAME, userTemplate()).catch(() => undefined);
       // The quickstart never ran here; say it is done so nothing nudges towards it again.
       await putProp("onboard_state.quickstart_completed", true).catch(() => undefined);
-      setDone({ agent: AGENT_NAME, label, adopted: adopt.provider });
+      setDone({ agent: AGENT_NAME, label, adopted: adopt.provider, cael: (state?.agents ?? []).includes(GUIDE) });
       setScreen("done");
     } catch (e) {
       setErrors([e instanceof Error ? e.message : String(e)]);
@@ -828,21 +842,36 @@ export default function Setup() {
 
     case "done":
       title = t("setup.title_done");
-      body = done
-        ? done.adopted
-          ? `${done.label} is yours. It runs on the model this device set up (${done.adopted}), and it does not know you yet: say hello, and tell it your name.`
-          : done.provider && done.guide
-            ? fill(t("setup.body_done_local"), { agent: done.label, model: done.provider.model, guide: done.guide })
-            : fill(t("setup.body_done"), { agent: done.label, model: done.provider?.model ?? "", provider: providerLabel })
-        : null;
+      body = done ? (
+        <>
+          {done.adopted
+            ? `${done.label} is yours. It runs on the model this device set up (${done.adopted}), and it does not know you yet.`
+            : done.provider && done.guide
+              ? fill(t("setup.body_done_local"), { agent: done.label, model: done.provider.model, guide: done.guide })
+              : fill(t("setup.body_done"), { agent: done.label, model: done.provider?.model ?? "", provider: providerLabel })}
+          {done.cael ? (
+            <p className="cz-note" data-setup-meet-note>
+              Cael, the guide, would like to meet you first: a few questions about you and what you want, and then he gives {done.label} who it
+              is.
+            </p>
+          ) : null}
+        </>
+      ) : null;
       actions = (
-        <button
-          type="button"
-          className="cz-btn cz-btn-primary"
-          onClick={() => navigate(`/agent/${encodeURIComponent(done?.agent ?? "main")}`)}
-        >
-          {t("setup.open_chat")}
-        </button>
+        <>
+          {done?.cael ? (
+            <button type="button" className="cz-btn cz-btn-primary" onClick={() => navigate(`/agent/${GUIDE}`)} data-setup-meet-cael>
+              Meet Cael
+            </button>
+          ) : null}
+          <button
+            type="button"
+            className={done?.cael ? "cz-btn-text" : "cz-btn cz-btn-primary"}
+            onClick={() => navigate(`/agent/${encodeURIComponent(done?.agent ?? "main")}`)}
+          >
+            {t("setup.open_chat")}
+          </button>
+        </>
       );
       break;
   }

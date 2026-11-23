@@ -34,12 +34,18 @@ def test_cael_is_he_and_lovable_everywhere():
     assert "never cute" not in DESIGN
 
 
-def test_cael_explains_and_never_acts():
-    assert "You do not run tools, change\nsettings, or act for the owner" in SOUL
-    assert "never acts" in identity_card()
-    # The runtime side of the same promise: a read-only profile with no tools.
-    assert "cset risk_profiles.guide.level readonly" in SETUP
-    assert "cset risk_profiles.guide.deny_all_tools true" in SETUP
+def test_cael_explains_and_acts_once_to_shape_the_owners_agent():
+    assert "You have one tool,\n`shape_agent`, and that is the only thing you do besides talk." in SOUL
+    assert "You do not run\nother tools, change settings, or act for the owner" in SOUL
+    # Meeting a new owner: one question at a time, then the one tool call, then "say hello".
+    for phrase in ("Meeting a new owner:", "One question at a time", "Ask their name.", "call `shape_agent` once", "say hello to it", "a name is enough"):
+        assert phrase in SOUL, phrase
+    assert "gives the owner's agent who it is" in identity_card()
+    # The runtime side of the same promise: a profile that allows his one tool and nothing else.
+    assert "cset risk_profiles.guide.level supervised" in SETUP
+    assert "cset risk_profiles.guide.deny_all_tools false" in SETUP
+    assert 'cset risk_profiles.guide.allowed_tools' in SETUP and 'cset risk_profiles.guide.auto_approve' in SETUP
+    assert "readonly" not in SETUP.split("# --- configure the Runtime")[1].split("# --- Cael's persona")[0]
 
 
 def heredoc(name: str) -> str:
@@ -62,7 +68,7 @@ def test_cael_knows_the_owner_is_someone_and_never_says_user():
     for line in ("# USER.md — the owner", "I don't know my owner's name yet.", "never \"User\"."):
         assert line in user, line
         assert line.replace('"', '\\"') in cli, line
-    for line in ("# AGENTS.md — how Cael works", "I run no tools and change no settings."):
+    for line in ("# AGENTS.md — how Cael works", "I run one tool, `shape_agent`, to give the owner's agent who it is when we first meet, and no other; I change no settings."):
         assert line in agents, line
         assert line in cli, line
     # A stock USER.md from an earlier install is replaced, on both installers.

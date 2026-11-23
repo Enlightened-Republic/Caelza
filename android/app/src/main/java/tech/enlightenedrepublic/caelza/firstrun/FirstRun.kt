@@ -20,12 +20,20 @@ object FirstRun {
 
     fun next(step: Step): Step? = Step.values().getOrNull(step.ordinal + 1)
 
-    /** Cael on the local guide model with the guide profile: readonly, no tools (`deny_all_tools`, since an empty allow-list means unrestricted). */
+    /** Cael's one tool: he gives the owner's agent who it is when they first meet (RuntimeStore.GUIDE_TOOL). */
+    const val GUIDE_TOOL = "shape_agent"
+
+    /**
+     * Cael on the local guide model with the guide profile: supervised, and the one tool allowed and
+     * auto-approved (an empty allow-list would mean unrestricted; `deny_all_tools` would take it away).
+     */
     fun caelConfig(provider: String): List<Pair<String, String>> = listOf(
         "agents.cael.model_provider" to provider,
         "agents.cael.risk_profile" to "guide",
-        "risk_profiles.guide.level" to "readonly",
-        "risk_profiles.guide.deny_all_tools" to "true",
+        "risk_profiles.guide.level" to "supervised",
+        "risk_profiles.guide.deny_all_tools" to "false",
+        "risk_profiles.guide.allowed_tools" to "[\"$GUIDE_TOOL\"]",
+        "risk_profiles.guide.auto_approve" to "[\"$GUIDE_TOOL\"]",
     )
 
     /** The free, local door: the pick's models behind the llamacpp aliases, the agent on the big one, Cael on the 1.5B. */

@@ -160,6 +160,10 @@ apply_overlay() {
   log "copying looks/catalog.json beside the Look renderer"
   mkdir -p "$WORK/web/src/looks"
   cp "$ROOT/looks/catalog.json" "$WORK/web/src/looks/catalog.json"
+  # Cael's soul, for the dashboard's Setup to write when it creates him on a PC (lib/cael.ts imports it raw).
+  log "copying guide/cael.system.md beside the guide"
+  mkdir -p "$WORK/web/src/guide"
+  cp "$ROOT/guide/cael.system.md" "$WORK/web/src/guide/cael.system.md"
   # The same catalog, embedded in the Runtime's `look` tool (the agent dresses itself from it).
   log "copying looks/catalog.json beside the look tool"
   mkdir -p "$WORK/crates/caelza-tools/src"

@@ -9,6 +9,18 @@ const names = new Map<string, string>();
 const pending = new Map<string, Promise<string>>();
 const listeners = new Set<() => void>();
 
+// When Cael, the guide, replies, a name may have just changed (he gives the
+// owner's agent its name when they meet): ask the files again.
+if (typeof window !== "undefined") {
+  window.addEventListener("caelza-agent-reply", (e: Event) => {
+    const detail = (e as CustomEvent<{ alias?: string }>).detail;
+    if (detail?.alias !== "cael") return;
+    names.clear();
+    pending.clear();
+    notify();
+  });
+}
+
 function notify(): void {
   for (const l of listeners) l();
 }
