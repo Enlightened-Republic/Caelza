@@ -82,7 +82,8 @@ def test_the_looks_page_renames_everyone_but_cael_and_every_page_says_the_name()
     assert "await setAgentName(alias, next);" in LOOKS and "rememberAgentName(alias, next);" in LOOKS
     assert "title={shown}" in LOOKS and "<AgentNameText alias={a.alias} />" in LOOKS
     assert "useAgentName(tile.alias)" in HOME
-    assert "useAgentName(agent)" in WORLD and "nameOk(agentLabel)" in WORLD
+    # The card is about the picked agent (P6: the resident row), whose name seeds the resident's.
+    assert "useAgentName(picked)" in WORLD and "nameOk(agentLabel)" in WORLD
     # Cael keeps his proper name without a file.
     assert 'alias === "cael" ? "Cael" : alias' in LOGIC
     assert "export function AgentNameText(" in HOOK and "export function useAgentName(" in HOOK

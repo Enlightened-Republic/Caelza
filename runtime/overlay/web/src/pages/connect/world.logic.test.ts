@@ -1,7 +1,7 @@
 import assert from "node:assert/strict";
 import test from "node:test";
 
-import { bioOk, clock, hsl, leaseLine, lookFor, lotLabel, minutesLeft, nameOk, rcCodeAmount, rcText, spendOps, tagFor, townSite, VISITS, wakeLine, wakeOps } from "./world.logic.ts";
+import { bioOk, clock, hsl, leaseLine, lookFor, lotLabel, minutesLeft, nameOk, rcCodeAmount, rcText, residentCandidates, residentStatus, spendOps, tagFor, townSite, VISITS, wakeLine, wakeOps } from "./world.logic.ts";
 
 test("a resident's name follows the town's rule", () => {
   assert.equal(nameOk("Cael"), true);
@@ -63,6 +63,20 @@ test("the name tag takes the color nearest the agent's accent", () => {
 test("the spending and wake switches are one config write each and the visits are the three", () => {
   assert.deepEqual(spendOps(true), [{ op: "add", path: "/ether_hollow/spend", value: true }]);
   assert.deepEqual(spendOps(false), [{ op: "add", path: "/ether_hollow/spend", value: false }]);
+  // A second resident's switch lives under its own table (P6).
+  assert.deepEqual(spendOps(true, "/ether_hollow/residents/moss"), [{ op: "add", path: "/ether_hollow/residents/moss/spend", value: true }]);
+  assert.deepEqual(spendOps(true, "/ether_hollow/residents/moss/"), [{ op: "add", path: "/ether_hollow/residents/moss/spend", value: true }]);
+  assert.deepEqual(spendOps(false, " "), [{ op: "add", path: "/ether_hollow/spend", value: false }]);
+  // The resident row: every agent but Cael, once; a chip's word from the gateway's list.
+  assert.deepEqual(residentCandidates(["main", "cael", "moss", " main ", "", "pip"]), ["main", "moss", "pip"]);
+  const residents = [
+    { agent: "main", registered: true, in_town: true },
+    { agent: "moss", registered: true, in_town: false },
+  ];
+  assert.equal(residentStatus(residents, "main"), "in_town");
+  assert.equal(residentStatus(residents, "moss"), "resident");
+  assert.equal(residentStatus(residents, "pip"), "none");
+  assert.equal(residentStatus(undefined, "main"), "none");
   assert.deepEqual(wakeOps(true), [{ op: "add", path: "/ether_hollow/wake", value: true }]);
   assert.deepEqual(wakeOps(false, "balanced", []), [{ op: "add", path: "/ether_hollow/wake", value: false }], "off never touches the profile");
   assert.deepEqual(wakeOps(true, "balanced", ["memory_recall"]), [

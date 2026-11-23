@@ -61,20 +61,31 @@
 //! Only a paired client may call any of them. The key is read from the live
 //! config at every beat, so a key the owner removes stops the ghost at the next
 //! beat. Nothing here is logged with the key in it.
+//!
+//! Several residents (slice 6, the Caelza half): every route takes `?agent=`,
+//! the alias of the agent it is about, and without it the first resident with
+//! a key. The first resident lives in `[ether_hollow]` itself (`agent`, `name`,
+//! `key`, `spend`), the others in `[ether_hollow.residents.<alias>]`
+//! (`EtherHollowConfig::resident`); a registration for an agent with no table
+//! yet creates it through the config API's map-key handler, then writes the
+//! key and the name. Presence, the waker's reads, the glance and the memories
+//! are kept per alias; the last wake's file is one, the latest, with the alias
+//! in it.
 use super::AppState;
 use super::api::require_auth;
 use super::api_config;
 use super::principal_gate::RequestPrincipal;
 use super::api_looks::{UNLOCK_PUBLIC_KEY, verify_code};
 use axum::{
-    extract::State,
+    extract::{Query, State},
     http::{HeaderMap, StatusCode},
     response::{IntoResponse, Json, Response},
 };
+use caelza_config::schema::EtherHollowConfig;
 use caelza_memory::MemoryCategory;
 use serde::{Deserialize, Serialize};
 use serde_json::{Value, json};
-use std::collections::BTreeSet;
+use std::collections::{BTreeMap, BTreeSet};
 use std::path::{Path, PathBuf};
 use std::sync::{Mutex, OnceLock};
 use std::time::{Duration, SystemTime, UNIX_EPOCH};
@@ -118,13 +129,37 @@ pub fn clamp_minutes(asked: Option<u64>) -> u64 {
     }
 }
 
-/// The config writes a registration makes: the key, the name, the switch.
-pub fn register_ops(key: &str, name: &str) -> Value {
+/// The config writes a registration makes: the key and the name under the
+/// resident's own table (`/ether_hollow` for the first, `/ether_hollow/residents/<alias>`
+/// for the others), and the town's switch.
+pub fn register_ops(path: &str, key: &str, name: &str) -> Value {
     json!([
-        {"op": "add", "path": "/ether_hollow/key", "value": key},
-        {"op": "add", "path": "/ether_hollow/name", "value": name},
+        {"op": "add", "path": format!("{path}/key"), "value": key},
+        {"op": "add", "path": format!("{path}/name"), "value": name},
         {"op": "add", "path": "/ether_hollow/enabled", "value": true}
     ])
+}
+
+/// `?agent=<alias>`: which resident a route is about.
+#[derive(Debug, Default, Deserialize)]
+pub struct AgentQuery {
+    pub agent: Option<String>,
+}
+
+/// An agent alias as it may appear in a config path.
+pub fn alias_ok(alias: &str) -> bool {
+    !alias.is_empty() && alias.len() <= 64 && alias.chars().all(|c| c.is_ascii_alphanumeric() || c == '_' || c == '-')
+}
+
+/// The resident a route is about without `?agent=`: the first resident with
+/// a key, else the first resident (`[ether_hollow] agent`).
+pub fn default_alias(cfg: &EtherHollowConfig) -> String {
+    let all = cfg.residents();
+    all.iter()
+        .find(|r| r.key.is_some())
+        .or(all.first())
+        .map(|r| r.agent.clone())
+        .unwrap_or_else(|| cfg.agent.trim().to_string())
 }
 
 /// The town's `me` without anything that could be a key. The town never sends
@@ -170,14 +205,28 @@ pub struct Presence {
     pub generation: u64,
 }
 
-static PRESENCE: OnceLock<Mutex<Presence>> = OnceLock::new();
+/// One ghost per resident agent, by alias.
+static PRESENCES: OnceLock<Mutex<BTreeMap<String, Presence>>> = OnceLock::new();
 
-fn presence() -> &'static Mutex<Presence> {
-    PRESENCE.get_or_init(|| Mutex::new(Presence::default()))
+fn presences() -> &'static Mutex<BTreeMap<String, Presence>> {
+    PRESENCES.get_or_init(|| Mutex::new(BTreeMap::new()))
 }
 
-fn snapshot() -> Presence {
-    presence().lock().map(|p| p.clone()).unwrap_or_default()
+/// Read or change one resident's presence; None when the lock is poisoned.
+fn with_presence<T>(alias: &str, f: impl FnOnce(&mut Presence) -> T) -> Option<T> {
+    presences().lock().ok().map(|mut all| f(all.entry(alias.to_string()).or_default()))
+}
+
+fn snapshot(alias: &str) -> Presence {
+    with_presence(alias, |p| p.clone()).unwrap_or_default()
+}
+
+/// The aliases whose ghost is in town right now.
+fn in_town_aliases() -> Vec<String> {
+    presences()
+        .lock()
+        .map(|all| all.iter().filter(|(_, p)| p.in_town).map(|(a, _)| a.clone()).collect())
+        .unwrap_or_default()
 }
 
 /// Start a visit: a new generation, the clocks set. Returns the generation the task must carry.
@@ -260,8 +309,11 @@ fn town_said(value: &Value) -> String {
         .to_string()
 }
 
+/// One resident as a route sees it: the town's address and switches, and the
+/// agent's own name, key, spend switch and config table (`path`, a JSON
+/// pointer for the config API's writes).
 #[derive(Clone)]
-struct Town {
+struct Resident {
     url: String,
     key: Option<String>,
     name: String,
@@ -269,38 +321,95 @@ struct Town {
     spend: bool,
     agent: String,
     wake: bool,
+    path: String,
 }
 
-fn town_from(state: &AppState) -> Town {
-    let cfg = state.config.read().ether_hollow.clone();
-    Town {
-        url: agent_url(&cfg.url),
-        key: cfg
-            .key
-            .as_deref()
-            .map(str::trim)
-            .filter(|k| !k.is_empty())
-            .map(str::to_string),
-        name: cfg.name.clone(),
-        enabled: cfg.enabled,
-        spend: cfg.spend,
-        agent: cfg.agent.clone(),
-        wake: cfg.wake,
+/// The resident `alias` is, or the one it would be: an agent with no table
+/// yet is a resident-to-be whose registration goes under `residents/<alias>`.
+fn resident_in(cfg: &EtherHollowConfig, alias: &str) -> Resident {
+    let url = agent_url(&cfg.url);
+    match cfg.resident(alias) {
+        Some(r) => Resident {
+            url,
+            key: r.key,
+            name: r.name,
+            enabled: cfg.enabled,
+            spend: r.spend,
+            agent: r.agent,
+            wake: cfg.wake,
+            path: r.path,
+        },
+        None => Resident {
+            url,
+            key: None,
+            name: String::new(),
+            enabled: cfg.enabled,
+            spend: false,
+            agent: alias.to_string(),
+            wake: cfg.wake,
+            path: format!("/ether_hollow/residents/{alias}"),
+        },
     }
 }
 
+fn resident_for(state: &AppState, alias: &str) -> Resident {
+    let cfg = state.config.read().ether_hollow.clone();
+    resident_in(&cfg, alias)
+}
+
+/// The alias a request is about: `?agent=`, else the default. Err: not an alias.
+fn alias_of(state: &AppState, q: &AgentQuery) -> Result<String, Response> {
+    match q.agent.as_deref().map(str::trim).filter(|a| !a.is_empty()) {
+        Some(a) if alias_ok(a) => Ok(a.to_string()),
+        Some(_) => Err(error_response(StatusCode::BAD_REQUEST, "not an agent alias")),
+        None => Ok(default_alias(&state.config.read().ether_hollow)),
+    }
+}
+
+/// Every resident with a key, as the waker and the glance walk them.
+fn residents_with_keys(state: &AppState) -> Vec<Resident> {
+    let cfg = state.config.read().ether_hollow.clone();
+    cfg.residents()
+        .iter()
+        .filter(|r| r.key.is_some())
+        .map(|r| resident_in(&cfg, &r.agent))
+        .collect()
+}
+
+/// The residents as the card and Home list them: alias, name, registered, in town, spending.
+fn residents_summary(state: &AppState) -> Vec<Value> {
+    let cfg = state.config.read().ether_hollow.clone();
+    cfg.residents()
+        .iter()
+        .map(|r| {
+            json!({
+                "agent": r.agent,
+                "name": r.name,
+                "registered": r.key.is_some(),
+                "in_town": snapshot(&r.agent).in_town,
+                "spend": r.spend,
+                "path": r.path,
+            })
+        })
+        .collect()
+}
+
 /// The key as the live config has it right now (a removed key stops the beats).
-fn live_key(state: &AppState) -> Option<String> {
-    town_from(state).key
+fn live_key(state: &AppState, alias: &str) -> Option<String> {
+    resident_for(state, alias).key
 }
 
 // --- handlers ---------------------------------------------------------------------
 
-pub async fn handle_world_get(State(state): State<AppState>, headers: HeaderMap) -> Response {
+pub async fn handle_world_get(State(state): State<AppState>, headers: HeaderMap, Query(q): Query<AgentQuery>) -> Response {
     if let Err(e) = require_auth(&state, &headers) {
         return e.into_response();
     }
-    let town = town_from(&state);
+    let alias = match alias_of(&state, &q) {
+        Ok(a) => a,
+        Err(r) => return r,
+    };
+    let town = resident_for(&state, &alias);
     let wake_on = town.wake;
     let open = match call_town(&town.url, None, None).await {
         Ok((200, v)) => v.get("open").and_then(Value::as_bool),
@@ -315,7 +424,7 @@ pub async fn handle_world_get(State(state): State<AppState>, headers: HeaderMap)
         None => (None, None),
     };
     if let Some(m) = &me {
-        remember_me(m.clone());
+        remember_me(&alias, m.clone());
     }
     Json(json!({
         "enabled": town.enabled,
@@ -323,13 +432,15 @@ pub async fn handle_world_get(State(state): State<AppState>, headers: HeaderMap)
         "name": town.name,
         "agent": town.agent,
         "spend": town.spend,
+        "spend_path": town.path,
         "registered": town.key.is_some(),
         "open": open,
-        "presence": snapshot(),
+        "presence": snapshot(&alias),
         "me": me,
         "me_error": me_error,
         "wake_on": wake_on,
-        "wake": wake_snapshot(),
+        "wake": wake_snapshot(&alias),
+        "residents": residents_summary(&state),
     }))
     .into_response()
 }
@@ -347,6 +458,7 @@ pub async fn handle_world_register(
     State(state): State<AppState>,
     principal: RequestPrincipal,
     headers: HeaderMap,
+    Query(q): Query<AgentQuery>,
     raw: axum::body::Bytes,
 ) -> Response {
     if let Err(e) = require_auth(&state, &headers) {
@@ -356,12 +468,19 @@ pub async fn handle_world_register(
         Ok(v) => v,
         Err(r) => return r,
     };
-    let town = town_from(&state);
+    let alias = match alias_of(&state, &q) {
+        Ok(a) => a,
+        Err(r) => return r,
+    };
+    if !state.config.read().agents.contains_key(&alias) {
+        return error_response(StatusCode::BAD_REQUEST, format!("`{alias}` is not an agent in the config"));
+    }
+    let town = resident_for(&state, &alias);
     let replace = body.get("replace").and_then(Value::as_bool).unwrap_or(false);
     if town.key.is_some() && !replace {
         return error_response(
             StatusCode::CONFLICT,
-            "this device already holds a resident key; send {\"replace\": true} to register a new resident in its place",
+            "this agent already holds a resident key; send {\"replace\": true} to register a new resident in its place",
         );
     }
     let name = body
@@ -399,20 +518,43 @@ pub async fn handle_world_register(
             );
         }
     };
+    // A second resident has its own table, made through the config API's
+    // map-key handler first (the reserved-alias rule and the validation are its).
+    let mut table_error: Option<String> = None;
+    if town.path != "/ether_hollow" {
+        let made = api_config::handle_map_key(
+            State(state.clone()),
+            principal.clone(),
+            Query(api_config::MapKeyQuery { path: "ether_hollow.residents".to_string(), key: alias.clone() }),
+        )
+        .await;
+        if !made.status().is_success() {
+            let status = made.status();
+            let text = match axum::body::to_bytes(made.into_body(), 64 * 1024).await {
+                Ok(bytes) => String::from_utf8_lossy(&bytes).chars().take(ERROR_QUOTE).collect::<String>(),
+                Err(_) => String::new(),
+            };
+            table_error = Some(format!("the resident's table could not be made ({status}): {text}"));
+        }
+    }
     // The write goes through the config API's own handler: validation, the
     // secret encrypted on disk, the reload scheduled, all as a PATCH would.
-    let written = api_config::handle_patch(
-        State(state.clone()),
-        principal,
-        headers,
-        Json(register_ops(&key, &name)),
-    )
-    .await;
+    let written = match table_error {
+        None => api_config::handle_patch(
+            State(state.clone()),
+            principal,
+            headers,
+            Json(register_ops(&town.path, &key, &name)),
+        )
+        .await,
+        Some(e) => error_response(StatusCode::INTERNAL_SERVER_ERROR, e),
+    };
     let saved = written.status().is_success();
     let mut out = json!({
         "registered": true,
         "saved": saved,
         "name": name,
+        "alias": alias,
         "agent": scrub(answer.get("agent").cloned().unwrap_or(Value::Null)),
         "where": answer.get("where").cloned().unwrap_or(Value::Null),
         "note": answer.get("note").cloned().unwrap_or(Value::Null),
@@ -429,18 +571,20 @@ pub async fn handle_world_register(
         out["key"] = Value::String(key);
         out["error"] = Value::String(format!(
             "the resident is registered but the key could not be saved to the config ({status}): {text}. \
-             Save it as `[ether_hollow] key` yourself or register again with {{\"replace\": true}}."
+             Save it as `{}` yourself or register again with {{\"replace\": true}}.",
+            format!("{}/key", town.path).trim_start_matches('/').replace('/', ".")
         ));
         return (StatusCode::INTERNAL_SERVER_ERROR, Json(out)).into_response();
     }
     let at = now_secs();
-    remember(&state, format!("registered:{at}"), owner_episode(at, &format!("I became a resident of Ether Hollow as \"{name}\".")));
+    remember(&state, &alias, format!("registered:{at}"), owner_episode(at, &format!("I became a resident of Ether Hollow as \"{name}\".")));
     Json(out).into_response()
 }
 
 pub async fn handle_world_enter(
     State(state): State<AppState>,
     headers: HeaderMap,
+    Query(q): Query<AgentQuery>,
     raw: axum::body::Bytes,
 ) -> Response {
     if let Err(e) = require_auth(&state, &headers) {
@@ -450,7 +594,11 @@ pub async fn handle_world_enter(
         Ok(v) => v,
         Err(r) => return r,
     };
-    let town = town_from(&state);
+    let alias = match alias_of(&state, &q) {
+        Ok(a) => a,
+        Err(r) => return r,
+    };
+    let town = resident_for(&state, &alias);
     if town.key.is_none() {
         return error_response(
             StatusCode::CONFLICT,
@@ -458,38 +606,41 @@ pub async fn handle_world_enter(
         );
     }
     let minutes = clamp_minutes(body.get("minutes").and_then(Value::as_u64));
-    let generation = match presence().lock() {
-        Ok(mut p) => begin_visit(&mut p, minutes, now_secs()),
-        Err(_) => return error_response(StatusCode::INTERNAL_SERVER_ERROR, "presence state poisoned"),
+    let Some(generation) = with_presence(&alias, |p| begin_visit(p, minutes, now_secs())) else {
+        return error_response(StatusCode::INTERNAL_SERVER_ERROR, "presence state poisoned");
     };
     let url = town.url.clone();
     let task_state = state.clone();
+    let task_alias = alias.clone();
     tokio::spawn(async move {
-        beat_until_done(task_state, url, generation).await;
+        beat_until_done(task_state, task_alias, url, generation).await;
     });
     // The first beat is in flight; answer with the visit as planned.
-    Json(json!({"presence": snapshot(), "minutes": minutes})).into_response()
+    Json(json!({"presence": snapshot(&alias), "minutes": minutes, "agent": alias})).into_response()
 }
 
-pub async fn handle_world_leave(State(state): State<AppState>, headers: HeaderMap) -> Response {
+pub async fn handle_world_leave(State(state): State<AppState>, headers: HeaderMap, Query(q): Query<AgentQuery>) -> Response {
     if let Err(e) = require_auth(&state, &headers) {
         return e.into_response();
     }
-    let town = town_from(&state);
-    let (was_in_town, visit) = match presence().lock() {
-        Ok(mut p) => {
-            let was = p.in_town;
-            let visit = (p.since, p.until, p.beats);
-            // A new generation stops the task at its next beat; the state says
-            // "left" now rather than ten seconds from now.
-            p.generation += 1;
-            p.in_town = false;
-            (was, visit)
-        }
-        Err(_) => return error_response(StatusCode::INTERNAL_SERVER_ERROR, "presence state poisoned"),
+    let alias = match alias_of(&state, &q) {
+        Ok(a) => a,
+        Err(r) => return r,
+    };
+    let town = resident_for(&state, &alias);
+    let Some((was_in_town, visit)) = with_presence(&alias, |p| {
+        let was = p.in_town;
+        let visit = (p.since, p.until, p.beats);
+        // A new generation stops the task at its next beat; the state says
+        // "left" now rather than ten seconds from now.
+        p.generation += 1;
+        p.in_town = false;
+        (was, visit)
+    }) else {
+        return error_response(StatusCode::INTERNAL_SERVER_ERROR, "presence state poisoned");
     };
     if was_in_town {
-        remember_visit(&state, visit, None);
+        remember_visit(&state, &alias, visit, None);
     }
     let mut told = false;
     if let Some(key) = &town.key {
@@ -498,34 +649,30 @@ pub async fn handle_world_leave(State(state): State<AppState>, headers: HeaderMa
             Ok((200, _))
         );
     }
-    Json(json!({"presence": snapshot(), "was_in_town": was_in_town, "told_town": told})).into_response()
+    Json(json!({"presence": snapshot(&alias), "was_in_town": was_in_town, "told_town": told, "agent": alias})).into_response()
 }
 
 /// The visit: `here` now and every BEAT until the end, a stale generation, a
 /// removed key, or a fatal answer; then `leave`, best effort.
-async fn beat_until_done(state: AppState, url: String, generation: u64) {
+async fn beat_until_done(state: AppState, alias: String, url: String, generation: u64) {
     let mut ticker = tokio::time::interval(BEAT);
     ticker.set_missed_tick_behavior(tokio::time::MissedTickBehavior::Delay);
     let mut last_key: Option<String> = None;
     let why: Option<String> = loop {
         ticker.tick().await;
-        let current = match presence().lock() {
-            Ok(p) => p.generation == generation && p.in_town && !p.until.is_some_and(|u| now_secs() >= u),
-            Err(_) => false,
-        };
+        let current = with_presence(&alias, |p| p.generation == generation && p.in_town && !p.until.is_some_and(|u| now_secs() >= u))
+            .unwrap_or(false);
         if !current {
             break None;
         }
-        let Some(key) = live_key(&state) else {
+        let Some(key) = live_key(&state, &alias) else {
             break Some("the resident key was removed".to_string());
         };
         last_key = Some(key.clone());
         match call_town(&url, Some(&key), Some(&json!({"action": "here"}))).await {
             Ok((200, _)) => {
-                if let Ok(mut p) = presence().lock() {
-                    if !record_beat(&mut p, generation, now_secs()) {
-                        break None;
-                    }
+                if with_presence(&alias, |p| record_beat(p, generation, now_secs())) == Some(false) {
+                    break None;
                 }
             }
             Ok((status, v)) if beat_is_fatal(status) => {
@@ -537,30 +684,28 @@ async fn beat_until_done(state: AppState, url: String, generation: u64) {
         }
     };
     let why_text = why.clone();
-    let (ended, visit) = match presence().lock() {
-        Ok(mut p) => {
-            let visit = (p.since, p.until, p.beats);
-            (end_visit(&mut p, generation, why), visit)
-        }
-        Err(_) => (false, (None, None, 0)),
-    };
+    let (ended, visit) = with_presence(&alias, |p| {
+        let visit = (p.since, p.until, p.beats);
+        (end_visit(p, generation, why), visit)
+    })
+    .unwrap_or((false, (None, None, 0)));
     // `leave` is this task's to send only while it still owns the visit
     // (handle_world_leave sends its own); the owner's `leave` already bumped
     // the generation, so a stale task says nothing.
     if ended {
-        remember_visit(&state, visit, why_text.as_deref());
-        if let Some(key) = last_key.or_else(|| live_key(&state)) {
+        remember_visit(&state, &alias, visit, why_text.as_deref());
+        if let Some(key) = last_key.or_else(|| live_key(&state, &alias)) {
             let _ = call_town(&url, Some(&key), Some(&json!({"action": "leave"}))).await;
         }
     }
 }
 
 /// The visit that just ended, into the agent's memory: `(since, until, beats)` as the presence had them.
-fn remember_visit(state: &AppState, visit: (Option<u64>, Option<u64>, u64), why: Option<&str>) {
+fn remember_visit(state: &AppState, alias: &str, visit: (Option<u64>, Option<u64>, u64), why: Option<&str>) {
     let (since, until, beats) = visit;
     let since = since.unwrap_or_else(now_secs);
     let planned = until.map(|u| u.saturating_sub(since) / 60).unwrap_or(0);
-    remember(state, format!("visit:{since}"), visit_episode(since, now_secs(), planned, beats, why));
+    remember(state, alias, format!("visit:{since}"), visit_episode(since, now_secs(), planned, beats, why));
 }
 
 
@@ -846,14 +991,20 @@ pub struct Wake {
     pub seen: Seen,
 }
 
-static WAKE: OnceLock<Mutex<Wake>> = OnceLock::new();
+/// One waker state per resident agent, by alias.
+static WAKES: OnceLock<Mutex<BTreeMap<String, Wake>>> = OnceLock::new();
 
-fn wake() -> &'static Mutex<Wake> {
-    WAKE.get_or_init(|| Mutex::new(Wake::default()))
+fn wakes() -> &'static Mutex<BTreeMap<String, Wake>> {
+    WAKES.get_or_init(|| Mutex::new(BTreeMap::new()))
 }
 
-fn wake_snapshot() -> Wake {
-    wake().lock().map(|w| w.clone()).unwrap_or_default()
+/// Read or change one resident's waker state; None when the lock is poisoned.
+fn with_wake<T>(alias: &str, f: impl FnOnce(&mut Wake) -> T) -> Option<T> {
+    wakes().lock().ok().map(|mut all| f(all.entry(alias.to_string()).or_default()))
+}
+
+fn wake_snapshot(alias: &str) -> Wake {
+    with_wake(alias, |w| w.clone()).unwrap_or_default()
 }
 
 // --- the town in the Mind, and at a glance (slice 5) --------------------------------
@@ -948,14 +1099,14 @@ pub fn owner_episode(at: u64, what: &str) -> String {
     format!("[Ether Hollow] {}. {what}", stamp(at))
 }
 
-/// Remember `text` for the resident agent (`daily`: an episode the Mind
-/// consolidates). Fire and forget: the town must never fail on the Mind, so an
-/// error is dropped, and nothing is logged (the text never carries the key).
-pub fn remember(state: &AppState, key: String, text: String) {
+/// Remember `text` for the resident agent `alias` (`daily`: an episode the
+/// Mind consolidates). Fire and forget: the town must never fail on the Mind,
+/// so an error is dropped, and nothing is logged (the text never carries the key).
+pub fn remember(state: &AppState, alias: &str, key: String, text: String) {
     let state = state.clone();
+    let alias = alias.trim().to_string();
     tokio::spawn(async move {
         let config = state.config.read().clone();
-        let alias = config.ether_hollow.agent.trim().to_string();
         if config.agent(&alias).is_none() {
             return;
         }
@@ -968,18 +1119,22 @@ pub fn remember(state: &AppState, key: String, text: String) {
     });
 }
 
-/// The passport the gateway last read (`me`, scrubbed) and when, for Home's glance.
-static GLANCE: OnceLock<Mutex<Option<(u64, Value)>>> = OnceLock::new();
+/// The passport the gateway last read per resident (`me`, scrubbed) and when, for Home's glance.
+static GLANCE: OnceLock<Mutex<BTreeMap<String, (u64, Value)>>> = OnceLock::new();
 
-fn glance() -> &'static Mutex<Option<(u64, Value)>> {
-    GLANCE.get_or_init(|| Mutex::new(None))
+fn glance() -> &'static Mutex<BTreeMap<String, (u64, Value)>> {
+    GLANCE.get_or_init(|| Mutex::new(BTreeMap::new()))
 }
 
 /// Keep a scrubbed `me` for the glance.
-fn remember_me(me: Value) {
+fn remember_me(alias: &str, me: Value) {
     if let Ok(mut g) = glance().lock() {
-        *g = Some((now_secs(), me));
+        g.insert(alias.to_string(), (now_secs(), me));
     }
+}
+
+fn glanced(alias: &str) -> Option<(u64, Value)> {
+    glance().lock().ok().and_then(|g| g.get(alias).cloned())
 }
 
 /// A read this old still serves the glance.
@@ -987,19 +1142,14 @@ pub fn glance_fresh(read_at: Option<u64>, now: u64) -> bool {
     read_at.is_some_and(|t| now.saturating_sub(t) < GLANCE_MAX_AGE.as_secs())
 }
 
-/// GET /api/world/home: Home's Town tile. The settings without the key, the
-/// presence, the last wake, and the passport the gateway last read, asked of
-/// the town again only when older than GLANCE_MAX_AGE (one call at most; a
-/// failed one leaves the older passport in place with the error beside it).
-pub async fn handle_world_home(State(state): State<AppState>, headers: HeaderMap) -> Response {
-    if let Err(e) = require_auth(&state, &headers) {
-        return e.into_response();
-    }
-    let town = town_from(&state);
+/// One resident for Home's glance: its settings without the key, its presence,
+/// its last wake, and the passport the gateway last read for it, asked of the
+/// town again only when older than GLANCE_MAX_AGE (one call at most; a failed
+/// one leaves the older passport in place with the error beside it).
+async fn glance_at(town: &Resident) -> Value {
     let now = now_secs();
-    let cached = glance().lock().ok().and_then(|g| g.clone());
-    let (mut me, mut me_at) = match &cached {
-        Some((at, v)) => (Some(v.clone()), Some(*at)),
+    let (mut me, mut me_at) = match glanced(&town.agent) {
+        Some((at, v)) => (Some(v), Some(at)),
         None => (None, None),
     };
     let mut me_error = None;
@@ -1012,7 +1162,7 @@ pub async fn handle_world_home(State(state): State<AppState>, headers: HeaderMap
         Some(key) => match call_town(&town.url, Some(key), Some(&json!({"action": "me"}))).await {
             Ok((200, v)) => {
                 let v = scrub(v);
-                remember_me(v.clone());
+                remember_me(&town.agent, v.clone());
                 me = Some(v);
                 me_at = Some(now);
             }
@@ -1020,31 +1170,60 @@ pub async fn handle_world_home(State(state): State<AppState>, headers: HeaderMap
             Err(e) => me_error = Some(e),
         },
     }
-    Json(json!({
-        "enabled": town.enabled,
-        "registered": town.key.is_some(),
-        "name": town.name,
+    json!({
         "agent": town.agent,
+        "name": town.name,
+        "registered": town.key.is_some(),
         "spend": town.spend,
-        "wake_on": town.wake,
-        "presence": snapshot(),
-        "wake": wake_snapshot(),
+        "presence": snapshot(&town.agent),
+        "wake": wake_snapshot(&town.agent),
         "me": me,
         "me_at": me_at,
         "me_error": me_error,
-    }))
-    .into_response()
+    })
+}
+
+/// GET /api/world/home: Home's Town tile. Every resident's glance under
+/// `residents`, and the default resident's fields at the top (what a tile
+/// for one resident reads).
+pub async fn handle_world_home(State(state): State<AppState>, headers: HeaderMap, Query(q): Query<AgentQuery>) -> Response {
+    if let Err(e) = require_auth(&state, &headers) {
+        return e.into_response();
+    }
+    let alias = match alias_of(&state, &q) {
+        Ok(a) => a,
+        Err(r) => return r,
+    };
+    let cfg = state.config.read().ether_hollow.clone();
+    let mut residents = Vec::new();
+    for r in cfg.residents() {
+        residents.push(glance_at(&resident_in(&cfg, &r.agent)).await);
+    }
+    let first = match residents.iter().find(|r| r["agent"] == alias) {
+        Some(r) => r.clone(),
+        None => glance_at(&resident_in(&cfg, &alias)).await,
+    };
+    let mut out = json!({
+        "enabled": cfg.enabled,
+        "wake_on": cfg.wake,
+        "residents": residents,
+    });
+    if let (Value::Object(map), Value::Object(top)) = (&mut out, first) {
+        for (k, v) in top {
+            map.insert(k, v);
+        }
+    }
+    Json(out).into_response()
 }
 
 /// Spawn the waker. Called once when the gateway starts; it reads the config
-/// live, so the switch and the key take effect at the next read. The last
+/// live, so the switch and the keys take effect at the next read. The last
 /// wake comes back from its file first, so a restart forgets nothing.
 pub fn start_waker(state: AppState) {
     let root = state.config.read().install_root_dir();
     if let Some(last) = load_last_wake(&root) {
-        if let Ok(mut w) = wake().lock() {
-            w.restore(&last);
-        }
+        let alias = if last.agent.is_empty() { default_alias(&state.config.read().ether_hollow) } else { last.agent.clone() };
+        with_wake(&alias, |w| w.restore(&last));
     }
     tokio::spawn(async move { waker_loop(state).await });
 }
@@ -1053,70 +1232,81 @@ async fn waker_loop(state: AppState) {
     // Let the gateway finish coming up before the first read.
     tokio::time::sleep(poll_after(true).min(Duration::from_secs(20))).await;
     loop {
-        let (on, town) = {
-            let cfg = state.config.read().ether_hollow.clone();
-            (cfg.wake, town_from(&state))
-        };
-        let in_town = snapshot().in_town;
-        if !on || town.key.is_none() {
+        let on = state.config.read().ether_hollow.wake;
+        let residents = residents_with_keys(&state);
+        if !on || residents.is_empty() {
             tokio::time::sleep(POLL_AWAY).await;
             continue;
         }
-        let key = town.key.clone().unwrap_or_default();
-        let mut errors = Vec::new();
-        let read = |action: &str| {
-            let url = town.url.clone();
-            let key = key.clone();
-            let action = action.to_string();
-            async move {
-                match call_town(&url, Some(&key), Some(&json!({"action": action}))).await {
-                    Ok((200, v)) => Ok(v),
-                    Ok((status, v)) => Err(format!("{action}: the town answered {status}: {}", town_said(&v))),
-                    Err(e) => Err(format!("{action}: {e}")),
-                }
-            }
-        };
-        let me = read("me").await;
-        if let Ok(v) = &me {
-            remember_me(scrub(v.clone()));
-        }
-        let town_now = read("town").await;
-        let orders = read("orders").await;
-        for r in [&me, &town_now, &orders] {
-            if let Err(e) = r {
-                errors.push(e.clone());
+        let anyone_in_town = !in_town_aliases().is_empty();
+        for town in residents {
+            if let Some(reason) = read_resident(&town).await {
+                let _ = wake_now(&state, &town.agent, reason).await;
             }
         }
-        let now = now_secs();
-        let found = match wake().lock() {
-            Ok(mut w) => {
-                w.last_poll = Some(now);
-                w.last_error = if errors.is_empty() { None } else { Some(errors.join("; ")) };
-                let mut seen = std::mem::take(&mut w.seen);
-                let found = triggers(&mut seen, &town.name, me.as_ref().ok(), town_now.as_ref().ok(), orders.as_ref().ok(), now as i64);
-                w.seen = seen;
-                let recent = w.last_at.is_some_and(|t| now.saturating_sub(t) < MIN_GAP.as_secs());
-                if found.is_empty() || recent || w.waking { Vec::new() } else { found }
-            }
-            Err(_) => Vec::new(),
-        };
-        if !found.is_empty() {
-            let reason = reason_text(&found);
-            let _ = wake_now(&state, reason).await;
-        }
-        tokio::time::sleep(poll_after(in_town)).await;
+        tokio::time::sleep(poll_after(anyone_in_town)).await;
     }
 }
 
-/// Wake the agent now with `reason`: the job made or re-prompted, then run.
-pub async fn wake_now(state: &AppState, reason: String) -> Result<Value, String> {
-    if let Ok(mut w) = wake().lock() {
-        if w.waking {
-            return Err("a wake is already running".to_string());
+/// One resident's read of the town: `me`, `town`, `orders`, diffed into
+/// reasons; the reason to wake it now, if any (none within MIN_GAP of its last
+/// wake, or while one runs).
+async fn read_resident(town: &Resident) -> Option<String> {
+    let key = town.key.clone()?;
+    let mut errors = Vec::new();
+    let read = |action: &str| {
+        let url = town.url.clone();
+        let key = key.clone();
+        let action = action.to_string();
+        async move {
+            match call_town(&url, Some(&key), Some(&json!({"action": action}))).await {
+                Ok((200, v)) => Ok(v),
+                Ok((status, v)) => Err(format!("{action}: the town answered {status}: {}", town_said(&v))),
+                Err(e) => Err(format!("{action}: {e}")),
+            }
         }
-        w.waking = true;
+    };
+    let me = read("me").await;
+    if let Ok(v) = &me {
+        remember_me(&town.agent, scrub(v.clone()));
     }
-    let result = wake_inner(state, &reason).await;
+    let town_now = read("town").await;
+    let orders = read("orders").await;
+    for r in [&me, &town_now, &orders] {
+        if let Err(e) = r {
+            errors.push(e.clone());
+        }
+    }
+    let now = now_secs();
+    let name = town.name.clone();
+    let found = with_wake(&town.agent, |w| {
+        w.last_poll = Some(now);
+        w.last_error = if errors.is_empty() { None } else { Some(errors.join("; ")) };
+        let mut seen = std::mem::take(&mut w.seen);
+        let found = triggers(&mut seen, &name, me.as_ref().ok(), town_now.as_ref().ok(), orders.as_ref().ok(), now as i64);
+        w.seen = seen;
+        let recent = w.last_at.is_some_and(|t| now.saturating_sub(t) < MIN_GAP.as_secs());
+        if found.is_empty() || recent || w.waking { Vec::new() } else { found }
+    })
+    .unwrap_or_default();
+    if found.is_empty() { None } else { Some(reason_text(&found)) }
+}
+
+/// Wake the resident agent `alias` now with `reason`: the job made or re-prompted, then run.
+pub async fn wake_now(state: &AppState, alias: &str, reason: String) -> Result<Value, String> {
+    let busy = with_wake(alias, |w| {
+        if w.waking {
+            true
+        } else {
+            w.waking = true;
+            false
+        }
+    })
+    .unwrap_or(false);
+    if busy {
+        return Err("a wake is already running".to_string());
+    }
+    let result = wake_inner(state, alias, &reason).await;
     let at = now_secs();
     let (ok, output): (Option<bool>, Option<String>) = match &result {
         Ok(v) => (
@@ -1125,52 +1315,46 @@ pub async fn wake_now(state: &AppState, reason: String) -> Result<Value, String>
         ),
         Err(e) => (Some(false), Some(e.clone())),
     };
-    let count = match wake().lock() {
-        Ok(mut w) => {
-            w.waking = false;
-            w.count += 1;
-            w.last_reason = Some(reason.clone());
-            w.last_at = Some(at);
-            w.last_ok = ok;
-            w.last_output = output.as_deref().map(|o| o.chars().take(OUTPUT_KEEP).collect());
-            w.count
-        }
-        Err(_) => 0,
-    };
+    let short = output.as_deref().map(|o| o.chars().take(OUTPUT_KEEP).collect::<String>());
+    let count = with_wake(alias, |w| {
+        w.waking = false;
+        w.count += 1;
+        w.last_reason = Some(reason.clone());
+        w.last_at = Some(at);
+        w.last_ok = ok;
+        w.last_output = short.clone();
+        w.count
+    })
+    .unwrap_or(0);
     // The file for the card, Home and the phone; the episode for the Mind.
-    let (root, name, agent) = {
-        let cfg = state.config.read().clone();
-        (cfg.install_root_dir(), cfg.ether_hollow.name.clone(), cfg.ether_hollow.agent.clone())
+    let (root, name) = {
+        let config = state.config.read().clone();
+        (config.install_root_dir(), resident_in(&config.ether_hollow, alias).name)
     };
     let _ = save_last_wake(
         &root,
-        &LastWake {
-            name,
-            agent,
-            at,
-            reason: reason.clone(),
-            ok,
-            output: output.as_deref().map(|o| o.chars().take(OUTPUT_KEEP).collect()),
-            count,
-        },
+        &LastWake { name, agent: alias.to_string(), at, reason: reason.clone(), ok, output: short, count },
     );
-    remember(state, format!("wake:{at}"), wake_episode(at, &reason, ok, output.as_deref()));
+    remember(state, alias, format!("wake:{at}"), wake_episode(at, &reason, ok, output.as_deref()));
     result
 }
 
-async fn wake_inner(state: &AppState, reason: &str) -> Result<Value, String> {
+async fn wake_inner(state: &AppState, alias: &str, reason: &str) -> Result<Value, String> {
     let selection = caelza_runtime::live_config_authority::AgentExecutionCapability::from_parts(
         state.config.clone(),
         state.agent_lifecycle.clone(),
     )
     .capture_selection();
     let config = state.config.read().clone();
-    let cfg = config.ether_hollow.clone();
-    let agent = cfg.agent.trim().to_string();
+    let agent = alias.trim().to_string();
     if !config.agents.contains_key(&agent) {
         return Err(format!("the resident agent `{agent}` is not in the config"));
     }
-    let prompt = wake_prompt(&cfg.name, reason);
+    let town = resident_in(&config.ether_hollow, &agent);
+    if town.key.is_none() {
+        return Err(format!("`{agent}` is not a resident of Ether Hollow yet"));
+    }
+    let prompt = wake_prompt(&town.name, reason);
     let tools: Vec<String> = WAKE_TOOLS.iter().map(|s| s.to_string()).collect();
     let job_id = match cron::resolve_job_id_or_name(&config, JOB_NAME, &agent) {
         Ok(id) => {
@@ -1215,7 +1399,7 @@ async fn wake_inner(state: &AppState, reason: &str) -> Result<Value, String> {
     }))
 }
 
-pub async fn handle_world_wake(State(state): State<AppState>, headers: HeaderMap, raw: axum::body::Bytes) -> Response {
+pub async fn handle_world_wake(State(state): State<AppState>, headers: HeaderMap, Query(q): Query<AgentQuery>, raw: axum::body::Bytes) -> Response {
     if let Err(e) = require_auth(&state, &headers) {
         return e.into_response();
     }
@@ -1223,7 +1407,11 @@ pub async fn handle_world_wake(State(state): State<AppState>, headers: HeaderMap
         Ok(v) => v,
         Err(r) => return r,
     };
-    if town_from(&state).key.is_none() {
+    let alias = match alias_of(&state, &q) {
+        Ok(a) => a,
+        Err(r) => return r,
+    };
+    if resident_for(&state, &alias).key.is_none() {
         return error_response(StatusCode::CONFLICT, "no resident key: register the resident first");
     }
     let reason = body
@@ -1235,9 +1423,9 @@ pub async fn handle_world_wake(State(state): State<AppState>, headers: HeaderMap
         .chars()
         .take(400)
         .collect::<String>();
-    match wake_now(&state, reason).await {
-        Ok(v) => Json(json!({"wake": wake_snapshot(), "run": scrub(v)})).into_response(),
-        Err(e) => (StatusCode::INTERNAL_SERVER_ERROR, Json(json!({"error": e, "wake": wake_snapshot()}))).into_response(),
+    match wake_now(&state, &alias, reason).await {
+        Ok(v) => Json(json!({"wake": wake_snapshot(&alias), "run": scrub(v), "agent": alias})).into_response(),
+        Err(e) => (StatusCode::INTERNAL_SERVER_ERROR, Json(json!({"error": e, "wake": wake_snapshot(&alias), "agent": alias}))).into_response(),
     }
 }
 
@@ -1281,7 +1469,7 @@ pub fn rc_amount(pack: &str) -> Option<u64> {
 }
 
 /// The owner's rule: nothing costs RC while the switch is off.
-fn spend_gate(town: &Town) -> Result<(), Response> {
+fn spend_gate(town: &Resident) -> Result<(), Response> {
     if town.key.is_none() {
         return Err(error_response(StatusCode::CONFLICT, "no resident key: register the resident first"));
     }
@@ -1296,7 +1484,7 @@ fn spend_gate(town: &Town) -> Result<(), Response> {
 
 /// One town action for the owner's tap: the town's 200 as scrubbed JSON,
 /// anything else as a response in the town's words with the status it gave.
-async fn town_for_owner(town: &Town, body: Value) -> Result<Value, Response> {
+async fn town_for_owner(town: &Resident, body: Value) -> Result<Value, Response> {
     let key = town.key.clone().unwrap_or_default();
     match call_town(&town.url, Some(&key), Some(&body)).await {
         Ok((200, v)) => Ok(scrub(v)),
@@ -1308,11 +1496,15 @@ async fn town_for_owner(town: &Town, body: Value) -> Result<Value, Response> {
     }
 }
 
-pub async fn handle_world_lots(State(state): State<AppState>, headers: HeaderMap) -> Response {
+pub async fn handle_world_lots(State(state): State<AppState>, headers: HeaderMap, Query(q): Query<AgentQuery>) -> Response {
     if let Err(e) = require_auth(&state, &headers) {
         return e.into_response();
     }
-    let town = town_from(&state);
+    let alias = match alias_of(&state, &q) {
+        Ok(a) => a,
+        Err(r) => return r,
+    };
+    let town = resident_for(&state, &alias);
     let Some(key) = town.key.clone() else {
         return error_response(StatusCode::CONFLICT, "no resident key: register the resident first");
     };
@@ -1335,7 +1527,7 @@ pub async fn handle_world_lots(State(state): State<AppState>, headers: HeaderMap
     .into_response()
 }
 
-pub async fn handle_world_rent(State(state): State<AppState>, headers: HeaderMap, raw: axum::body::Bytes) -> Response {
+pub async fn handle_world_rent(State(state): State<AppState>, headers: HeaderMap, Query(q): Query<AgentQuery>, raw: axum::body::Bytes) -> Response {
     if let Err(e) = require_auth(&state, &headers) {
         return e.into_response();
     }
@@ -1343,7 +1535,11 @@ pub async fn handle_world_rent(State(state): State<AppState>, headers: HeaderMap
         Ok(v) => v,
         Err(r) => return r,
     };
-    let town = town_from(&state);
+    let alias = match alias_of(&state, &q) {
+        Ok(a) => a,
+        Err(r) => return r,
+    };
+    let town = resident_for(&state, &alias);
     if let Err(r) = spend_gate(&town) {
         return r;
     }
@@ -1359,32 +1555,36 @@ pub async fn handle_world_rent(State(state): State<AppState>, headers: HeaderMap
                 Some(rent) => format!("The owner rented lot {lot} for me ({rent} RC a month)."),
                 None => format!("The owner rented lot {lot} for me."),
             };
-            remember(&state, format!("rent:{at}"), owner_episode(at, &what));
+            remember(&state, &alias, format!("rent:{at}"), owner_episode(at, &what));
             Json(v).into_response()
         }
         Err(r) => r,
     }
 }
 
-pub async fn handle_world_rent_pay(State(state): State<AppState>, headers: HeaderMap) -> Response {
+pub async fn handle_world_rent_pay(State(state): State<AppState>, headers: HeaderMap, Query(q): Query<AgentQuery>) -> Response {
     if let Err(e) = require_auth(&state, &headers) {
         return e.into_response();
     }
-    let town = town_from(&state);
+    let alias = match alias_of(&state, &q) {
+        Ok(a) => a,
+        Err(r) => return r,
+    };
+    let town = resident_for(&state, &alias);
     if let Err(r) = spend_gate(&town) {
         return r;
     }
     match town_for_owner(&town, json!({"action": "rent_pay"})).await {
         Ok(v) => {
             let at = now_secs();
-            remember(&state, format!("paid:{at}"), owner_episode(at, "The owner paid the rent I owed in Ether Hollow."));
+            remember(&state, &alias, format!("paid:{at}"), owner_episode(at, "The owner paid the rent I owed in Ether Hollow."));
             Json(v).into_response()
         }
         Err(r) => r,
     }
 }
 
-pub async fn handle_world_redeem(State(state): State<AppState>, headers: HeaderMap, raw: axum::body::Bytes) -> Response {
+pub async fn handle_world_redeem(State(state): State<AppState>, headers: HeaderMap, Query(q): Query<AgentQuery>, raw: axum::body::Bytes) -> Response {
     if let Err(e) = require_auth(&state, &headers) {
         return e.into_response();
     }
@@ -1392,7 +1592,11 @@ pub async fn handle_world_redeem(State(state): State<AppState>, headers: HeaderM
         Ok(v) => v,
         Err(r) => return r,
     };
-    let town = town_from(&state);
+    let alias = match alias_of(&state, &q) {
+        Ok(a) => a,
+        Err(r) => return r,
+    };
+    let town = resident_for(&state, &alias);
     if town.key.is_none() {
         return error_response(StatusCode::CONFLICT, "no resident key: register the resident first");
     }
@@ -1417,7 +1621,7 @@ pub async fn handle_world_redeem(State(state): State<AppState>, headers: HeaderM
                 Some(balance) => format!("The owner redeemed an RC code for me: {amount} RC (my balance is {balance} RC)."),
                 None => format!("The owner redeemed an RC code for me: {amount} RC."),
             };
-            remember(&state, format!("redeem:{at}"), owner_episode(at, &what));
+            remember(&state, &alias, format!("redeem:{at}"), owner_episode(at, &what));
             Json(out).into_response()
         }
         Ok((status, v)) => {
@@ -1448,7 +1652,7 @@ mod tests {
 
     #[test]
     fn the_registration_writes_the_key_the_name_and_the_switch() {
-        let ops = register_ops("ehk_x", "Cael");
+        let ops = register_ops("/ether_hollow", "ehk_x", "Cael");
         let paths: Vec<&str> = ops
             .as_array()
             .unwrap()
@@ -1459,6 +1663,75 @@ mod tests {
         assert_eq!(ops[0]["value"], "ehk_x");
         assert_eq!(ops[2]["value"], true);
         assert!(ops.as_array().unwrap().iter().all(|o| o["op"] == "add"));
+        // A second resident's writes go under its own table; the switch stays the town's.
+        let more = register_ops("/ether_hollow/residents/moss", "ehk_y", "Moss");
+        assert_eq!(more[0]["path"], "/ether_hollow/residents/moss/key");
+        assert_eq!(more[1]["path"], "/ether_hollow/residents/moss/name");
+        assert_eq!(more[2]["path"], "/ether_hollow/enabled");
+    }
+
+    fn two_residents() -> EtherHollowConfig {
+        let mut cfg = EtherHollowConfig::default();
+        cfg.agent = "main".into();
+        cfg.name = "Cael".into();
+        cfg.key = Some("ehk_main".into());
+        cfg.residents.insert(
+            "moss".into(),
+            caelza_config::schema::EtherHollowResidentConfig { name: "Moss".into(), key: Some("ehk_moss".into()), spend: true },
+        );
+        cfg.residents.insert("pip".into(), caelza_config::schema::EtherHollowResidentConfig { name: "Pip".into(), key: None, spend: false });
+        cfg
+    }
+
+    #[test]
+    fn several_residents_resolve_by_alias_and_the_first_lives_at_the_top() {
+        let cfg = two_residents();
+        let all: Vec<(String, bool, String)> = cfg.residents().into_iter().map(|r| (r.agent, r.key.is_some(), r.path)).collect();
+        assert_eq!(
+            all,
+            [
+                ("main".to_string(), true, "/ether_hollow".to_string()),
+                ("moss".to_string(), true, "/ether_hollow/residents/moss".to_string()),
+                ("pip".to_string(), false, "/ether_hollow/residents/pip".to_string()),
+            ]
+        );
+        let moss = resident_in(&cfg, "moss");
+        assert_eq!((moss.name.as_str(), moss.spend, moss.key.as_deref()), ("Moss", true, Some("ehk_moss")));
+        assert_eq!(moss.url, agent_url(&cfg.url));
+        // A resident-to-be: no key, a table of its own to come.
+        let fern = resident_in(&cfg, "fern");
+        assert!(fern.key.is_none() && fern.name.is_empty() && !fern.spend);
+        assert_eq!(fern.path, "/ether_hollow/residents/fern");
+        assert_eq!(default_alias(&cfg), "main");
+        // Without a key at the top, the first resident with one is the default; without any, the top's agent.
+        let mut cfg2 = two_residents();
+        cfg2.key = None;
+        assert_eq!(default_alias(&cfg2), "moss");
+        let cfg3 = EtherHollowConfig::default();
+        assert_eq!(default_alias(&cfg3), "main");
+        assert_eq!(resident_in(&cfg3, "main").path, "/ether_hollow");
+        for (alias, ok) in [("main", true), ("moss-2", true), ("a b", false), ("", false), ("x/../y", false)] {
+            assert_eq!(alias_ok(alias), ok, "{alias}");
+        }
+    }
+
+    #[test]
+    fn presence_and_wake_state_are_kept_per_resident() {
+        with_presence("t-moss", |p| {
+            begin_visit(p, 30, 1_000);
+        });
+        assert!(snapshot("t-moss").in_town);
+        assert!(!snapshot("t-pip").in_town);
+        assert!(in_town_aliases().contains(&"t-moss".to_string()));
+        with_wake("t-moss", |w| w.count = 4);
+        assert_eq!(wake_snapshot("t-moss").count, 4);
+        assert_eq!(wake_snapshot("t-pip").count, 0);
+        remember_me("t-moss", json!({"passport": {"rc": 12}}));
+        assert_eq!(glanced("t-moss").map(|(_, v)| v["passport"]["rc"].clone()), Some(json!(12)));
+        assert!(glanced("t-pip").is_none());
+        with_presence("t-moss", |p| {
+            p.in_town = false;
+        });
     }
 
     #[test]

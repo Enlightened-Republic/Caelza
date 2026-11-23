@@ -467,8 +467,8 @@ export default function Connect() {
           </div>
         </section>
 
-        {/* Ether Hollow: the agent as a resident of the town. */}
-        <WorldCard agent={agent} disabled={!ready} />
+        {/* Ether Hollow: the agent as a resident of the town; with several agents, the card picks one (P6). */}
+        <WorldCard agent={agent} agents={known?.agents ?? [agent]} disabled={!ready} />
 
         {/* ElevenLabs: a voice that sounds like a person, on every device (P2b). */}
         <VoiceCard disabled={!ready} />

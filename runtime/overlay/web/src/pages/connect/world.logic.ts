@@ -90,9 +90,30 @@ export function tagFor(colors: Partial<Record<Slot, string>> | null | undefined)
   return best;
 }
 
-/** The config writes the card makes itself: the spending switch and the wake switch. */
-export function spendOps(on: boolean): PatchOp[] {
-  return [{ op: "add", path: "/ether_hollow/spend", value: on }];
+/**
+ * The config writes the card makes itself: the spending switch (under the
+ * resident's own table: `/ether_hollow` for the first resident,
+ * `/ether_hollow/residents/<alias>` for the others) and the wake switch.
+ */
+export function spendOps(on: boolean, path = "/ether_hollow"): PatchOp[] {
+  const table = path.trim().replace(/\/+$/, "") || "/ether_hollow";
+  return [{ op: "add", path: `${table}/spend`, value: on }];
+}
+
+/** The agents the card may pick as residents: every agent but Cael, the guide, in config order. */
+export function residentCandidates(agents: readonly string[]): string[] {
+  const seen = new Set<string>();
+  return agents.map((a) => a.trim()).filter((a) => a && a !== "cael" && !seen.has(a) && seen.add(a));
+}
+
+/** One word for a resident chip: in town, a resident, or not one yet. */
+export function residentStatus(
+  residents: readonly { agent: string; registered: boolean; in_town: boolean }[] | undefined,
+  alias: string,
+): "in_town" | "resident" | "none" {
+  const r = residents?.find((x) => x.agent === alias);
+  if (!r || !r.registered) return "none";
+  return r.in_town ? "in_town" : "resident";
 }
 
 /** The tools a woken agent gets; nobody is there to tap, so its profile must let them through. */

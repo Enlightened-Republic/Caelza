@@ -113,9 +113,10 @@ def test_the_tool_refuses_before_the_network_what_is_not_the_models():
 def test_the_gateway_keeps_the_key_and_the_presence():
     # Registration writes through the config API's own PATCH handler.
     assert "api_config::handle_patch(" in API
-    assert "Json(register_ops(&key, &name))," in API
-    for path in ("/ether_hollow/key", "/ether_hollow/name", "/ether_hollow/enabled"):
-        assert f'"path": "{path}"' in API, path
+    assert "Json(register_ops(&town.path, &key, &name))," in API
+    # The key and the name under the resident's own table; the switch is the town's.
+    assert '"path": format!("{path}/key")' in API and '"path": format!("{path}/name")' in API
+    assert '"path": "/ether_hollow/enabled"' in API
     # The key is in the answer only when the write failed.
     assert "if !saved {" in API and 'out["key"] = Value::String(key);' in API
     assert API.count('out["key"]') == 1
@@ -127,7 +128,7 @@ def test_the_gateway_keeps_the_key_and_the_presence():
     assert "matches!(status, 401 | 403 | 423)" in API
     assert 'Some(&json!({"action": "here"}))' in API and API.count('{"action": "leave"}') == 2
     # The key is read live at every beat, so a removed key stops the ghost.
-    assert "let Some(key) = live_key(&state) else {" in API
+    assert "let Some(key) = live_key(&state, &alias) else {" in API
     # Ten routes, every one behind pairing: get, register, enter, leave, wake, lots, rent, rent/pay, redeem, home.
     assert API.count("require_auth(&state, &headers)") == 10
     assert "caelza_log::record!" not in API
@@ -141,6 +142,7 @@ CLIENT = (OVERLAY / "web" / "src" / "lib" / "world.ts").read_text()
 DOOR_PATCH = (REPO_ROOT / "runtime" / "patches" / "0019-world-door.patch").read_text()
 WAKE_PATCH = (REPO_ROOT / "runtime" / "patches" / "0020-world-wake.patch").read_text()
 RENT_PATCH = (REPO_ROOT / "runtime" / "patches" / "0021-world-rent.patch").read_text()
+RESIDENTS_PATCH = (REPO_ROOT / "runtime" / "patches" / "0028-world-residents.patch").read_text()
 FAQ = (REPO_ROOT / "guide" / "FAQ.md").read_text()
 CORPUS = (REPO_ROOT / "guide" / "corpus.jsonl").read_text()
 APP_CORPUS = (REPO_ROOT / "android" / "app" / "src" / "main" / "assets" / "cael-corpus.jsonl").read_text()
@@ -148,18 +150,18 @@ APP_CORPUS = (REPO_ROOT / "android" / "app" / "src" / "main" / "assets" / "cael-
 
 def test_the_door_is_on_the_connect_page_and_talks_only_to_the_gateway():
     assert 'import WorldCard from "./World";' in CONNECT_PAGE
-    assert "<WorldCard agent={agent} disabled={!ready} />" in CONNECT_PAGE
+    assert "<WorldCard agent={agent} agents={known?.agents ?? [agent]} disabled={!ready} />" in CONNECT_PAGE
     assert 'data-connect="world"' in DOOR
     # The four calls the gateway offers, nothing straight to the town.
     for fn, path in (("getWorld", "/api/world"), ("registerWorld", "/api/world/register"), ("enterWorld", "/api/world/enter"), ("leaveWorld", "/api/world/leave")):
         assert f"export function {fn}(" in CLIENT and f"'{path}'" in CLIENT, fn
     assert TOWN not in CLIENT and "api/agent" not in CLIENT and "api/agent" not in DOOR
     # Register sends the name, the line, the swatches and the tag; the key never reaches the page unless the write failed.
-    assert "registerWorld({ name: name.trim(), bio: bio.trim() || undefined, look, color: chosenTag })" in DOOR
+    assert "registerWorld({ name: name.trim(), bio: bio.trim() || undefined, look, color: chosenTag }, picked)" in DOOR
     assert "if (!r.saved) {" in DOOR and "setError(r.error ?? t(\"world.failed\"))" in DOOR
     assert "r.key" not in DOOR, "the page never reads the key"
     # The spending switch is the card's one config write; a visit is one of three lengths.
-    assert "await patchConfig(spendOps(on));" in DOOR
+    assert "await patchConfig(spendOps(on, state.spend_path));" in DOOR
     assert "export const VISITS = [15, 60, 240] as const;" in DOOR_LOGIC
     assert 'export const NAME_RULE = /^[A-Za-z0-9 _-]{3,24}$/;' in DOOR_LOGIC
     assert "export function lookFor(" in DOOR_LOGIC and "export function tagFor(" in DOOR_LOGIC
@@ -177,6 +179,7 @@ def test_the_door_patch_carries_its_strings_the_sentence_and_the_test():
     added = set(re.findall(r"^\+    '(world\.[a-z_0-9]+)': ", DOOR_PATCH, re.M))
     added |= set(re.findall(r"^\+    '(world\.[a-z_0-9]+)': ", WAKE_PATCH, re.M))
     added |= set(re.findall(r"^\+    '(world\.[a-z_0-9]+)': ", RENT_PATCH, re.M))
+    added |= set(re.findall(r"^\+    '(world\.[a-z_0-9]+)': ", RESIDENTS_PATCH, re.M))
     assert used and used <= added, sorted(used - added)
     for key, phrase in (
         ("world.body", "100 RC = $1"),
@@ -301,6 +304,50 @@ def test_the_town_lives_in_the_mind_on_home_and_on_the_phone():
     assert "**Slice 5 (the town in the Mind, and on Home; the Caelza half, 2026-11-23):**" in VISION.split("| **M10 Ether Hollow** |", 1)[1].split("\n", 1)[0]
 
 
+def test_several_agents_can_live_in_town():
+    """P6, the Caelza half: a resident per agent, the first where it was, the rest in their own tables; every route per alias."""
+    files = re.findall(r"^\+\+\+ b/(.+)$", RESIDENTS_PATCH, flags=re.M)
+    assert files == ["crates/caelza-config/src/schema.rs", "crates/caelza-runtime/src/tools/mod.rs", "web/src/lib/i18n.ts"], files
+    assert MANIFEST["components"]["runtime"]["world_residents_patch"] == "runtime/patches/0028-world-residents.patch"
+    # The schema: the map beside the first resident, the entry's secret key, the resolver.
+    assert "+    pub residents: HashMap<String, EtherHollowResidentConfig>," in RESIDENTS_PATCH
+    assert '+#[prefix = "ether_hollow.residents"]' in RESIDENTS_PATCH and "+pub struct EtherHollowResidentConfig {" in RESIDENTS_PATCH
+    assert RESIDENTS_PATCH.count("+    #[secret]\n+    #[credential_class = \"encrypted_secret\"]") == 1
+    assert "+    pub fn resident(&self, alias: &str) -> Option<EtherHollowResident> {" in RESIDENTS_PATCH
+    assert "+    pub fn residents(&self) -> Vec<EtherHollowResident> {" in RESIDENTS_PATCH
+    assert '+            path: format!("/ether_hollow/residents/{alias}"),' in RESIDENTS_PATCH
+    # The tool for every resident agent, with its own key and switch.
+    assert "+        if let Some(resident) = root_config.ether_hollow.resident(agent_alias) {" in RESIDENTS_PATCH
+    assert "EtherHollowTool::from_parts(&root_config.ether_hollow.url, resident.key.clone(), resident.spend)" in RESIDENTS_PATCH
+    assert "-    if root_config.ether_hollow.enabled && agent_alias == root_config.ether_hollow.agent {" in RESIDENTS_PATCH
+    # The gateway: ?agent= on every route, state per alias, a second resident's table made first.
+    assert "pub struct AgentQuery {" in API and "fn alias_of(state: &AppState, q: &AgentQuery) -> Result<String, Response>" in API
+    assert API.count("Query(q): Query<AgentQuery>") == 10, "every route takes ?agent="
+    assert "fn resident_in(cfg: &EtherHollowConfig, alias: &str) -> Resident" in API and "pub fn default_alias(cfg: &EtherHollowConfig) -> String" in API
+    assert "api_config::handle_map_key(" in API and 'path: "ether_hollow.residents".to_string(), key: alias.clone()' in API
+    for per_alias in ("fn with_presence<T>(alias: &str", "fn with_wake<T>(alias: &str", "fn remember_me(alias: &str, me: Value)", "async fn read_resident(town: &Resident) -> Option<String>", "pub async fn wake_now(state: &AppState, alias: &str, reason: String)", "pub fn remember(state: &AppState, alias: &str, key: String, text: String)"):
+        assert per_alias in API, per_alias
+    assert '"spend_path": town.path,' in API and '"residents": residents_summary(&state),' in API
+    assert "for town in residents {" in API, "one poll per resident"
+    # The client, the card's resident row, the Connect page, Home's tile.
+    assert "function q(agent?: string): string {" in CLIENT and "'/api/world' + q(agent)" in CLIENT and "'/api/world/register' + q(agent)" in CLIENT
+    assert "spend_path: string;" in CLIENT and "residents: WorldResident[];" in CLIENT and "export interface WorldHome extends WorldHomeResident {" in CLIENT
+    assert 'export function spendOps(on: boolean, path = "/ether_hollow"): PatchOp[] {' in DOOR_LOGIC
+    assert "export function residentCandidates(" in DOOR_LOGIC and "export function residentStatus(" in DOOR_LOGIC
+    assert "residentCandidates(" in DOOR_LOGIC_TEST and "residentStatus(" in DOOR_LOGIC_TEST
+    assert "data-world-residents" in DOOR and "data-world-agent={picked}" in DOOR and "residentStatus(state?.residents, a)" in DOOR
+    assert "<WorldCard agent={agent} agents={known?.agents ?? [agent]} disabled={!ready} />" in CONNECT_PAGE
+    assert "residents?: TownResidentSlice[];" in HOME_LOGIC and "${inTown.length} of ${registered.length} in town" in HOME_LOGIC
+    assert "1 of 2 in town" in HOME_LOGIC_TEST
+    # The docs, the FAQ and the corpus.
+    section = " ".join(FAQ.split("## Can Cael live in Ether Hollow?", 1)[1].split("\n## ", 1)[0].split())
+    assert "Several of your agents can live in town" in section
+    assert "Several of your agents can live in town" in CORPUS and CORPUS == APP_CORPUS
+    p6 = " ".join(NOTE.split("**P6 · Several residents (Caelza + town).**", 1)[1].split("### Decided", 1)[0].split())
+    assert "Shipped 2026-11-23 (the Caelza half)" in p6
+    assert "**Several residents (P6, the Caelza half, 2026-11-23):**" in VISION.split("| **M10 Ether Hollow** |", 1)[1].split("\n", 1)[0]
+
+
 SHOP = (OVERLAY / "web" / "src" / "pages" / "Shop.tsx").read_text()
 UNLOCK_SCRIPT = (REPO_ROOT / "scripts" / "unlock_codes.py").read_text()
 
@@ -316,7 +363,7 @@ def test_renting_is_the_owners_tap_behind_the_spending_switch():
     ):
         assert f"+        .route({route}, {handler})" in RENT_PATCH, route
     # The gate: rent and pay refuse while spending is off; nothing is sent to the town.
-    assert "fn spend_gate(town: &Town) -> Result<(), Response>" in API
+    assert "fn spend_gate(town: &Resident) -> Result<(), Response>" in API
     assert '"spending is off: turn Spending RC on in the Ether Hollow card first; nothing costs RC without it"' in API
     assert API.count("if let Err(r) = spend_gate(&town) {") == 2, "rent and pay"
     # Redeem: the Shop's check first, the amount from the pack, the town's redeem with the resident's key.
@@ -334,10 +381,10 @@ def test_renting_is_the_owners_tap_behind_the_spending_switch():
     for fn, path in (("getWorldLots", "/api/world/lots"), ("rentWorld", "/api/world/rent"), ("payWorldRent", "/api/world/rent/pay"), ("redeemWorld", "/api/world/redeem")):
         assert f"export function {fn}(" in CLIENT and f"'{path}'" in CLIENT, fn
     assert "export const RC_CODE_RULE = " in DOOR_LOGIC and "export function leaseLine(" in DOOR_LOGIC and "export function lotLabel(" in DOOR_LOGIC
-    # The strings: every world.* key the card and the Shop use is in one of the three patches.
+    # The strings: every world.* key the card and the Shop use is in one of the four patches.
     used = set(re.findall(r'"(world\.[a-z_0-9]+)"', DOOR + SHOP))
     added = set()
-    for patch in (DOOR_PATCH, WAKE_PATCH, RENT_PATCH):
+    for patch in (DOOR_PATCH, WAKE_PATCH, RENT_PATCH, RESIDENTS_PATCH):
         added |= set(re.findall(r"^\+    '(world\.[a-z_0-9]+)': ", patch, re.M))
     assert used <= added, sorted(used - added)
     note = re.search(r"^\+    'world\.lease_note': (.*),$", RENT_PATCH, re.M).group(1)

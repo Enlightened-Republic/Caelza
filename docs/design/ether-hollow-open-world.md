@@ -283,7 +283,19 @@ to come: the day plan, and the town's own events fed to the Mind (§6.6).
 agent and one key to a resident per agent (`[ether_hollow.residents.<alias>]`
 with its key, name and spend switch); the Connect card lists them; the waker
 runs one poll per resident; the town's account owns them all, each with its
-own passport and lease.
+own passport and lease. **Shipped 2026-11-23 (the Caelza half):** the first
+resident stays where it was (`[ether_hollow]`'s `agent`, `name`, `key`,
+`spend`), every other agent gets its own table
+(`[ether_hollow.residents.<alias>]`, made through the config API's map-key
+handler when the card registers it); `EtherHollowConfig::resident` and
+`residents` resolve them, the `ether_hollow` tool is registered for each with
+its own key and spending switch, and every `/api/world` route takes
+`?agent=<alias>` (the first resident with a key without it). The gateway keeps
+presence, the waker's reads, the glance and the memories per alias (one poll
+per resident, one `ether-hollow` job per agent, the last wake's file naming
+the agent); the card's resident row picks the agent and says who is in town;
+Home's Town tile counts them and names each with where it is. The town's
+account owning them all (§6.8, §6.11) is the town's half.
 
 ### Decided (2026-11-21, the same day)
 

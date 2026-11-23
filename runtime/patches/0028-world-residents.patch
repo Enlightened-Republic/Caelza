@@ -1,0 +1,151 @@
+--- a/crates/caelza-config/src/schema.rs
++++ b/crates/caelza-config/src/schema.rs
+@@ -8586,6 +8586,12 @@
+     /// two and runs the `ether-hollow` cron agent job on a mention, an order,
+     /// rent due or a timeout. Default: `false`.
+     pub wake: bool,
++    /// More residents, one per agent (`[ether_hollow.residents.<alias>]`), each
++    /// with its own name, key and spending switch; the top-level name, agent,
++    /// key and spend stay the first resident's.
++    #[serde(default, skip_serializing_if = "HashMap::is_empty")]
++    #[nested]
++    pub residents: HashMap<String, EtherHollowResidentConfig>,
+ }
+ 
+ impl Default for EtherHollowConfig {
+@@ -8598,10 +8604,95 @@
+             key: None,
+             spend: false,
+             wake: false,
++            residents: HashMap::new(),
+         }
+     }
+ }
+ 
++/// One more resident of Ether Hollow (`[ether_hollow.residents.<alias>]`):
++/// the agent is the key, so several agents can live in the town, each with
++/// its own name, key and spending switch.
++#[derive(Debug, Clone, Default, Serialize, Deserialize, Configurable)]
++#[cfg_attr(feature = "schema-export", derive(schemars::JsonSchema))]
++#[prefix = "ether_hollow.residents"]
++#[serde(default)]
++pub struct EtherHollowResidentConfig {
++    /// The resident's name in town.
++    pub name: String,
++    /// The resident key `register` returned (stored encrypted when secrets.encrypt = true).
++    #[secret]
++    #[credential_class = "encrypted_secret"]
++    #[cfg_attr(feature = "schema-export", schemars(extend("x-secret" = true)))]
++    pub key: Option<String>,
++    /// Let this agent spend RC (`buy`, `rent`, `rent_pay`). Default: `false`.
++    pub spend: bool,
++}
++
++/// A resident as the Runtime and the gateway see it: which agent, its name,
++/// its key when it is registered, its spending switch, and where its settings
++/// live (`/ether_hollow` for the first resident, `/ether_hollow/residents/<alias>`
++/// for the others), as a JSON pointer for the config API's writes.
++#[derive(Debug, Clone, PartialEq, Eq)]
++pub struct EtherHollowResident {
++    pub agent: String,
++    pub name: String,
++    pub key: Option<String>,
++    pub spend: bool,
++    pub path: String,
++}
++
++impl EtherHollowConfig {
++    fn first_resident(&self) -> EtherHollowResident {
++        EtherHollowResident {
++            agent: self.agent.trim().to_string(),
++            name: self.name.clone(),
++            key: self.key.as_deref().map(str::trim).filter(|k| !k.is_empty()).map(str::to_string),
++            spend: self.spend,
++            path: "/ether_hollow".to_string(),
++        }
++    }
++
++    fn listed_resident(&self, alias: &str, cfg: &EtherHollowResidentConfig) -> EtherHollowResident {
++        EtherHollowResident {
++            agent: alias.to_string(),
++            name: cfg.name.clone(),
++            key: cfg.key.as_deref().map(str::trim).filter(|k| !k.is_empty()).map(str::to_string),
++            spend: cfg.spend,
++            path: format!("/ether_hollow/residents/{alias}"),
++        }
++    }
++
++    /// The resident `alias` is, if it is one: its `residents` entry, else the
++    /// first resident (the top-level settings) when `alias` is `agent`.
++    pub fn resident(&self, alias: &str) -> Option<EtherHollowResident> {
++        let alias = alias.trim();
++        if let Some(cfg) = self.residents.get(alias) {
++            return Some(self.listed_resident(alias, cfg));
++        }
++        if !alias.is_empty() && alias == self.agent.trim() {
++            return Some(self.first_resident());
++        }
++        None
++    }
++
++    /// Every resident: the first one first (unless a `residents` entry has its
++    /// alias), then the rest by alias. One without a key is a resident-to-be
++    /// the dashboard can register.
++    pub fn residents(&self) -> Vec<EtherHollowResident> {
++        let mut out = Vec::new();
++        let first = self.first_resident();
++        if !first.agent.is_empty() && !self.residents.contains_key(&first.agent) {
++            out.push(first);
++        }
++        let mut aliases: Vec<&String> = self.residents.keys().collect();
++        aliases.sort();
++        for alias in aliases {
++            out.push(self.listed_resident(alias, &self.residents[alias]));
++        }
++        out
++    }
++}
++
+ // ── Persona (the agent's own hand on its look and its identity) ──
+ 
+ /// Persona settings (`[persona]` section).
+--- a/crates/caelza-runtime/src/tools/mod.rs
++++ b/crates/caelza-runtime/src/tools/mod.rs
+@@ -1805,13 +1805,16 @@
+     register_tool!("calculator", Arc::new(CalculatorTool::new()));
+     #[cfg(feature = "tools-external")]
+     register_tool!("weather", Arc::new(WeatherTool::new()));
+-    // Caelza: the resident of Ether Hollow. One agent carries the town, the
+-    // one `[ether_hollow] agent` names; the key stays in the config.
+-    if root_config.ether_hollow.enabled && agent_alias == root_config.ether_hollow.agent {
+-        register_tool!(
+-            "ether_hollow",
+-            Arc::new(EtherHollowTool::new(&root_config.ether_hollow))
+-        );
++    // Caelza: the residents of Ether Hollow. Every agent the config names as a
++    // resident (`[ether_hollow] agent`, or a `[ether_hollow.residents.<alias>]`)
++    // carries the town with its own key; the keys stay in the config.
++    if root_config.ether_hollow.enabled {
++        if let Some(resident) = root_config.ether_hollow.resident(agent_alias) {
++            register_tool!(
++                "ether_hollow",
++                Arc::new(EtherHollowTool::from_parts(&root_config.ether_hollow.url, resident.key.clone(), resident.spend))
++            );
++        }
+     }
+     // Caelza: the agent as a someone (vision M10 §10). Every agent but Cael,
+     // the guide, gets its own hand on its look and its identity files; the
+--- a/web/src/lib/i18n.ts
++++ b/web/src/lib/i18n.ts
+@@ -1177,6 +1177,11 @@
+     'world.wake_now': "Wake now",
+     'world.waking': "Waking…",
+     'world.wake_now_hint': "Runs the same wake with no reason but yours: a way to try it.",
++    'world.residents': "Who lives in town",
++    'world.residents_hint': "Each of your agents can be a resident, with its own name, key and spending switch. Pick one to set it up or send it to town.",
++    'world.resident_is_resident': "resident",
++    'world.resident_in_town': "in town",
++    'world.resident_not_yet': "not yet",
+     'world.woke': "Your agent looked in on the town.",
+     'world.wake_failed': "The wake did not run: {reason}",
+     'world.wake_on_saved': "The town may wake your agent now; this device starts reading it within two minutes.",

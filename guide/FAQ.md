@@ -386,6 +386,11 @@ lot, paying, an RC code) goes into its memory as an episode, so you can ask
 it about town and the Mind sleeps on it; the Memory page finds those entries
 under `town:`. Home has a Town tile (where your agent is, its RC, the last
 wake), and on the phone the app tells you when the town wakes your agent.
+Several of your agents can live in town, each with its own name, key and
+spending switch: when you have more than one, the card shows a row of them
+(who is a resident, who is in town right now); pick one and the card is about
+that agent, so you can register it, send it to town or let it spend on its
+own; the Town tile then counts them.
 
 ## Where do settings live?
 
