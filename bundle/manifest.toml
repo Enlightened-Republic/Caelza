@@ -118,6 +118,7 @@ persona_patch = "runtime/patches/0023-persona.patch"         # [persona] free in
 voice_patch = "runtime/patches/0024-voice.patch"             # the voice tool registered beside them; the gateway's /api/voice routes (api_voice.rs is in the overlay); the chat reads replies aloud (AgentContext's reply event, AgentChat's speaker); the voice strings; the test list
 menu_patch = "runtime/patches/0025-menu.patch"               # the Plugins page leaves the sidebar: no release builds the WASM plugin host, so the page only said "unavailable"
 meet_patch = "runtime/patches/0026-meet.patch"               # Cael's one tool, shape_agent (overlay crates/caelza-tools/src/shape_agent.rs), registered for him alone; its rows and prompt line
+world_home_patch = "runtime/patches/0027-world-home.patch"   # GET /api/world/home, Home's Town tile glance; the town in the Mind (episodes for wakes, visits and the owner's taps) and world/last-wake.json are in api_world.rs
 # M5: the Procedures library runs a procedure by hand; a phone playbook's Run asks which phone and sends it as the trigger payload.
 procedures_run = "runtime/overlay/web/src/pages/Procedures.tsx"   # RunDialog over POST /api/sops/{name}/run (upstream's endpoint); the agent uses sop_execute
 

@@ -22,8 +22,10 @@ import {
   sopEngineOff,
   sopOffText,
   spanLabel,
+  townTile,
   SOP_ENGINE_NOT_RUNNING_TEXT,
   SOP_OFF_TEXT,
+  TOWN_REASON_CHARS,
 } from './home.logic.ts';
 
 test('a disabled SOP engine is a state, not an error', () => {
@@ -233,4 +235,44 @@ test('a Run can target one phone or a whole group', () => {
   assert.deepEqual(expandTarget(devices, 'gma'), ['gma']);
   assert.deepEqual(expandTarget(devices, ' '), ['self']);
   assert.deepEqual(runTargets([]).map((t) => t.value), ['self']);
+});
+
+test('the Town tile says where the agent is, its RC and the last wake', () => {
+  const nowSecs = Math.floor(NOW / 1000);
+  const quiet = { last_at: null, last_reason: null, last_ok: null };
+  const woke = { last_at: nowSecs - 2 * 3600, last_reason: 'Ana named you on the feed: "hi Moss"', last_ok: true };
+  assert.equal(townTile(null, 'API 500: boom').tone, 'error');
+  assert.equal(townTile(null).value, '…');
+  const stranger = townTile({ registered: false, name: '', presence: { in_town: false }, wake: quiet, me: null, me_error: null });
+  assert.equal(stranger.value, 'Not a resident');
+  assert.equal(stranger.to, '/connect');
+  assert.equal(stranger.tone, 'neutral');
+  const resident = { registered: true, name: 'Moss', presence: { in_town: false }, wake: woke, me: { agent: { place: 'bank' }, passport: { rc: 1240 }, lease: null }, me_error: null };
+  const home = townTile(resident, null, nowSecs);
+  assert.equal(home.value, 'At home');
+  assert.equal(home.sublabel, 'Moss · 1240 RC · woke 2 h ago: Ana named you on the feed: "hi Moss"');
+  assert.equal(home.tone, 'neutral');
+  const away = townTile({ ...resident, presence: { in_town: true } }, null, nowSecs);
+  assert.equal(away.value, 'In town · bank');
+  assert.equal(away.tone, 'ok');
+  assert.equal(townTile({ ...resident, presence: { in_town: true }, me: { passport: { rc: 5 } } }, null, nowSecs).value, 'In town');
+  // Money trouble, a timeout and a failed wake turn it amber.
+  const owing = townTile({ ...resident, me: { ...resident.me, lease: { owing: true } } }, null, nowSecs);
+  assert.match(owing.sublabel, /rent owing/);
+  assert.equal(owing.tone, 'warn');
+  const missed = townTile({ ...resident, me: { ...resident.me, lease: { owing: true, missed: 2 } } }, null, nowSecs);
+  assert.match(missed.sublabel, /2 missed payments/);
+  assert.doesNotMatch(missed.sublabel, /rent owing/);
+  assert.equal(townTile({ ...resident, me: { ...resident.me, timeout: { until: 'later' } } }, null, nowSecs).tone, 'warn');
+  const failed = townTile({ ...resident, wake: { ...woke, last_ok: false } }, null, nowSecs);
+  assert.match(failed.sublabel, /the last wake failed 2 h ago/);
+  assert.equal(failed.tone, 'warn');
+  assert.match(townTile({ ...resident, wake: quiet }, null, nowSecs).sublabel, /never woken$/);
+  // A long reason is cut for the tile; the Connect card has the whole line.
+  const long = townTile({ ...resident, wake: { ...woke, last_reason: 'w'.repeat(100) } }, null, nowSecs);
+  const shown = long.sublabel.split('woke 2 h ago: ')[1] ?? '';
+  assert.equal(shown.length, TOWN_REASON_CHARS);
+  assert.ok(shown.endsWith('…'));
+  // The town could not be read and nothing older is known: the tile says so.
+  assert.match(townTile({ ...resident, me: null, me_error: 'the town answered 503' }, null, nowSecs).sublabel, /could not be read/);
 });

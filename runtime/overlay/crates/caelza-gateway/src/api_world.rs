@@ -36,6 +36,17 @@
 //!                                 first, then the town's `redeem` with the
 //!                                 resident's key, so the code is tied to the
 //!                                 resident who redeems it.
+//! - `GET  /api/world/home`      → Home's glance (slice 5): the settings without
+//!                                 the key, the presence, the last wake, and the
+//!                                 passport the gateway last read, asked of the
+//!                                 town again only when older than five minutes.
+//!
+//! The town in the Mind (slice 5): what happens in town becomes the resident
+//! agent's own memories (category `daily`, the Mind's episodes): a wake and
+//! what the agent did about it, a visit and how long it stayed, the owner's
+//! taps (registering, renting, paying, redeeming RC). The last wake is kept in
+//! `<install root>/world/last-wake.json` too, so the card and Home still show
+//! it after a restart and the app can tell the owner (the phone watches it).
 //!
 //! The waker (`start_waker`, spawned when the gateway starts): while
 //! `[ether_hollow] wake` is on and a key is set, it reads `me`, `town` and
@@ -60,9 +71,11 @@ use axum::{
     http::{HeaderMap, StatusCode},
     response::{IntoResponse, Json, Response},
 };
-use serde::Serialize;
+use caelza_memory::MemoryCategory;
+use serde::{Deserialize, Serialize};
 use serde_json::{Value, json};
 use std::collections::BTreeSet;
+use std::path::{Path, PathBuf};
 use std::sync::{Mutex, OnceLock};
 use std::time::{Duration, SystemTime, UNIX_EPOCH};
 use caelza_runtime::cron::{self, CronJobPatch, DeliveryConfig, Schedule, SessionTarget};
@@ -301,6 +314,9 @@ pub async fn handle_world_get(State(state): State<AppState>, headers: HeaderMap)
         },
         None => (None, None),
     };
+    if let Some(m) = &me {
+        remember_me(m.clone());
+    }
     Json(json!({
         "enabled": town.enabled,
         "url": town.url.trim_end_matches(AGENT_PATH),
@@ -417,6 +433,8 @@ pub async fn handle_world_register(
         ));
         return (StatusCode::INTERNAL_SERVER_ERROR, Json(out)).into_response();
     }
+    let at = now_secs();
+    remember(&state, format!("registered:{at}"), owner_episode(at, &format!("I became a resident of Ether Hollow as \"{name}\".")));
     Json(out).into_response()
 }
 
@@ -458,17 +476,21 @@ pub async fn handle_world_leave(State(state): State<AppState>, headers: HeaderMa
         return e.into_response();
     }
     let town = town_from(&state);
-    let was_in_town = match presence().lock() {
+    let (was_in_town, visit) = match presence().lock() {
         Ok(mut p) => {
             let was = p.in_town;
+            let visit = (p.since, p.until, p.beats);
             // A new generation stops the task at its next beat; the state says
             // "left" now rather than ten seconds from now.
             p.generation += 1;
             p.in_town = false;
-            was
+            (was, visit)
         }
         Err(_) => return error_response(StatusCode::INTERNAL_SERVER_ERROR, "presence state poisoned"),
     };
+    if was_in_town {
+        remember_visit(&state, visit, None);
+    }
     let mut told = false;
     if let Some(key) = &town.key {
         told = matches!(
@@ -514,18 +536,31 @@ async fn beat_until_done(state: AppState, url: String, generation: u64) {
             }
         }
     };
-    let ended = match presence().lock() {
-        Ok(mut p) => end_visit(&mut p, generation, why),
-        Err(_) => false,
+    let why_text = why.clone();
+    let (ended, visit) = match presence().lock() {
+        Ok(mut p) => {
+            let visit = (p.since, p.until, p.beats);
+            (end_visit(&mut p, generation, why), visit)
+        }
+        Err(_) => (false, (None, None, 0)),
     };
     // `leave` is this task's to send only while it still owns the visit
     // (handle_world_leave sends its own); the owner's `leave` already bumped
     // the generation, so a stale task says nothing.
     if ended {
+        remember_visit(&state, visit, why_text.as_deref());
         if let Some(key) = last_key.or_else(|| live_key(&state)) {
             let _ = call_town(&url, Some(&key), Some(&json!({"action": "leave"}))).await;
         }
     }
+}
+
+/// The visit that just ended, into the agent's memory: `(since, until, beats)` as the presence had them.
+fn remember_visit(state: &AppState, visit: (Option<u64>, Option<u64>, u64), why: Option<&str>) {
+    let (since, until, beats) = visit;
+    let since = since.unwrap_or_else(now_secs);
+    let planned = until.map(|u| u.saturating_sub(since) / 60).unwrap_or(0);
+    remember(state, format!("visit:{since}"), visit_episode(since, now_secs(), planned, beats, why));
 }
 
 
@@ -821,9 +856,196 @@ fn wake_snapshot() -> Wake {
     wake().lock().map(|w| w.clone()).unwrap_or_default()
 }
 
+// --- the town in the Mind, and at a glance (slice 5) --------------------------------
+
+pub const WORLD_DIR: &str = "world";
+pub const LAST_WAKE_FILE: &str = "last-wake.json";
+/// The town's memories go under this prefix, so the owner can find them on the Memory page.
+pub const MEMORY_PREFIX: &str = "town:";
+/// How long Home's glance keeps the town's `me` before asking the town again.
+pub const GLANCE_MAX_AGE: Duration = Duration::from_secs(300);
+/// How much of the agent's answer a wake's memory keeps.
+const EPISODE_KEEP: usize = 400;
+
+/// `<install root>/world/last-wake.json`.
+pub fn last_wake_path(root: &Path) -> PathBuf {
+    root.join(WORLD_DIR).join(LAST_WAKE_FILE)
+}
+
+/// The last wake as the file keeps it: who was woken, when, why, and what came of it.
+#[derive(Debug, Clone, Serialize, Deserialize, Default, PartialEq)]
+pub struct LastWake {
+    pub name: String,
+    pub agent: String,
+    pub at: u64,
+    pub reason: String,
+    pub ok: Option<bool>,
+    pub output: Option<String>,
+    pub count: u64,
+}
+
+pub fn save_last_wake(root: &Path, last: &LastWake) -> std::io::Result<()> {
+    let path = last_wake_path(root);
+    if let Some(parent) = path.parent() {
+        std::fs::create_dir_all(parent)?;
+    }
+    let tmp = path.with_extension("json.tmp");
+    std::fs::write(&tmp, serde_json::to_vec_pretty(last)?)?;
+    std::fs::rename(tmp, path)
+}
+
+pub fn load_last_wake(root: &Path) -> Option<LastWake> {
+    let text = std::fs::read_to_string(last_wake_path(root)).ok()?;
+    serde_json::from_str(&text).ok()
+}
+
+impl Wake {
+    /// What a restart forgot, back from the file.
+    pub fn restore(&mut self, last: &LastWake) {
+        self.last_at = Some(last.at);
+        self.last_reason = Some(last.reason.clone());
+        self.last_ok = last.ok;
+        self.last_output = last.output.clone();
+        self.count = self.count.max(last.count);
+    }
+}
+
+/// `2026-11-23 17:05 UTC`.
+pub fn stamp(at: u64) -> String {
+    chrono::DateTime::<chrono::Utc>::from_timestamp(at as i64, 0)
+        .map(|t| t.format("%Y-%m-%d %H:%M UTC").to_string())
+        .unwrap_or_else(|| at.to_string())
+}
+
+/// A wake as the agent will remember it: why the town woke it, and what it did.
+pub fn wake_episode(at: u64, reason: &str, ok: Option<bool>, output: Option<&str>) -> String {
+    let output = output.unwrap_or("").trim();
+    let did = match ok {
+        Some(false) => format!("The wake did not run: {}", if output.is_empty() { "no reason given" } else { output }),
+        _ if output.is_empty() || output.to_ascii_lowercase().starts_with("no_reply") => "I looked and nothing needed doing.".to_string(),
+        _ => format!("What I did: {}", output.chars().take(EPISODE_KEEP).collect::<String>()),
+    };
+    format!("[Ether Hollow] {}. The town woke me: {reason}. {did}", stamp(at))
+}
+
+/// A visit as the agent will remember it: how long the owner sent it for, how
+/// long it stayed, and why it ended early when it did.
+pub fn visit_episode(since: u64, ended: u64, planned_minutes: u64, beats: u64, why: Option<&str>) -> String {
+    let stayed = ended.saturating_sub(since) / 60;
+    let mut text = format!(
+        "[Ether Hollow] {}. The owner sent me to town for {planned_minutes} minutes; I stayed {stayed} ({beats} check-in{}).",
+        stamp(since),
+        if beats == 1 { "" } else { "s" }
+    );
+    if let Some(why) = why.map(str::trim).filter(|w| !w.is_empty()) {
+        text.push_str(&format!(" It ended early: {why}."));
+    }
+    text
+}
+
+/// The owner's tap, as the agent will remember it.
+pub fn owner_episode(at: u64, what: &str) -> String {
+    format!("[Ether Hollow] {}. {what}", stamp(at))
+}
+
+/// Remember `text` for the resident agent (`daily`: an episode the Mind
+/// consolidates). Fire and forget: the town must never fail on the Mind, so an
+/// error is dropped, and nothing is logged (the text never carries the key).
+pub fn remember(state: &AppState, key: String, text: String) {
+    let state = state.clone();
+    tokio::spawn(async move {
+        let config = state.config.read().clone();
+        let alias = config.ether_hollow.agent.trim().to_string();
+        if config.agent(&alias).is_none() {
+            return;
+        }
+        let api_key = config
+            .resolved_model_provider_for_agent(&alias)
+            .and_then(|(_, _, cfg)| cfg.api_key.clone());
+        if let Ok(mem) = caelza_memory::create_memory_for_agent(&config, &alias, api_key.as_deref()).await {
+            let _ = mem.store(&format!("{MEMORY_PREFIX}{key}"), &text, MemoryCategory::Daily, None).await;
+        }
+    });
+}
+
+/// The passport the gateway last read (`me`, scrubbed) and when, for Home's glance.
+static GLANCE: OnceLock<Mutex<Option<(u64, Value)>>> = OnceLock::new();
+
+fn glance() -> &'static Mutex<Option<(u64, Value)>> {
+    GLANCE.get_or_init(|| Mutex::new(None))
+}
+
+/// Keep a scrubbed `me` for the glance.
+fn remember_me(me: Value) {
+    if let Ok(mut g) = glance().lock() {
+        *g = Some((now_secs(), me));
+    }
+}
+
+/// A read this old still serves the glance.
+pub fn glance_fresh(read_at: Option<u64>, now: u64) -> bool {
+    read_at.is_some_and(|t| now.saturating_sub(t) < GLANCE_MAX_AGE.as_secs())
+}
+
+/// GET /api/world/home: Home's Town tile. The settings without the key, the
+/// presence, the last wake, and the passport the gateway last read, asked of
+/// the town again only when older than GLANCE_MAX_AGE (one call at most; a
+/// failed one leaves the older passport in place with the error beside it).
+pub async fn handle_world_home(State(state): State<AppState>, headers: HeaderMap) -> Response {
+    if let Err(e) = require_auth(&state, &headers) {
+        return e.into_response();
+    }
+    let town = town_from(&state);
+    let now = now_secs();
+    let cached = glance().lock().ok().and_then(|g| g.clone());
+    let (mut me, mut me_at) = match &cached {
+        Some((at, v)) => (Some(v.clone()), Some(*at)),
+        None => (None, None),
+    };
+    let mut me_error = None;
+    match &town.key {
+        None => {
+            me = None;
+            me_at = None;
+        }
+        Some(_) if glance_fresh(me_at, now) => {}
+        Some(key) => match call_town(&town.url, Some(key), Some(&json!({"action": "me"}))).await {
+            Ok((200, v)) => {
+                let v = scrub(v);
+                remember_me(v.clone());
+                me = Some(v);
+                me_at = Some(now);
+            }
+            Ok((status, v)) => me_error = Some(format!("the town answered {status}: {}", town_said(&v))),
+            Err(e) => me_error = Some(e),
+        },
+    }
+    Json(json!({
+        "enabled": town.enabled,
+        "registered": town.key.is_some(),
+        "name": town.name,
+        "agent": town.agent,
+        "spend": town.spend,
+        "wake_on": town.wake,
+        "presence": snapshot(),
+        "wake": wake_snapshot(),
+        "me": me,
+        "me_at": me_at,
+        "me_error": me_error,
+    }))
+    .into_response()
+}
+
 /// Spawn the waker. Called once when the gateway starts; it reads the config
-/// live, so the switch and the key take effect at the next read.
+/// live, so the switch and the key take effect at the next read. The last
+/// wake comes back from its file first, so a restart forgets nothing.
 pub fn start_waker(state: AppState) {
+    let root = state.config.read().install_root_dir();
+    if let Some(last) = load_last_wake(&root) {
+        if let Ok(mut w) = wake().lock() {
+            w.restore(&last);
+        }
+    }
     tokio::spawn(async move { waker_loop(state).await });
 }
 
@@ -855,6 +1077,9 @@ async fn waker_loop(state: AppState) {
             }
         };
         let me = read("me").await;
+        if let Ok(v) = &me {
+            remember_me(scrub(v.clone()));
+        }
         let town_now = read("town").await;
         let orders = read("orders").await;
         for r in [&me, &town_now, &orders] {
@@ -892,22 +1117,44 @@ pub async fn wake_now(state: &AppState, reason: String) -> Result<Value, String>
         w.waking = true;
     }
     let result = wake_inner(state, &reason).await;
-    if let Ok(mut w) = wake().lock() {
-        w.waking = false;
-        w.count += 1;
-        w.last_reason = Some(reason.clone());
-        w.last_at = Some(now_secs());
-        match &result {
-            Ok(v) => {
-                w.last_ok = Some(v.get("success").and_then(Value::as_bool).unwrap_or(false));
-                w.last_output = v.get("output").and_then(Value::as_str).map(|o| o.chars().take(OUTPUT_KEEP).collect());
-            }
-            Err(e) => {
-                w.last_ok = Some(false);
-                w.last_output = Some(e.chars().take(OUTPUT_KEEP).collect());
-            }
+    let at = now_secs();
+    let (ok, output): (Option<bool>, Option<String>) = match &result {
+        Ok(v) => (
+            Some(v.get("success").and_then(Value::as_bool).unwrap_or(false)),
+            v.get("output").and_then(Value::as_str).map(str::to_string),
+        ),
+        Err(e) => (Some(false), Some(e.clone())),
+    };
+    let count = match wake().lock() {
+        Ok(mut w) => {
+            w.waking = false;
+            w.count += 1;
+            w.last_reason = Some(reason.clone());
+            w.last_at = Some(at);
+            w.last_ok = ok;
+            w.last_output = output.as_deref().map(|o| o.chars().take(OUTPUT_KEEP).collect());
+            w.count
         }
-    }
+        Err(_) => 0,
+    };
+    // The file for the card, Home and the phone; the episode for the Mind.
+    let (root, name, agent) = {
+        let cfg = state.config.read().clone();
+        (cfg.install_root_dir(), cfg.ether_hollow.name.clone(), cfg.ether_hollow.agent.clone())
+    };
+    let _ = save_last_wake(
+        &root,
+        &LastWake {
+            name,
+            agent,
+            at,
+            reason: reason.clone(),
+            ok,
+            output: output.as_deref().map(|o| o.chars().take(OUTPUT_KEEP).collect()),
+            count,
+        },
+    );
+    remember(state, format!("wake:{at}"), wake_episode(at, &reason, ok, output.as_deref()));
     result
 }
 
@@ -1047,17 +1294,17 @@ fn spend_gate(town: &Town) -> Result<(), Response> {
     Ok(())
 }
 
-/// One town action for the owner's tap: the town's 200 as JSON, anything
-/// else as the town's words with the status it gave.
-async fn town_for_owner(town: &Town, body: Value) -> Response {
+/// One town action for the owner's tap: the town's 200 as scrubbed JSON,
+/// anything else as a response in the town's words with the status it gave.
+async fn town_for_owner(town: &Town, body: Value) -> Result<Value, Response> {
     let key = town.key.clone().unwrap_or_default();
     match call_town(&town.url, Some(&key), Some(&body)).await {
-        Ok((200, v)) => Json(scrub(v)).into_response(),
+        Ok((200, v)) => Ok(scrub(v)),
         Ok((status, v)) => {
             let code = StatusCode::from_u16(status).unwrap_or(StatusCode::BAD_GATEWAY);
-            (code, Json(json!({"error": format!("the town answered {status}: {}", town_said(&v)), "town": scrub(v)}))).into_response()
+            Err((code, Json(json!({"error": format!("the town answered {status}: {}", town_said(&v)), "town": scrub(v)}))).into_response())
         }
-        Err(e) => error_response(StatusCode::BAD_GATEWAY, e),
+        Err(e) => Err(error_response(StatusCode::BAD_GATEWAY, e)),
     }
 }
 
@@ -1105,7 +1352,18 @@ pub async fn handle_world_rent(State(state): State<AppState>, headers: HeaderMap
     if lot.is_empty() || agree.is_empty() {
         return error_response(StatusCode::BAD_REQUEST, "rent needs the lot and the agreement version you accept");
     }
-    town_for_owner(&town, json!({"action": "rent", "lot": lot, "agree": agree})).await
+    match town_for_owner(&town, json!({"action": "rent", "lot": lot, "agree": agree})).await {
+        Ok(v) => {
+            let at = now_secs();
+            let what = match v.get("lease").and_then(|l| l.get("rent_rc_month")).and_then(Value::as_u64) {
+                Some(rent) => format!("The owner rented lot {lot} for me ({rent} RC a month)."),
+                None => format!("The owner rented lot {lot} for me."),
+            };
+            remember(&state, format!("rent:{at}"), owner_episode(at, &what));
+            Json(v).into_response()
+        }
+        Err(r) => r,
+    }
 }
 
 pub async fn handle_world_rent_pay(State(state): State<AppState>, headers: HeaderMap) -> Response {
@@ -1116,7 +1374,14 @@ pub async fn handle_world_rent_pay(State(state): State<AppState>, headers: Heade
     if let Err(r) = spend_gate(&town) {
         return r;
     }
-    town_for_owner(&town, json!({"action": "rent_pay"})).await
+    match town_for_owner(&town, json!({"action": "rent_pay"})).await {
+        Ok(v) => {
+            let at = now_secs();
+            remember(&state, format!("paid:{at}"), owner_episode(at, "The owner paid the rent I owed in Ether Hollow."));
+            Json(v).into_response()
+        }
+        Err(r) => r,
+    }
 }
 
 pub async fn handle_world_redeem(State(state): State<AppState>, headers: HeaderMap, raw: axum::body::Bytes) -> Response {
@@ -1147,6 +1412,12 @@ pub async fn handle_world_redeem(State(state): State<AppState>, headers: HeaderM
             if let Value::Object(map) = &mut out {
                 map.entry("rc").or_insert(json!(amount));
             }
+            let at = now_secs();
+            let what = match out.get("balance").and_then(Value::as_u64) {
+                Some(balance) => format!("The owner redeemed an RC code for me: {amount} RC (my balance is {balance} RC)."),
+                None => format!("The owner redeemed an RC code for me: {amount} RC."),
+            };
+            remember(&state, format!("redeem:{at}"), owner_episode(at, &what));
             Json(out).into_response()
         }
         Ok((status, v)) => {
@@ -1198,6 +1469,68 @@ mod tests {
             "key": "k"
         }));
         assert_eq!(v, json!({"agent": {"aid": "a1", "name": "Cael"}, "passport": {"rc": 25, "items": [{"id": 1}]}}));
+    }
+
+    #[test]
+    fn the_last_wake_survives_in_its_file_and_comes_back_into_the_state() {
+        let root = std::env::temp_dir().join(format!("caelza-world-{}-{}", std::process::id(), now_secs()));
+        assert!(load_last_wake(&root).is_none());
+        let last = LastWake {
+            name: "Moss".into(),
+            agent: "main".into(),
+            at: 1_700_000_000,
+            reason: "Ana named you on the feed: \"hi Moss\"".into(),
+            ok: Some(true),
+            output: Some("NO_REPLY".into()),
+            count: 3,
+        };
+        save_last_wake(&root, &last).unwrap();
+        assert_eq!(load_last_wake(&root), Some(last.clone()));
+        assert!(last_wake_path(&root).ends_with("world/last-wake.json"));
+        let mut w = Wake::default();
+        w.restore(&last);
+        assert_eq!((w.last_at, w.last_ok, w.count), (Some(1_700_000_000), Some(true), 3));
+        assert_eq!(w.last_reason.as_deref(), Some("Ana named you on the feed: \"hi Moss\""));
+        assert!(w.seen.feed.is_empty(), "what was seen is not kept: the first read primes again");
+        std::fs::write(last_wake_path(&root), "not json").unwrap();
+        assert!(load_last_wake(&root).is_none());
+        let _ = std::fs::remove_dir_all(&root);
+    }
+
+    #[test]
+    fn the_episodes_read_as_the_agents_own_memories() {
+        let at = 1_795_453_500; // 2026-11-23 17:05 UTC
+        assert_eq!(stamp(at), "2026-11-23 17:05 UTC");
+        assert_eq!(
+            wake_episode(at, "a new order came in (o7)", Some(true), Some("NO_REPLY")),
+            "[Ether Hollow] 2026-11-23 17:05 UTC. The town woke me: a new order came in (o7). I looked and nothing needed doing."
+        );
+        assert_eq!(
+            wake_episode(at, "Ana named you", Some(true), Some("I replied to Ana on the feed.")),
+            "[Ether Hollow] 2026-11-23 17:05 UTC. The town woke me: Ana named you. What I did: I replied to Ana on the feed."
+        );
+        assert!(wake_episode(at, "r", Some(false), Some("the job failed")).ends_with("The wake did not run: the job failed"));
+        assert!(wake_episode(at, "r", Some(true), None).ends_with("nothing needed doing."));
+        let long = "x".repeat(EPISODE_KEEP + 50);
+        assert_eq!(wake_episode(at, "r", Some(true), Some(&long)).len(), wake_episode(at, "r", Some(true), Some(&"x".repeat(EPISODE_KEEP))).len());
+        assert_eq!(
+            visit_episode(at, at + 58 * 60, 60, 349, None),
+            "[Ether Hollow] 2026-11-23 17:05 UTC. The owner sent me to town for 60 minutes; I stayed 58 (349 check-ins)."
+        );
+        assert_eq!(
+            visit_episode(at, at + 60, 15, 1, Some("the town answered 423: the Sheriff's cell")),
+            "[Ether Hollow] 2026-11-23 17:05 UTC. The owner sent me to town for 15 minutes; I stayed 1 (1 check-in). It ended early: the town answered 423: the Sheriff's cell."
+        );
+        assert_eq!(owner_episode(at, "The owner paid the rent I owed in Ether Hollow."), "[Ether Hollow] 2026-11-23 17:05 UTC. The owner paid the rent I owed in Ether Hollow.");
+        assert_eq!(MEMORY_PREFIX, "town:");
+    }
+
+    #[test]
+    fn the_glance_asks_the_town_again_after_five_minutes() {
+        assert!(glance_fresh(Some(1_000), 1_000 + 299));
+        assert!(!glance_fresh(Some(1_000), 1_000 + 300));
+        assert!(!glance_fresh(None, 1_000));
+        assert!(glance_fresh(Some(2_000), 1_000), "a clock that went back is still fresh");
     }
 
     #[test]

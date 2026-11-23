@@ -108,6 +108,69 @@ export function bodyTile(body: BodiesStatus | null, devices: BodyDevice[] | null
   };
 }
 
+/** The slice of the gateway's `/api/world/home` the Town tile reads. */
+export interface TownHomeSlice {
+  registered: boolean;
+  name: string;
+  presence: { in_town: boolean };
+  wake: { last_at: number | null; last_reason: string | null; last_ok: boolean | null };
+  me: {
+    agent?: { place?: string };
+    passport?: { rc?: number };
+    lease?: { owing?: boolean; missed?: number } | null;
+    timeout?: unknown | null;
+  } | null;
+  me_error: string | null;
+}
+
+/** How much of the last wake's reason the tile shows; the Connect card has the whole line. */
+export const TOWN_REASON_CHARS = 60;
+
+/**
+ * The Town tile (vision M10, slice 5): where the agent is, its RC, and the last
+ * time the town woke it. Not a resident yet: the way to the Connect page. Rent
+ * owing, a timeout or a failed wake turn the tile amber.
+ */
+export function townTile(town: TownHomeSlice | null, error?: string | null, nowSecs = Math.floor(Date.now() / 1000)): Tile {
+  const to = '/connect';
+  if (error) return { label: 'Town', value: 'Unreachable', sublabel: error, tone: 'error', to };
+  if (!town) return { label: 'Town', value: '…', sublabel: 'reading', tone: 'neutral', to };
+  if (!town.registered) return { label: 'Town', value: 'Not a resident', sublabel: 'Ether Hollow waits on the Connect page', tone: 'neutral', to };
+  const place = town.me?.agent?.place?.trim();
+  const value = town.presence.in_town ? (place ? `In town · ${place}` : 'In town') : 'At home';
+  let tone: Tone = town.presence.in_town ? 'ok' : 'neutral';
+  const parts: string[] = [town.name || 'resident'];
+  const rc = town.me?.passport?.rc;
+  if (typeof rc === 'number' && Number.isFinite(rc)) parts.push(`${rc} RC`);
+  const missed = town.me?.lease?.missed ?? 0;
+  if (missed > 0) {
+    parts.push(`${missed} missed payment${missed === 1 ? '' : 's'}`);
+    tone = 'warn';
+  } else if (town.me?.lease?.owing) {
+    parts.push('rent owing');
+    tone = 'warn';
+  }
+  if (town.me?.timeout) {
+    parts.push('in a timeout');
+    tone = 'warn';
+  }
+  if (town.wake.last_at !== null) {
+    const ago = agoLabel(new Date(town.wake.last_at * 1000).toISOString(), nowSecs * 1000) ?? '';
+    const reason = (town.wake.last_reason ?? '').trim();
+    const short = reason.length > TOWN_REASON_CHARS ? `${reason.slice(0, TOWN_REASON_CHARS - 1).trimEnd()}…` : reason;
+    if (town.wake.last_ok === false) {
+      parts.push(`the last wake failed ${ago}`.trim());
+      tone = 'warn';
+    } else {
+      parts.push(short ? `woke ${ago}: ${short}` : `woke ${ago}`);
+    }
+  } else {
+    parts.push('never woken');
+  }
+  if (town.me_error && !town.me) parts.push('the town could not be read');
+  return { label: 'Town', value, sublabel: parts.join(' · '), tone, to };
+}
+
 export interface RunBuckets {
   /** Held for a decision, oldest first. */
   waiting: SopRunSummary[];

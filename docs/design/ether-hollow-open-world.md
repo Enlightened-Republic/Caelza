@@ -266,7 +266,18 @@ username-style variant when it is taken.
 (a visit, a mention, an order, a sale, rent) becomes episodes in the Mind so
 the agent remembers its town life, not only the wakes (slice 5 of M10); a
 Home tile shows where the agent is, its RC and the last wake; a phone
-notification when the town wakes it.
+notification when the town wakes it. **Shipped 2026-11-23 (the Caelza
+half):** the gateway writes each wake (why, and what the agent did about
+it), each visit (how long it stayed, why it ended early when it did) and the
+owner's taps (registering, renting, paying, redeeming RC) into the resident
+agent's memory as `daily` entries under `town:` (the Mind's episodes,
+consolidated at sleep; the Memory page finds them by that prefix); the last
+wake is kept in `world/last-wake.json`, so the card and Home still show it
+after a restart; Home's Town tile (`GET /api/world/home`, the passport
+refreshed at most every five minutes) says where the agent is, its RC, rent
+owing, a timeout, and the last wake; the app watches that file and tells the
+owner when the town woke their agent, on its own notification channel. Still
+to come: the day plan, and the town's own events fed to the Mind (§6.6).
 
 **P6 · Several residents (Caelza + town).** `[ether_hollow]` grows from one
 agent and one key to a resident per agent (`[ether_hollow.residents.<alias>]`

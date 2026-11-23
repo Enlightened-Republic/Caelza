@@ -10,6 +10,7 @@ import {
   Brain,
   ClipboardList,
   LayoutDashboard,
+  MapPin,
   MessageSquare,
   Moon,
   RefreshCw,
@@ -25,6 +26,7 @@ import { formatRelative } from '@/lib/format';
 import { t } from '@/lib/i18n';
 import { getMindDigest, getMindStatus, type MindDigest, type MindStatus } from '@/lib/mind';
 import { listRuns, runStatusBadge, type SopRunSummary } from '@/lib/sops';
+import { getWorldHome, type WorldHome } from '@/lib/world';
 import { AgentLook } from '@/looks/Look';
 import { useAgentName } from '@/lib/agentName';
 import type { Session, StatusResponse } from '@/types/api';
@@ -42,6 +44,7 @@ import {
   sleepLine,
   sopEngineOff,
   SOP_OFF_TEXT,
+  townTile,
   type AgentTile as AgentTileData,
   type Tile,
 } from './home.logic';
@@ -72,18 +75,29 @@ export default function Home() {
   const [runs, setRuns] = useState<Loaded<SopRunSummary[]>>(EMPTY);
   const [sessions, setSessions] = useState<Loaded<Session[]>>(EMPTY);
   const [agents, setAgents] = useState<Loaded<string[]>>(EMPTY);
+  const [town, setTown] = useState<Loaded<WorldHome>>(EMPTY);
   const [reload, setReload] = useState(0);
   const refresh = useCallback(() => setReload((n) => n + 1), []);
 
   usePolling(
     async (isStale) => {
-      const [s, m, b, r, se, ag] = await Promise.allSettled([getStatus(), getMindStatus(), getBodiesStatus(), listRuns(), getSessions(), getMapKeys('agents')]);
+      // The town's glance is the gateway's own state plus a passport it refreshes at most every five minutes.
+      const [s, m, b, r, se, ag, w] = await Promise.allSettled([
+        getStatus(),
+        getMindStatus(),
+        getBodiesStatus(),
+        listRuns(),
+        getSessions(),
+        getMapKeys('agents'),
+        getWorldHome(),
+      ]);
       if (isStale()) return;
       setRuntime(settle(s));
       setMind(settle(m));
       setBodies(settle(b));
       setRuns(settle(r));
       setSessions(settle(se));
+      setTown(settle(w));
       setAgents(ag.status === 'fulfilled' ? { data: ag.value.keys, error: null } : { data: null, error: errorText(ag.reason) });
       const mindStatus = m.status === 'fulfilled' ? m.value : null;
       const bodyStatus = b.status === 'fulfilled' ? b.value : null;
@@ -110,6 +124,8 @@ export default function Home() {
     { ...runtimeTile(runtime.data, runtime.error), icon: <Activity size={18} /> },
     { ...mindTile(mind.data, mind.error), icon: <Brain size={18} /> },
     { ...bodyTile(bodies.data, devices, bodies.error), icon: <Smartphone size={18} /> },
+    // Ether Hollow (vision M10, slice 5): where the agent is, its RC, the last wake; the card is on Connect.
+    { ...townTile(town.data, town.error), icon: <MapPin size={18} /> },
   ];
 
   const buckets = partitionRuns(runs.data ?? []);
@@ -131,7 +147,7 @@ export default function Home() {
         }
       />
 
-      <div className="grid gap-3 md:grid-cols-3">
+      <div className="grid gap-3 md:grid-cols-2 lg:grid-cols-4" data-testid="home-tiles">
         {tiles.map((tile) => (
           <Link key={tile.label} to={tile.to} className="block rounded-[var(--radius-md)] focus:outline-none focus-visible:ring-2 focus-visible:ring-pc-accent">
             <StatCard label={tile.label} value={tile.value} sublabel={tile.sublabel} tone={tile.tone} icon={tile.icon} className="h-full" />
