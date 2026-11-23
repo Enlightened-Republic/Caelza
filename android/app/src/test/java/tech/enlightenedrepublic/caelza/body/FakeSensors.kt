@@ -2,6 +2,7 @@ package tech.enlightenedrepublic.caelza.body
 
 import org.json.JSONArray
 import org.json.JSONObject
+import tech.enlightenedrepublic.caelza.voice.VoiceChoice
 import java.io.File
 
 /** A phone's sensors with canned answers in `termux-api`'s shapes; `unavailable` names what the owner has not granted. */
@@ -65,9 +66,14 @@ class FakeSensors : Sensors {
         into.writeBytes(M4A)
     }
 
-    override fun ttsSpeak(text: String) {
+    override fun ttsSpeak(text: String, voice: VoiceChoice?) {
         gate("tts")
-        calls += "tts:$text"
+        calls += if (voice == null) "tts:$text" else "tts:$text@${voice.voice} r${voice.rate} p${voice.pitch}"
+    }
+
+    override fun play(audio: File) {
+        gate("sound")
+        calls += "play:${audio.name}:${String(audio.readBytes())}"
     }
 
     override fun torch(on: Boolean) {
@@ -83,6 +89,7 @@ class FakeSensors : Sensors {
             "notifications" to "needs notification access: Settings › Notifications › Notification access (or Special app access) › Caelza",
             "clipboard" to "the clipboard is empty, or Caelza is not on screen: from Android 10 only the app in front may read it; open Caelza and try again",
             "tts" to "this phone has no working text-to-speech engine",
+            "sound" to "this phone could not play the sound",
             "torch" to "this phone has no flashlight",
         )
         val JPEG: ByteArray = byteArrayOf(0xFF.toByte(), 0xD8.toByte(), 0xFF.toByte(), 0xE0.toByte()) + "fake-jpeg".toByteArray()

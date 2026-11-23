@@ -106,6 +106,53 @@ class SensorToolsTest {
         assertTrue(call("sensors_tts_speak").text.startsWith("error: input validation: 'text' is a required property"))
     }
 
+    private fun runtimeDir(voiceJson: String): File {
+        val dir = tmp.newFolder(".caelza")
+        File(dir, "config.toml").writeText("[agents.main]\nmcp_bundles = [\"body\"]\nrisk_profile = \"phone\"\n")
+        File(dir, "agents/main").mkdirs()
+        File(dir, "agents/main/voice.json").writeText(voiceJson)
+        return dir
+    }
+
+    @Test
+    fun speaking_uses_the_agents_chosen_phone_voice_and_a_browser_voice_means_the_phones_own() {
+        val dir = runtimeDir("""{"engine":"phone","voice":"en-gb-x-gba-local","rate":1.2,"pitch":0.9}""")
+        val voiced = BodyTools(BodyShell(FakeShell()), home, sensors, voice = BodyVoice(dir))
+        assertEquals("spoken", voiced.call("sensors_tts_speak", JSONObject().put("text", "hi")).text)
+        assertEquals(listOf("tts:hi@en-gb-x-gba-local r1.2 p0.9"), sensors.calls)
+        File(dir, "agents/main/voice.json").writeText("""{"engine":"browser","voice":"Samantha"}""")
+        sensors.calls.clear()
+        assertEquals("spoken", voiced.call("sensors_tts_speak", JSONObject().put("text", "hi")).text)
+        assertEquals(listOf("tts:hi"), sensors.calls)
+    }
+
+    @Test
+    fun an_elevenlabs_voice_is_fetched_from_the_gateway_and_played_or_the_phone_speaks_and_says_why() {
+        val dir = runtimeDir("""{"engine":"elevenlabs","voice":"21m00Tcm4TlvDq8ikWAM","name":"Rachel"}""")
+        val seen = mutableListOf<String>()
+        val gateway = BodyVoice(dir, port = { 42617 }, token = { "tok" }, fetch = { url, token, json ->
+            seen += "$url $token $json"
+            BodyVoice.Reply(200, "mp3!".toByteArray())
+        })
+        val voiced = BodyTools(BodyShell(FakeShell()), home, sensors, voice = gateway)
+        assertEquals("spoken", voiced.call("sensors_tts_speak", JSONObject().put("text", "Hello, I am Moss")).text)
+        assertEquals(listOf("""http://127.0.0.1:42617/api/voice/main/speak tok {"text":"Hello, I am Moss"}"""), seen)
+        val played = sensors.calls.single()
+        assertTrue(played, played.startsWith("play:say-") && played.endsWith(".mp3:mp3!"))
+        assertTrue(home.tmp.listFiles().orEmpty().none { it.name.startsWith("say-") })
+        // Not paired, no key, the gateway down: the phone speaks and the answer says so.
+        sensors.calls.clear()
+        val unpaired = BodyTools(BodyShell(FakeShell()), home, sensors, voice = BodyVoice(dir, token = { null }))
+        assertEquals(
+            "spoken (in the phone's own voice; the ElevenLabs voice did not come: the app is not paired with the gateway)",
+            unpaired.call("sensors_tts_speak", JSONObject().put("text", "hi")).text,
+        )
+        assertEquals(listOf("tts:hi"), sensors.calls)
+        sensors.unavailable += "sound"
+        sensors.calls.clear()
+        assertEquals("error: this phone could not play the sound", voiced.call("sensors_tts_speak", JSONObject().put("text", "hi")).text)
+    }
+
     @Test
     fun a_sensor_is_this_phones_own() {
         assertEquals(

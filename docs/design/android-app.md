@@ -223,7 +223,7 @@ unchanged:
 | `sensors_location` | quick: `WifiManager` + the keyless IP lookup (`IpGeo`, the Python `_ipgeo`'s two services); gps / network: `LocationManager.getCurrentLocation`, the last known fix as the fallback |
 | `sensors_camera_photo` | camera2: a preview nobody sees for 900 ms so exposure and focus settle, then a still at about 1080p, JPEG, oriented |
 | `sensors_mic_record` | `MediaRecorder` to .m4a (AAC in MPEG-4), 1 to 60 s |
-| `sensors_tts_speak` | `TextToSpeech`, returning once the utterance is done |
+| `sensors_tts_speak` | `TextToSpeech` in the agent's chosen voice (`agents/<alias>/voice.json`: the phone voice by name, speed and pitch), or its ElevenLabs voice as MP3 from the gateway's `POST /api/voice/<alias>/speak` with the app's own paired token, played with `MediaPlayer`; the phone's own voice when the gateway cannot speak, the answer saying why; returning once done |
 | `sensors_torch` | `CameraManager.setTorchMode` on the back camera with a flash |
 
 Each capability is a runtime permission or a Settings switch

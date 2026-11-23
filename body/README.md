@@ -149,6 +149,15 @@ pinned against `caelza-body list-tools` by `scripts/android_body_fixtures.py`
 and `tests/test_android_body.py`). The fleet tools stay here: the app's Body
 is one phone, and `device_join` from a hub reaches it like any other.
 
+**In the agent's own voice.** `sensors_tts_speak` speaks in the voice the
+agent chose (`agents/<alias>/voice.json` under the Runtime's config dir,
+`$CAELZA_CONFIG_DIR` or `~/.caelza`; the alias is the agent whose
+`mcp_bundles` carries the Body). In the app that is the phone voice by name,
+speed and pitch, or the ElevenLabs voice fetched from the gateway and played;
+here on Termux the voice's language, speed and pitch go to `termux-tts-speak`
+(it picks voices by locale, not by name), and an ElevenLabs voice is spoken by
+the phone's own, the answer saying so.
+
 `device_list` shows the fleet with kinds (`self`, `adb`, `http`), reachability
 (a remote's `/health`) and **groups**. `device_pair … groups="family"`,
 `device_tag`, or `caelza-body fleet tag grandma --groups family` set them; the
