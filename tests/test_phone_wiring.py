@@ -32,7 +32,7 @@ RELEASE = (REPO_ROOT / ".github" / "workflows" / "release.yml").read_text()
 
 def test_the_body_wiring_repairs_an_agent_another_writer_made_first():
     assert "fun repairMainAgent(text: String): String" in STORE
-    assert "val repaired = repairMainAgent(text)" in STORE
+    assert "val repaired = repairGuideProfile(repairMainAgent(text))" in STORE
     assert 'missing.append("\\nrisk_profile = \\"phone\\"")' in STORE
     assert 'missing.append("\\nmcp_bundles = [\\"body\\"]")' in STORE
     # The whole file is rewritten only when something changed; the second run adds nothing.
@@ -80,6 +80,6 @@ def test_the_memory_page_and_the_faq_say_what_a_phone_does_about_the_mind():
     assert corpus == (REPO_ROOT / "android" / "app" / "src" / "main" / "assets" / "cael-corpus.jsonl").read_text()
 
 
-def test_the_release_says_0_6_1():
-    assert MANIFEST["caelza"]["version"] == "0.6.1"
-    assert "**v0.6.1 fixes the phone's first run:**" in RELEASE
+def test_the_release_notes_carry_the_phone_fix():
+    assert MANIFEST["caelza"]["version"] == "0.7.0"
+    assert "v0.6.1 fixed the phone's first run" in RELEASE

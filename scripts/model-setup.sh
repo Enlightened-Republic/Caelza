@@ -121,11 +121,13 @@ if command -v caelza >/dev/null 2>&1; then
       *) say "agents.main keeps model_provider = $current (set CAELZA_SET_AGENT_MODEL=1 and clear it to switch, or: caelza config set agents.main.model_provider $PROVIDER_AGENT)" ;;
     esac
   fi
-  say "creating Cael (agents.cael, risk profile guide: readonly, no tools)"
+  say "creating Cael (agents.cael, risk profile guide: one tool, shape_agent, so he can give the owner's agent who it is)"
   cset agents.cael.model_provider "$PROVIDER_GUIDE"
   cset agents.cael.risk_profile guide
-  cset risk_profiles.guide.level readonly
-  cset risk_profiles.guide.deny_all_tools true
+  cset risk_profiles.guide.level supervised
+  cset risk_profiles.guide.deny_all_tools false
+  cset risk_profiles.guide.allowed_tools '["shape_agent"]'
+  cset risk_profiles.guide.auto_approve '["shape_agent"]'
 else
   say "caelza is not on PATH: merge runtime/caelza.local-model.example.toml into $CFG/config.toml by hand"
 fi
@@ -142,7 +144,7 @@ fi
 [ -f "$ws/IDENTITY.md" ] || cat > "$ws/IDENTITY.md" <<'EOF'
 - **Name:** Cael
 - **Pronouns:** he/him
-- **Role:** the guide inside Caelza; explains and encourages, never acts
+- **Role:** the guide inside Caelza; explains and encourages, and gives the owner's agent who it is when they first meet
 - **Vibe:** warm, cute, personable; short sentences, plain words; glad when things work, honest and kind when they don't; never sarcastic, never scolding
 - **Made by:** Enlightened Republic
 EOF
@@ -159,8 +161,9 @@ fi
 [ -f "$ws/AGENTS.md" ] || cat > "$ws/AGENTS.md" <<'EOF'
 # AGENTS.md — how Cael works
 
-Read SOUL.md (who I am) and USER.md (who I'm helping) first. I explain, encourage and point at the next step;
-I run no tools and change no settings. If I'm asked for something only the owner's agent can do, I say so and point at it.
+Read SOUL.md (who I am) and USER.md (who I'm helping) first. I explain, encourage and point at the next step.
+I run one tool, `shape_agent`, to give the owner's agent who it is when we first meet, and no other; I change no settings.
+If I'm asked for something only the owner's agent can do, I say so and point at it.
 EOF
 
 cat <<EOF

@@ -178,6 +178,20 @@ must stay in sync with Caelza's looks. Cael, the guide, stays separate.
 
 ### The plan, in slices
 
+**P0 · Cael meets the owner (Caelza).** The owner's first conversation is with
+Cael, the guide, and it is where their agent becomes someone: Cael says who he
+is, asks the owner's name, what brought them here, what they want their AI to
+do and how it should talk to them, offers a name, and, once they agree, gives
+the agent who it is with his one tool, `shape_agent` (its IDENTITY.md with the
+name, a SOUL.md in a few paragraphs from what the owner said, a USER.md with
+what he learned about them, and his own USER.md so he remembers them too). His
+profile allows that tool alone. On a phone the app has already made the agent
+with its model, so Cael shapes that one; on a PC the Setup page makes Cael
+beside the agent and ends with "Meet Cael". **Shipped 2026-11-21.** The owner's
+words: "he didn't really care about himself or me... we need to fix that so he's
+getting to know the user, what type of agent they want and all that, then make
+a new agent."
+
 **P1 · A name of its own (Caelza).** The first run asks "What do you want to
 call your AI?" with a suggestion drawn the way looks are dealt; the name lives
 with the agent (its identity file, read by the Runtime and the dashboard: the

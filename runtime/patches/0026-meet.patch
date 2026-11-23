@@ -1,0 +1,97 @@
+Cael meets the owner (vision M10 §10, P0): his one tool, `shape_agent`.
+
+Cael, the guide, gets to know a new owner and gives their agent who it is: its
+name, its soul in a few paragraphs from what they told him, and what it knows
+about them. The tool from the overlay (crates/caelza-tools/src/shape_agent.rs)
+is declared, attributed, listed, registered for Cael alone, given its line in
+the prompt's tool list and its row in the docs' table. His risk profile
+(written by the app, the dashboard and model-setup.sh) allows that tool and no
+other.
+
+--- a/crates/caelza-runtime/src/agent/loop_.rs
++++ b/crates/caelza-runtime/src/agent/loop_.rs
+@@ -2041,6 +2041,10 @@
+             "Your own voice, for replies read aloud: `show` the voices on offer by engine (browser, phone, elevenlabs) and your choice, `set {engine, voice, why}` one with a sentence on why, `reset`. Acts on its own once your owner turned on \"Let it be itself\".",
+         ));
+         tool_descs.push((
++            "shape_agent",
++            "Give the owner's agent who it is once you have met the owner: its name, creature, vibe, a soul in a few paragraphs from what they told you, and what you learned about them (name, about, wants, tone). Writes its IDENTITY.md, SOUL.md and USER.md and your own USER.md. Once, when the owner agreed to the name.",
++        ));
++        tool_descs.push((
+         "schedule",
+         "Manage scheduled tasks (create/list/get/cancel/pause/resume). Supports recurring cron and one-shot delays.",
+     ));
+--- a/crates/caelza-runtime/src/tools/mod.rs
++++ b/crates/caelza-runtime/src/tools/mod.rs
+@@ -133,6 +133,7 @@
+ pub use caelza_tools::identity::IdentityTool;
+ pub use caelza_tools::look::LookTool;
+ pub use caelza_tools::voice::VoiceTool;
++pub use caelza_tools::shape_agent::ShapeAgentTool;
+ pub use caelza_tools::proxy_config::ProxyConfigTool;
+ #[cfg(feature = "tools-external")]
+ pub use caelza_tools::pushover::PushoverTool;
+@@ -1820,6 +1821,11 @@
+         register_tool!("identity", Arc::new(IdentityTool::new(&root_config, agent_alias)));
+         register_tool!("voice", Arc::new(VoiceTool::new(&root_config, agent_alias)));
+     }
++    // Caelza: Cael, the guide, meets the owner and gives their agent its name, its
++    // soul and who it is helping. His one tool; his profile allows it alone.
++    if agent_alias == "cael" {
++        register_tool!("shape_agent", Arc::new(ShapeAgentTool::new(&root_config)));
++    }
+     register_tool!(
+         "canvas",
+         Arc::new(CanvasTool::new(canvas_store.unwrap_or_default()))
+--- a/crates/caelza-tools/src/attribution.rs
++++ b/crates/caelza-tools/src/attribution.rs
+@@ -60,6 +60,7 @@
+ use crate::llm_task::LlmTaskTool;
+ use crate::look::LookTool;
+ use crate::voice::VoiceTool;
++use crate::shape_agent::ShapeAgentTool;
+ use crate::mcp_tool::McpToolWrapper;
+ use crate::memory_export::MemoryExportTool;
+ use crate::memory_forget::MemoryForgetTool;
+@@ -191,6 +192,7 @@
+ tool_attribution!(IdentityTool, ToolKind::Plugin);
+ tool_attribution!(LookTool, ToolKind::Plugin);
+ tool_attribution!(VoiceTool, ToolKind::Plugin);
++tool_attribution!(ShapeAgentTool, ToolKind::Plugin);
+ #[cfg(feature = "tools-external")]
+ tool_attribution!(WebSearchTool, ToolKind::Search);
+ 
+--- a/crates/caelza-tools/src/inventory.rs
++++ b/crates/caelza-tools/src/inventory.rs
+@@ -467,6 +467,11 @@
+         compilation: BuiltinToolCompilation::Always,
+     },
+     BuiltinToolSpec {
++        name: "shape_agent",
++        tier: ToolTier::Optional,
++        compilation: BuiltinToolCompilation::Always,
++    },
++    BuiltinToolSpec {
+         name: "pushover",
+         tier: ToolTier::Optional,
+         compilation: BuiltinToolCompilation::External,
+--- a/crates/caelza-tools/src/lib.rs
++++ b/crates/caelza-tools/src/lib.rs
+@@ -74,6 +74,7 @@
+ pub mod llm_task;
+ pub mod look;
+ pub mod voice;
++pub mod shape_agent;
+ pub mod mcp_client;
+ pub mod mcp_context;
+ pub mod mcp_deferred;
+--- a/docs/book/src/developing/tool-inventory.md
++++ b/docs/book/src/developing/tool-inventory.md
+@@ -245,6 +245,7 @@
+ | Knowledge | `knowledge` | No |
+ | Caelza | `ether_hollow` | No: `[ether_hollow].enabled` is off until the owner registers the resident |
+ | Caelza | `look`, `identity`, `voice` | Yes, for every agent but Cael; they act only once `[persona].free` is on (the Looks page's "Let it be itself") |
++| Caelza | `shape_agent` | For Cael alone: he gives the owner's agent its name, soul and who it is helping when they first meet |
+ 
+ Registration on a default config follows the config defaults:
+ `[browser].enabled`, `[http_request].enabled`, `[web_search].enabled`, and

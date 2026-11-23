@@ -146,7 +146,7 @@ class RuntimeStore(val home: File) {
         // An `[agents.main]` another writer made first (the app's own first run sets its model with
         // `caelza config set` before the Body is wired) gets the two lines it lacks; without them the
         // Runtime refuses to start the agent ("risk_profile does not name a configured risk_profiles entry").
-        val repaired = repairMainAgent(text)
+        val repaired = repairGuideProfile(repairMainAgent(text))
         if (repaired != text) {
             text = repaired
             changed = true
@@ -206,6 +206,44 @@ class RuntimeStore(val home: File) {
             return text.substring(0, lineEnd) + missing + text.substring(lineEnd)
         }
 
+        /** The Body's own classes as the Runtime's gate: READ_ONLY auto-approved, DESTRUCTIVE always asked. */
+        fun riskProfileBlock(): String {
+            fun list(names: List<String>) = names.joinToString("\n") { "  \"body__$it\"," }
+            return "\n# The Body requires a `reason` on its DANGEROUS ops and audit-logs them; this is the\n" +
+                "# Runtime's second gate: reads run without a prompt, the rest asks the owner first.\n" +
+                "[risk_profiles.phone]\nlevel = \"supervised\"\nrequire_approval_for_medium_risk = true\nblock_high_risk_commands = true\n" +
+                "auto_approve = [\n" + list(BodyTools.names(BodyTools.Safety.READ_ONLY)) + "\n]\n" +
+                "always_ask = [\n" + list(BodyTools.names(BodyTools.Safety.DESTRUCTIVE)) + "\n]\n"
+        }
+
+        private val RISK_GUIDE = Regex("""^\s*\[risk_profiles\.guide]""", RegexOption.MULTILINE)
+        private val GUIDE_DENY_ALL = Regex("""^(\s*)deny_all_tools\s*=\s*true[ \t]*$""", RegexOption.MULTILINE)
+        private val GUIDE_READONLY = Regex("""^(\s*)level\s*=\s*"readonly"[ \t]*$""", RegexOption.MULTILINE)
+        private val KEY_ALLOWED = Regex("""^\s*allowed_tools\s*=""", RegexOption.MULTILINE)
+        private val KEY_AUTO = Regex("""^\s*auto_approve\s*=""", RegexOption.MULTILINE)
+        /** Cael's one tool: he gives the owner's agent who it is when they first meet. */
+        const val GUIDE_TOOL = "shape_agent"
+
+        /**
+         * Cael's profile from before he had a tool (`readonly`, `deny_all_tools = true`, v0.6.1 and
+         * earlier) becomes the one that lets him shape the owner's agent and nothing else:
+         * supervised, `allowed_tools` and `auto_approve` both naming [GUIDE_TOOL]. Only the
+         * `[risk_profiles.guide]` section changes.
+         */
+        fun repairGuideProfile(text: String): String {
+            val header = RISK_GUIDE.find(text) ?: return text
+            val lineEnd = text.indexOf('\n', header.range.last + 1).let { if (it < 0) text.length else it }
+            val sectionEnd = NEXT_TABLE.find(text, lineEnd + 1)?.range?.first ?: text.length
+            var section = text.substring(lineEnd, sectionEnd)
+            section = GUIDE_DENY_ALL.replace(section) { "${it.groupValues[1]}deny_all_tools = false" }
+            section = GUIDE_READONLY.replace(section) { "${it.groupValues[1]}level = \"supervised\"" }
+            val missing = StringBuilder()
+            if (!KEY_ALLOWED.containsMatchIn(section)) missing.append("\nallowed_tools = [\"$GUIDE_TOOL\"]")
+            if (!KEY_AUTO.containsMatchIn(section)) missing.append("\nauto_approve = [\"$GUIDE_TOOL\"]")
+            val repaired = text.substring(0, lineEnd) + missing + section + text.substring(sectionEnd)
+            return repaired
+        }
+
         fun bodyServerBlock(token: String, port: Int = BODY_PORT): String = """
             |
             |# The app's Body: this phone's device tools over Shizuku, served on loopback
@@ -222,16 +260,6 @@ class RuntimeStore(val home: File) {
 
         const val AGENT_MAIN = "\n# The agent that carries the Body; the dashboard's quickstart adds the model and channels.\n" +
             "[agents.main]\nmcp_bundles = [\"body\"]\nrisk_profile = \"phone\"\n"
-
-        /** The Body's own classes as the Runtime's gate: READ_ONLY auto-approved, DESTRUCTIVE always asked. */
-        fun riskProfileBlock(): String {
-            fun list(names: List<String>) = names.joinToString("\n") { "  \"body__$it\"," }
-            return "\n# The Body requires a `reason` on its DANGEROUS ops and audit-logs them; this is the\n" +
-                "# Runtime's second gate: reads run without a prompt, the rest asks the owner first.\n" +
-                "[risk_profiles.phone]\nlevel = \"supervised\"\nrequire_approval_for_medium_risk = true\nblock_high_risk_commands = true\n" +
-                "auto_approve = [\n" + list(BodyTools.names(BodyTools.Safety.READ_ONLY)) + "\n]\n" +
-                "always_ask = [\n" + list(BodyTools.names(BodyTools.Safety.DESTRUCTIVE)) + "\n]\n"
-        }
 
         val DEFAULT_CONFIG = """
             |# Written by the Caelza app on first start. The gateway listens on loopback

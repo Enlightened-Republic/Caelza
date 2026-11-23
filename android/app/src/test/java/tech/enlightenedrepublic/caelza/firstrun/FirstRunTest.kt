@@ -35,8 +35,10 @@ class FirstRunTest {
                 "agents.main.model_provider" to "llamacpp.local",
                 "agents.cael.model_provider" to "llamacpp.guide",
                 "agents.cael.risk_profile" to "guide",
-                "risk_profiles.guide.level" to "readonly",
-                "risk_profiles.guide.deny_all_tools" to "true",
+                "risk_profiles.guide.level" to "supervised",
+                "risk_profiles.guide.deny_all_tools" to "false",
+                "risk_profiles.guide.allowed_tools" to "[\"shape_agent\"]",
+                "risk_profiles.guide.auto_approve" to "[\"shape_agent\"]",
             ),
             FirstRun.localConfig(pick),
         )
@@ -51,7 +53,8 @@ class FirstRunTest {
         assertEquals("providers.models.anthropic.default.model" to "claude-sonnet-5-5", entries[1])
         assertEquals("agents.main.model_provider" to "anthropic.default", entries[2])
         assertEquals("agents.cael.model_provider" to "anthropic.default", entries[3])
-        assertTrue(entries.any { it.first == "risk_profiles.guide.deny_all_tools" && it.second == "true" })
+        assertTrue(entries.any { it.first == "risk_profiles.guide.allowed_tools" && it.second == "[\"shape_agent\"]" })
+        assertTrue(entries.any { it.first == "risk_profiles.guide.deny_all_tools" && it.second == "false" })
         val openrouter = providers.first { it.id == "openrouter" }
         assertEquals(
             "providers.models.openrouter.default.model" to "google/gemini-2.5-pro",

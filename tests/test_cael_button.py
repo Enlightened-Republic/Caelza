@@ -106,4 +106,4 @@ def test_manifest_points_at_the_guide_button():
     assert rt["guide_patch"] == "runtime/patches/0012-cael-explain.patch"
     assert (REPO_ROOT / rt["guide_button"]).is_file() and (REPO_ROOT / rt["guide_patch"]).is_file()
     # The guide's own rules: he explains, he does not act.
-    assert "You do not run tools" in SOUL
+    assert "You do not run\nother tools" in SOUL and "You have one tool,\n`shape_agent`" in SOUL

@@ -74,6 +74,27 @@ class BodyWiringTest {
         assertEquals(text, File(store.configDir, "config.toml").readText())
     }
 
+    /** Cael's profile from v0.6.1 and before (readonly, no tools) becomes the one that allows his one tool. */
+    @Test
+    fun caels_old_profile_gains_his_one_tool_and_nothing_else_changes() {
+        val old = "[agents.cael]\nrisk_profile = \"guide\"\n\n[risk_profiles.guide]\nlevel = \"readonly\"\ndeny_all_tools = true\n\n[risk_profiles.phone]\nlevel = \"supervised\"\n"
+        val fixed = RuntimeStore.repairGuideProfile(old)
+        assertEquals(
+            "[agents.cael]\nrisk_profile = \"guide\"\n\n[risk_profiles.guide]\nallowed_tools = [\"shape_agent\"]\nauto_approve = [\"shape_agent\"]\nlevel = \"supervised\"\ndeny_all_tools = false\n\n[risk_profiles.phone]\nlevel = \"supervised\"\n",
+            fixed,
+        )
+        assertEquals(fixed, RuntimeStore.repairGuideProfile(fixed))
+        assertEquals("no guide", RuntimeStore.repairGuideProfile("no guide"))
+        // The wiring runs it: a config with the old profile is rewritten once.
+        val store = RuntimeStore(tmp.root)
+        store.configDir.mkdirs()
+        File(store.configDir, "config.toml").writeText("schema_version = 3\n\n[agents.main]\nmcp_bundles = [\"body\"]\nrisk_profile = \"phone\"\n\n$old")
+        assertTrue(store.ensureBodyWiring("abc"))
+        val text = File(store.configDir, "config.toml").readText()
+        assertTrue(text, "[risk_profiles.guide]\nallowed_tools = [\"shape_agent\"]\nauto_approve = [\"shape_agent\"]\nlevel = \"supervised\"\ndeny_all_tools = false\n" in text)
+        assertFalse(store.ensureBodyWiring("abc"))
+    }
+
     @Test
     fun repair_adds_only_what_the_section_lacks_and_leaves_other_sections_alone() {
         val half = "[agents.main]\nrisk_profile = \"phone\"\nmodel_provider = \"x\"\n\n[agents.other]\nmodel_provider = \"y\"\n"
