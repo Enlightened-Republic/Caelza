@@ -14,6 +14,8 @@ export function stageLabel(stage: string): string {
       return 'Writing the launcher';
     case 'tokens':
       return "Minting the agent's keys";
+    case 'config':
+      return "Turning on the agent's inner life";
     case 'start':
       return 'Starting the Mind';
     case 'startup':

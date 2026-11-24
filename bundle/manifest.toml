@@ -134,13 +134,13 @@ formerly = "openwave"
 repo = "https://github.com/Enlightened-Republic/xanima-openclaw"   # main carries the rename (merged 2026-10-18)
 npm = "xanima-openclaw"           # published 2026-10-19; ClawHub: clawhub:xanima
 plugin_id = "xanima"              # legacyPluginIds: ["openwave"]; config entry plugins.entries.xanima
-version = "0.7.0"                 # the plugin vendors the 0.7.0 engine (its README, read 2026-11-01)
+version = "0.7.0"                 # the plugin vendors the 0.7.0 engine (its README, read 2026-11-01); npm 0.8.0 is pending (upstream's publish of the v0.8.0 tag failed), so the plugin stays at 0.7.0
 engine = "xanima-core"            # formerly sharpwave-core; published 2026-10-19
-engine_version = "0.7.0"          # npm, read 2026-11-01
+engine_version = "0.7.0"          # npm, read 2026-11-24: still 0.7.0, the 0.8.0 publish is pending; the Mind below is built from source at 0.8.0
 engine_repo = "https://github.com/Enlightened-Republic/xanima"   # main carries the rename
 service = "xanima-server"         # formerly sharpwave-server; a private workspace package (not on npm): every Caelza release carries it built, see service_asset; MCP Streamable HTTP on 127.0.0.1:18790
-service_version = "0.7.0"         # packages/server/package.json at service_commit
-service_commit = "0869836b4b25c3c7e25a3698e98a3fa3e01980b3"   # engine_repo main at 0.7.0 (schema v28), read 2026-11-03; the commit mind/pack.sh builds
+service_version = "0.8.0"         # packages/server/package.json at service_commit
+service_commit = "af975ed9937b954ca937ea609be5073b6a6f2716"   # engine_repo main at 0.8.0, tag v0.8.0 (schema v31: the inner life, PR #30, and its continuity and bonds, PR #31), read 2026-11-24; the commit mind/pack.sh builds
 service_asset = "caelza-mind-<version>.tgz"   # on every release beside the Runtime tarballs and the APK, its .sha256 beside it: npm pack of the built xanima-server workspace (mind/pack.sh, run by release.yml's mind job)
 service_pack = "mind/pack.sh"
 service_install = "mind/install.sh"           # Termux or a Linux hub: ~/.local/share/caelza/mind, the `caelza-mind` launcher; CAELZA_SERVICE=1 adds the Termux:Boot script or the systemd user unit
@@ -150,7 +150,7 @@ mcp_server = "xanima"             # published 2026-10-19; keeps a `sharpwave` al
 brain_dir = "~/.xanima/<agent>/brain.db"   # ~/.sharpwave is read until `xanima-server migrate`
 token_env = "XANIMA_BRAIN_TOKEN"  # OPENWAVE_BRAIN_TOKEN still accepted with a warning
 upgrade_cli = "xanima-openclaw-upgrade"    # copies plugins.entries.openwave -> plugins.entries.xanima
-tools = 42                        # brain_* names unchanged and permanent; what the 0.7.0 service's tools/list answers (read 2026-11-03); schema v28
+tools = 43                        # brain_* names unchanged and permanent; what the 0.8.0 service's tools/list answers an agent token (read from packages/server/src/tools.ts SERVICE_TOOLS and toolsFor, 2026-11-24): 0.7.0's 42 plus brain_inner; schema v31
 integration = "mind/README.md"
 # M3: the native Memory backend in the Runtime (`[memory] backend = "xanima"`),
 # carried into every build as an overlay file plus a patch (see mind/README.md §C).
@@ -166,6 +166,11 @@ token_file = "~/.xanima/tokens/{agent}.token"   # one bearer token per agent ali
 # service's source (packages/server/src/{tools,provision,tokens}.ts at 0.7.0).
 turn_context_patch = "runtime/patches/0008-mind-turn-context.patch"
 provision_token_file = "~/.xanima/tokens/provision.token"   # xanima-server token mint --agent provisioner --scopes provision
+# The inner life (xanima 0.8.0: needs, moods, wants, traits, bonds; off by default upstream) is turned on by every
+# Caelza install in the service's config.json, Cael left out (he is the guide, not a resident): the Memory page's
+# install (api_mind_install.rs with_inner_life), mind/install.sh and mind/windows-install.ps1 write the same block,
+# and keep an innerLife that is already there.
+inner_life = '{"brain": {"innerLife": {"excludeAgents": ["cael"]}}}'
 
 # ---------------------------------------------------------------------------
 # Body — the device layer: Termux/Android sensors, ADB device control, the

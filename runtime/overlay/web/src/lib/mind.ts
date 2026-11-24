@@ -279,7 +279,7 @@ export interface MindInstall {
   running: boolean;
   finished: boolean;
   ok: boolean;
-  /** release · node · install · launcher · tokens · start · startup · done */
+  /** release · node · install · launcher · tokens · config · start · startup · done */
   stage: string;
   detail: string;
   done: number;

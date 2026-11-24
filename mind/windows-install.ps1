@@ -121,6 +121,46 @@ try {
 $cli = [IO.Path]::Combine($mindDir, 'node_modules', 'xanima-server', 'dist', 'cli.js')
 if (-not (Test-Path $cli)) { throw "the install left no $cli" }
 
+# The inner life (xanima 0.8.0: needs, moods, wants, bonds) on for the owner's
+# agents, Cael left out: brain.innerLife in the service's config.json, read
+# when the service starts (a running one needs one restart). Node does the
+# JSON, so Windows PowerShell 5.1's ConvertTo-Json never reshapes the file.
+$innerJs = Join-Path ([IO.Path]::GetTempPath()) ("caelza-inner-" + [guid]::NewGuid() + ".cjs")
+Set-Content -Path $innerJs -Encoding ascii -Value @'
+// caelza-inner-life: the same lines in mind/install.sh and mind/windows-install.ps1
+// (tests/test_mind_release.py keeps them so), what api_mind_install.rs does in Rust.
+// The service root is the service's own rule (XANIMA_SERVICE_ROOT, else
+// <~/.xanima, or an un-migrated ~/.sharpwave>/service); an innerLife already in
+// its config.json is the owner's and is kept.
+const fs = require("fs"), path = require("path"), os = require("os");
+const e = process.env, env = (s) => e["XANIMA_" + s] || e["SHARPWAVE_" + s] || "";
+let root = env("SERVICE_ROOT");
+if (!root) {
+  const home = e.XANIMA_HOME_OVERRIDE || os.homedir();
+  const neu = path.join(home, ".xanima"), old = path.join(home, ".sharpwave");
+  root = path.join(fs.existsSync(neu) ? neu : fs.existsSync(old) ? old : neu, "service");
+}
+const file = path.join(root, "config.json");
+const cfg = fs.existsSync(file) ? JSON.parse(fs.readFileSync(file, "utf8").replace(/^\uFEFF/, "")) : {};
+if (!cfg.brain || typeof cfg.brain !== "object") cfg.brain = {};
+if ("innerLife" in cfg.brain) {
+  console.log("inner life: " + file + " already says, kept");
+} else {
+  cfg.brain.innerLife = { excludeAgents: ["cael"] };
+  fs.mkdirSync(root, { recursive: true });
+  fs.writeFileSync(file + ".tmp", JSON.stringify(cfg, null, 2) + "\n");
+  fs.renameSync(file + ".tmp", file);
+  console.log("inner life on (brain.innerLife, Cael left out) -> " + file);
+}
+'@
+try {
+    $innerOut = & $nodeExe $innerJs
+    if ($LASTEXITCODE -eq 0) { $innerOut | ForEach-Object { Say $_ } }
+    else { Say "could not turn on the inner life; add `"brain`": {`"innerLife`": {`"excludeAgents`": [`"cael`"]}} to the Mind's config.json yourself" }
+} finally {
+    Remove-Item -Force $innerJs -ErrorAction SilentlyContinue
+}
+
 # 4. The launcher: node from PATH at run time first (a version manager moves it), else the one this install saw.
 New-Item -ItemType Directory -Force -Path $binDir | Out-Null
 $launcher = Join-Path $binDir 'caelza-mind.cmd'
