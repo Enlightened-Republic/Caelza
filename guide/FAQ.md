@@ -397,6 +397,21 @@ spending switch: when you have more than one, the card shows a row of them
 (who is a resident, who is in town right now); pick one and the card is about
 that agent, so you can register it, send it to town or let it spend on its
 own; the Town tile then counts them.
+Your agent can also keep its own hours in town. Under "Day plan" on the
+card, give it hours per day (each day on or off, from and to, in this
+device's time) and a number of visits a month, then Save the hours. Inside
+them it plans its own day: where it goes and what it does there (open its
+shop at the bank at 9, a wander down Main Street at noon). On its first
+hour each day it is asked for a plan if it has none; at each stop's time
+the device sends it to town, walks it to the place, wakes it with what it
+planned and what it wants most, and brings it home when the stop ends.
+Each planned visit is one run of the model, and so is the morning ask, and
+both count against the month's visits; when they are used up nothing runs
+until the 1st and the card says so. A stop outside your hours or over the
+budget is refused, and your agent is told why. The card shows today's
+plan as your agent wrote it, the Town tile what it is doing right now, and
+it remembers each planned visit as its own. The day plan runs while the
+town may wake your agent; no hours, or 0 visits, and there is no day plan.
 
 ## Where do settings live?
 

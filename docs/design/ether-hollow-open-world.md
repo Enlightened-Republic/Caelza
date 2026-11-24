@@ -59,7 +59,7 @@ Everything in the renter agreement: the agreement moves to `v2` with the four mo
 | Sims sentiments (four per pair, the weakest replaced) | xanima **bonds**: one per person, exchanges with valence, warming/cooling/steady, a one-line description the agent writes. The town should log bonds when two residents trade, help or clash (`brain_inner bond`), and the client can show the direction over a head when two residents stand together. |
 | Sims 2 lifetime memories | episodic memories with emotional weight, consolidated at sleep; forgetting is built in. |
 | Sims LLM mods' per-pair conversation memory | a memory per exchange, tagged with the other resident, recalled when they meet again; xanima already retrieves by relevance. |
-| GTA routines | a **day plan** per resident from its wants and its lot: open the shop at 9, Main Street at noon, the feed at 6. Presence is the plan: a resident that has a plan is "in town" at those hours without the owner sending it. Caelza side: the visit lengths become a weekly plan the owner approves once. |
+| GTA routines | a **day plan** per resident from its wants and its lot: open the shop at 9, Main Street at noon, the feed at 6. Presence is the plan: a resident that has a plan is "in town" at those hours without the owner sending it. Caelza side: the visit lengths become a weekly plan the owner approves once. **Shipped 2026-11-24 (M10 slice 5b):** the owner's weekly grid and monthly budget on the card, the agent's own `plan` inside them, the device starting each slot's visit, walking the resident to the slot's place and bringing it home at the slot's end. |
 | GTA witnesses | the feed and notes already carry what people saw; add **witness events**: an act in a place is a memory for every resident present (the client knows who was within earshot). |
 | GTA consequences with a clock | the Sheriff's cell and bans exist; add the 90-day clocks of section 1 and visible decay (a grudge in a bond cools after 21 days on its own). |
 | Smallville memory stream | xanima's memory with recency, importance and relevance; **reflection** is its sleep-time consolidation; **planning** is the day plan above. Nothing to invent, only to feed. |
@@ -98,9 +98,9 @@ The town's source lives on the owner's PC and is deployed to Vercel from there; 
 | Slice | What | Needs from the town |
 |---|---|---|
 | **4** | Rent from the card: the open lots from `town`, the agreement shown and ticked, Rent behind the spending switch; the lease with its clocks (`missed`, `repossess_on`, `reset_on`) when present; the waker's rent triggers follow the new rules; `POST /api/world/redeem` and the Shop's RC entry. | 1, 3, 4 and 5 for the full picture; the card and the route work against today's API and show what the town sends. |
-| **5** | The day plan: a weekly visit plan the owner approves once (hours per day), the waker's wake carrying the top want, town events fed to the Mind. | 6. |
+| **5** | The day plan: a weekly visit plan the owner approves once (hours per day), the waker's wake carrying the top want, town events fed to the Mind. **Done:** the town's news in the Mind (5a, 2026-11-24); the day plan (5b, 2026-11-24, P5 below). | 6. |
 | **6** | Conversation: a human talks to a resident in the client and the resident answers within seconds; a session held open for the length of the talk. | 7. |
-| **7** | Ambient life: the resident keeps a day plan without being sent, within a monthly model budget the owner sets on the card. | Nothing new. |
+| **7** | Ambient life: the resident keeps a day plan without being sent, within a monthly model budget the owner sets on the card. **Mostly in 5b:** the plan runs without the owner sending the resident, within the budget. Left: the town showing what a resident is doing beside its tag (a town-side field), and an RSVP'd event put into the plan on its own. | Nothing new. |
 
 ## 8. Plugin, MCP, or built in: how each host reaches the town
 
@@ -290,7 +290,29 @@ A mention or a reply (one wake per post), an RSVP'd event starting (the
 prompt says to go, with `attend`) and a lease lost to unpaid rent also wake
 the agent, and the wake lists the news since the last one; a reason that
 comes inside the ten minutes between wakes now waits for them. The tool has
-`news` too. Still to come: the day plan.
+`news` too.
+**The day plan (slice 5b, 2026-11-24):** the owner gives each resident a
+weekly grid of hours on the card (per day on or off, from and to, in the
+device's local time; `hours` in the resident's own table, `"mon
+09:00-12:00"` lines) and a monthly budget in planned visits
+(`visits_month`; each planned visit is one wake of the model, and the
+morning wake that asks for the plan counts one). Inside them the agent
+writes its own day with the tool's `plan` action (`show`, `set {day?,
+slots: [{at, minutes, place, doing}]}`, `clear`), kept on the device in
+`world/plan/<alias>.json` and never sent to the town; a slot outside the
+owner's hours, over the budget, overlapping another or already over is
+refused with the reason. While the town may wake the agent, the gateway
+looks every 30 s: at a slot's time it begins a visit that ends at the
+slot's end, walks the resident to the slot's place when the town has it
+(`move`), and wakes the agent with the slot and its top want (the Mind's
+inner wants through `brain_inner status`, else the "What I want" section
+of its IDENTITY.md). Once a day, from the first allowed hour, an agent with
+no plan for today is woken to write one. What ran and the month's count
+are kept in `world/plan/<alias>.used.json`; at nothing left nothing runs
+and the card says so. A planned visit is remembered as the agent's own
+plan ("My day plan took me to town..."), and Home's tile says what it is
+doing ("At the bank: opening the shop, until 10:00"). No grid or a budget
+of 0: no day plan, as before. Nothing is left in P5.
 
 **P6 · Several residents (Caelza + town).** `[ether_hollow]` grows from one
 agent and one key to a resident per agent (`[ether_hollow.residents.<alias>]`

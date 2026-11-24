@@ -143,6 +143,7 @@ DOOR_PATCH = (REPO_ROOT / "runtime" / "patches" / "0019-world-door.patch").read_
 WAKE_PATCH = (REPO_ROOT / "runtime" / "patches" / "0020-world-wake.patch").read_text()
 RENT_PATCH = (REPO_ROOT / "runtime" / "patches" / "0021-world-rent.patch").read_text()
 RESIDENTS_PATCH = (REPO_ROOT / "runtime" / "patches" / "0028-world-residents.patch").read_text()
+DAY_PLAN_PATCH = (REPO_ROOT / "runtime" / "patches" / "0029-day-plan.patch").read_text()
 FAQ = (REPO_ROOT / "guide" / "FAQ.md").read_text()
 CORPUS = (REPO_ROOT / "guide" / "corpus.jsonl").read_text()
 APP_CORPUS = (REPO_ROOT / "android" / "app" / "src" / "main" / "assets" / "cael-corpus.jsonl").read_text()
@@ -180,6 +181,7 @@ def test_the_door_patch_carries_its_strings_the_sentence_and_the_test():
     added |= set(re.findall(r"^\+    '(world\.[a-z_0-9]+)': ", WAKE_PATCH, re.M))
     added |= set(re.findall(r"^\+    '(world\.[a-z_0-9]+)': ", RENT_PATCH, re.M))
     added |= set(re.findall(r"^\+    '(world\.[a-z_0-9]+)': ", RESIDENTS_PATCH, re.M))
+    added |= set(re.findall(r"^\+    '(world\.[a-z_0-9]+)': ", DAY_PLAN_PATCH, re.M))
     assert used and used <= added, sorted(used - added)
     for key, phrase in (
         ("world.body", "100 RC = $1"),
@@ -384,7 +386,7 @@ def test_renting_is_the_owners_tap_behind_the_spending_switch():
     # The strings: every world.* key the card and the Shop use is in one of the four patches.
     used = set(re.findall(r'"(world\.[a-z_0-9]+)"', DOOR + SHOP))
     added = set()
-    for patch in (DOOR_PATCH, WAKE_PATCH, RENT_PATCH, RESIDENTS_PATCH):
+    for patch in (DOOR_PATCH, WAKE_PATCH, RENT_PATCH, RESIDENTS_PATCH, DAY_PLAN_PATCH):
         added |= set(re.findall(r"^\+    '(world\.[a-z_0-9]+)': ", patch, re.M))
     assert used <= added, sorted(used - added)
     note = re.search(r"^\+    'world\.lease_note': (.*),$", RENT_PATCH, re.M).group(1)
@@ -444,9 +446,66 @@ def test_the_towns_news_reaches_the_mind_by_a_pull():
     six = NOTE.split("6. **Feeding the Mind**", 1)[1].split("\n7. ", 1)[0]
     assert "(pull; shipped town side 2026-11-24" in six and "behind NAT" in six
     p5 = " ".join(NOTE.split("**P5 · The town in the Mind, and on Home (Caelza).**", 1)[1].split("**P6 ·", 1)[0].split())
-    assert "**The town's news (slice 5a, 2026-11-24):**" in p5 and p5.endswith("Still to come: the day plan.")
+    assert "**The town's news (slice 5a, 2026-11-24):**" in p5
     section = " ".join(FAQ.split("## Can Cael live in Ether Hollow?", 1)[1].split("\n## ", 1)[0].split())
     assert "reads the town's news for your agent" in section
     assert "reads the town's news for your agent" in CORPUS and CORPUS == APP_CORPUS
     row = VISION.split("| **M10 Ether Hollow** |", 1)[1].split("\n", 1)[0]
     assert "**The town's news (slice 5a, 2026-11-24):**" in row and "fed to the Mind (§6.6" not in row
+
+
+PLAN = (OVERLAY / "crates" / "caelza-tools" / "src" / "ether_hollow_plan.rs").read_text()
+
+
+def test_the_resident_keeps_its_own_hours_in_town():
+    """M10 slice 5b: the owner's grid and budget, the agent's own plan inside them, the gateway running it."""
+    # The config: the grid and the budget on each resident, carried by the resolver; the tool gets its plan's place.
+    files = re.findall(r"^\+\+\+ b/(.+)$", DAY_PLAN_PATCH, flags=re.M)
+    assert files == ["crates/caelza-config/src/schema.rs", "crates/caelza-runtime/src/tools/mod.rs", "web/src/lib/i18n.ts"], files
+    assert DAY_PLAN_PATCH.count("+    pub hours: Vec<String>,") == 3 and DAY_PLAN_PATCH.count("+    pub visits_month: u64,") == 3
+    assert "+            hours: self.hours.clone()," in DAY_PLAN_PATCH and "+            hours: cfg.hours.clone()," in DAY_PLAN_PATCH
+    assert "+            visits_month: 0," in DAY_PLAN_PATCH, "the default is no day plan"
+    assert ".with_plan(root_config.install_root_dir(), agent_alias, resident.hours.clone(), resident.visits_month)" in DAY_PLAN_PATCH
+    removed = [l for l in DAY_PLAN_PATCH.splitlines() if l.startswith("-") and not l.startswith("---")]
+    assert len(removed) == 2, removed
+    assert MANIFEST["components"]["runtime"]["world_day_plan_patch"] == "runtime/patches/0029-day-plan.patch"
+    # The rule: the grid's lines, the budget's unit, the files, what is refused.
+    assert '#[path = "ether_hollow_plan.rs"]\npub mod plan;' in TOOL
+    assert 'pub const LOCAL_ACTIONS: &[&str] = &["plan"];' in TOOL and "plan" not in rust_str_list(TOOL, "ACTIONS")
+    assert "if kind_of(&action) == Kind::Local {" in TOOL, "the plan never reaches the town"
+    assert 'pub const DAYS: [&str; 7] = ["mon", "tue", "wed", "thu", "fri", "sat", "sun"];' in PLAN
+    assert "pub const BUDGET_UNIT: &str = \"planned visits a month" in PLAN
+    assert 'root.join(WORLD_DIR).join(PLAN_DIR).join(format!("{}.json", file_alias(alias)))' in PLAN
+    assert 'root.join(WORLD_DIR).join(PLAN_DIR).join(format!("{}.used.json", file_alias(alias)))' in PLAN
+    for refusal in ("is outside the hours your owner gives you on", "your owner's budget has", "overlap: one place at a time", "is already over", "has not given you hours in town yet"):
+        assert refusal in PLAN, refusal
+    # The gateway: the planner beside the waker, the visit, the walk, the wake, the count, the memory.
+    assert "tokio::spawn(async move { planner_loop(planner_state).await });" in API
+    assert "pub const PLAN_TICK: Duration = Duration::from_secs(30);" in API
+    assert "enabled && wake && has_key && hours.iter().any(|h| !h.trim().is_empty()) && visits_month > 0" in API
+    assert "used.count(&month, Some(plan::slot_key(&day, &slot.at)));" in API, "counted before it runs"
+    assert "let g = begin_visit(p, minutes, now_secs());\n            p.plan = Some(running.clone());" in API
+    assert 'json!({"action": "move", "to": id})' in API and "plan::match_place(&snapshot, place)" in API
+    assert 'json!({"action": "status", "format": "json"})' in API and 'join("IDENTITY.md")' in API
+    assert "plan::slot_prompt(&town.name, slot, &end_text, want.as_deref(), moved.as_deref())" in API
+    assert "plan::wants_planning(&spans, today, now_min, &plans, &used, town.visits_month)" in API
+    assert "pub fn planned_visit_episode(" in API and "My day plan took me to town" in API
+    assert '"plan": plan_report(&state, &town),' in API
+    # The card: the grid, the budget, today's plan; the client's shape; Home's line.
+    for attr in ("data-world-plan ", "data-world-plan-day={d.day}", "data-world-plan-budget", "data-world-plan-used", 'data-world-action="plan"', "data-world-plan-today", "data-world-plan-now"):
+        assert attr in DOOR, attr
+    assert "await patchConfig(planOps(linesFromGrid(grid), visits, state.plan.path));" in DOOR
+    for fn in ("gridFromLines", "linesFromGrid", "gridProblem", "planOps", "budgetOf", "slotLine", "slotState", "planNowLine"):
+        assert f"export function {fn}(" in DOOR_LOGIC and f"{fn}(" in DOOR_LOGIC_TEST, fn
+    assert "export interface WorldPlan {" in CLIENT and "plan?: WorldPlan;" in CLIENT and "plan?: WorldPlanNow | null;" in CLIENT
+    assert "export function planNow(r: TownResidentSlice): string | null {" in HOME_LOGIC
+    assert "At the bank: opening the shop, until 10:00" in HOME_LOGIC_TEST
+    # The docs, the FAQ and the corpus.
+    p5 = " ".join(NOTE.split("**P5 · The town in the Mind, and on Home (Caelza).**", 1)[1].split("**P6 ·", 1)[0].split())
+    assert "**The day plan (slice 5b, 2026-11-24):**" in p5 and p5.endswith("Nothing is left in P5.")
+    assert "**Done:** the town's news in the Mind (5a, 2026-11-24); the day plan (5b, 2026-11-24, P5 below)." in NOTE
+    section = " ".join(FAQ.split("## Can Cael live in Ether Hollow?", 1)[1].split("\n## ", 1)[0].split())
+    assert "keep its own hours in town" in section and "one run of the model" in section
+    assert "keep its own hours in town" in CORPUS and CORPUS == APP_CORPUS
+    row = VISION.split("| **M10 Ether Hollow** |", 1)[1].split("\n", 1)[0]
+    assert "**The day plan (slice 5b, 2026-11-24):**" in row and "slice 5's day plan" not in row

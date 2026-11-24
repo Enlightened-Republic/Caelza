@@ -285,4 +285,13 @@ test('the Town tile says where the agent is, its RC and the last wake', () => {
   assert.equal(calm.value, '2 residents at home');
   assert.equal(calm.tone, 'neutral');
   assert.equal(townTile({ ...resident, residents: [resident, { ...pip, registered: false }] }, null, nowSecs).value, 'At home');
+  // The day plan (M10 slice 5b): a slot running says what the agent is doing, and until when.
+  const slot = { place: 'the bank', doing: 'opening the shop', end: '10:00' };
+  const planned = townTile({ ...resident, presence: { in_town: true, plan: slot } }, null, nowSecs);
+  assert.equal(planned.value, 'At the bank: opening the shop, until 10:00');
+  assert.equal(planned.tone, 'ok');
+  assert.equal(townTile({ ...resident, presence: { in_town: false, plan: slot } }, null, nowSecs).value, 'At home', 'a slot over is not shown');
+  assert.equal(townTile({ ...resident, presence: { in_town: true, plan: null } }, null, nowSecs).value, 'In town · bank');
+  const busy = townTile({ ...resident, residents: [resident, { ...pip, presence: { in_town: true, plan: slot } }] }, null, nowSecs);
+  assert.match(busy.sublabel, /^Moss at home · 1240 RC · Pip at the bank: opening the shop, until 10:00 · 40 RC/);
 });

@@ -22,6 +22,55 @@ export interface WorldPresence {
   beats: number;
   last_ok: number | null;
   last_error: string | null;
+  /** The day plan's slot this visit is, when the agent's own plan sent it (M10 slice 5b). */
+  plan?: WorldPlanNow | null;
+}
+
+/** The slot running now: `end` is the device's local `HH:MM`. */
+export interface WorldPlanNow {
+  at: string;
+  end: string;
+  place: string;
+  doing: string;
+}
+
+/** One stop of the agent's day, as it planned it. */
+export interface WorldSlot {
+  at: string;
+  minutes: number;
+  place: string;
+  doing: string;
+}
+
+export interface WorldDayPlan {
+  day: string;
+  slots: WorldSlot[];
+  set_at: number;
+}
+
+/**
+ * The day plan as the gateway reports it: the owner's grid (`lines`, the
+ * config's `hours`) and budget (`budget.visits_month`, planned visits a month),
+ * what is used, today's and tomorrow's plan as the agent wrote them.
+ */
+export interface WorldPlan {
+  now: string;
+  today: string;
+  hours_today: string;
+  hours_tomorrow: string;
+  hours: string[];
+  lines: string[];
+  hours_error: string | null;
+  budget: { unit: string; month: string; visits_month: number; used: number; left: number };
+  plan: WorldDayPlan | null;
+  tomorrow: WorldDayPlan | null;
+  /** The slots of today that already ran, `YYYY-MM-DD HH:MM`. */
+  ran: string[];
+  /** The planner runs: the town may wake the agent, it holds a key, and it has hours and a budget. */
+  runs: boolean;
+  planner: { last_tick: number | null; last_error: string | null; last_started: string | null; out_of_budget: boolean };
+  /** The resident's own table, for the grid's writes. */
+  path: string;
 }
 
 /** The town's `me`, scrubbed of anything key-shaped by the gateway. */
@@ -85,6 +134,8 @@ export interface WorldState {
   wake_on: boolean;
   wake: WorldWake;
   residents: WorldResident[];
+  /** The day plan (M10 slice 5b); absent from an older gateway. */
+  plan?: WorldPlan;
 }
 
 /** `?agent=<alias>`: which resident a call is about; none means the gateway's default. */

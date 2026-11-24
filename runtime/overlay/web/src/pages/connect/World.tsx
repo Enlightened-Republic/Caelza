@@ -5,6 +5,9 @@
 // is the `ether_hollow` tool's; the card only talks to /api/world. With
 // several agents (P6) a chip row picks which one the card is about; every
 // call carries that alias, and the gateway keeps one resident per agent.
+// The Day plan section (M10 slice 5b) is the owner's weekly grid and monthly
+// budget (the card's second config write) and, read-only, the agent's own
+// plan for today and tomorrow.
 import { useEffect, useState } from "react";
 import { ExternalLink, Globe } from "lucide-react";
 
@@ -31,7 +34,16 @@ import {
   TAG_COLORS,
   VISITS,
   bioOk,
+  budgetOf,
   clock,
+  gridFromLines,
+  gridProblem,
+  linesFromGrid,
+  planNowLine,
+  planOps,
+  slotLine,
+  slotState,
+  type DayHours,
   leaseLine,
   lookFor,
   lotLabel,
@@ -84,7 +96,10 @@ export default function WorldCard({ agent, agents, disabled }: { agent: string; 
   const [picked, setPicked] = useState(agent);
   const [state, setState] = useState<WorldState | null>(null);
   const [loadError, setLoadError] = useState<string | null>(null);
-  const [busy, setBusy] = useState<"register" | "enter" | "leave" | "spend" | "wake" | "wake_now" | "lots" | "rent" | "pay" | null>(null);
+  const [busy, setBusy] = useState<"register" | "enter" | "leave" | "spend" | "wake" | "wake_now" | "lots" | "rent" | "pay" | "plan" | null>(null);
+  // The owner's grid and budget as being edited; null / "" until the gateway's are read.
+  const [grid, setGrid] = useState<DayHours[] | null>(null);
+  const [budgetText, setBudgetText] = useState("");
   const [lots, setLots] = useState<WorldLots | null>(null);
   const [lot, setLot] = useState<string | null>(null);
   const [agreed, setAgreed] = useState(false);
@@ -114,6 +129,12 @@ export default function WorldCard({ agent, agents, disabled }: { agent: string; 
       setState(s);
       setLoadError(null);
       setName((n) => (n === "" ? s.name : n));
+      if (s.plan) {
+        const lines = s.plan.lines;
+        const visits = s.plan.budget.visits_month;
+        setGrid((g) => g ?? gridFromLines(lines));
+        setBudgetText((b) => (b === "" ? String(visits) : b));
+      }
     } catch (e) {
       setLoadError(reason(e));
     }
@@ -138,6 +159,8 @@ export default function WorldCard({ agent, agents, disabled }: { agent: string; 
     setName("");
     setBio("");
     setTag(null);
+    setGrid(null);
+    setBudgetText("");
     setError(null);
     setNotice(null);
   };
@@ -333,6 +356,37 @@ export default function WorldCard({ agent, agents, disabled }: { agent: string; 
       setBusy(null);
     }
   };
+
+  // The owner's grid and budget, into the resident's own table.
+  const savePlan = async () => {
+    if (!ready || !state?.plan || !grid) return;
+    setError(null);
+    setNotice(null);
+    const bad = gridProblem(grid);
+    if (bad) {
+      setError(fill(t("world.plan_bad"), { day: t(`world.day_${bad}`) }));
+      return;
+    }
+    const visits = budgetOf(budgetText);
+    if (visits === null) {
+      setError(`${t("world.plan_budget")}: 0-1000. ${t("world.plan_budget_hint")}`);
+      return;
+    }
+    setBusy("plan");
+    try {
+      await patchConfig(planOps(linesFromGrid(grid), visits, state.plan.path));
+      setNotice(t("world.plan_saved"));
+      setGrid(null);
+      setBudgetText("");
+      await load();
+    } catch (e) {
+      setError(`${t("world.failed")} ${reason(e)}`);
+    } finally {
+      setBusy(null);
+    }
+  };
+
+  const setDay = (i: number, change: Partial<DayHours>) => setGrid((g) => (g ? g.map((d, j) => (j === i ? { ...d, ...change } : d)) : g));
 
   const site = townSite(state?.url ?? "");
   const me = state?.me ?? null;
@@ -604,6 +658,103 @@ export default function WorldCard({ agent, agents, disabled }: { agent: string; 
               {t("world.wake_now_hint")}
             </span>
           </div>
+
+          {state.plan ? (
+            <div data-world-plan data-world-plan-runs={String(state.plan.runs)}>
+              <div className="cz-kicker">{t("world.plan")}</div>
+              <p className="cz-note">{t("world.plan_hint")}</p>
+              {!state.wake_on ? <p className="cz-note">{t("world.plan_needs_wake")}</p> : null}
+              {state.plan.hours_error ? (
+                <p className="cz-note" role="alert">
+                  {fill(t("world.plan_unreadable"), { reason: state.plan.hours_error })}
+                </p>
+              ) : null}
+              <div className="cz-kicker">{t("world.plan_days")}</div>
+              {(grid ?? []).map((d, i) => (
+                <div key={d.day} className="flex items-center gap-2 flex-wrap" data-world-plan-day={d.day}>
+                  <button
+                    type="button"
+                    role="switch"
+                    aria-checked={d.on}
+                    className={`cz-chip${d.on ? " is-on" : ""}`}
+                    disabled={!ready}
+                    onClick={() => setDay(i, { on: !d.on })}
+                  >
+                    {t(`world.day_${d.day}`)}
+                  </button>
+                  {d.on ? (
+                    <>
+                      <span className="text-xs" style={MUTED}>
+                        {t("world.plan_from")}
+                      </span>
+                      <input type="time" className="cz-input" style={{ width: "7.5em" }} value={d.from} aria-label={`${t(`world.day_${d.day}`)} ${t("world.plan_from")}`} onChange={(e) => setDay(i, { from: e.target.value })} />
+                      <span className="text-xs" style={MUTED}>
+                        {t("world.plan_to")}
+                      </span>
+                      <input type="time" className="cz-input" style={{ width: "7.5em" }} value={d.to} aria-label={`${t(`world.day_${d.day}`)} ${t("world.plan_to")}`} onChange={(e) => setDay(i, { to: e.target.value })} />
+                    </>
+                  ) : (
+                    <span className="text-xs" style={MUTED}>
+                      {t("world.plan_off")}
+                    </span>
+                  )}
+                </div>
+              ))}
+              <label className="block" htmlFor="world-plan-budget">
+                <div className="cz-kicker">{t("world.plan_budget")}</div>
+                <input id="world-plan-budget" className="cz-input" style={{ width: "7em" }} inputMode="numeric" value={budgetText} onChange={(e) => setBudgetText(e.target.value)} data-world-plan-budget />
+              </label>
+              <p className="cz-note">{t("world.plan_budget_hint")}</p>
+              <p className="text-sm" data-world-plan-used>
+                {fill(t("world.plan_used"), {
+                  used: String(state.plan.budget.used),
+                  budget: String(state.plan.budget.visits_month),
+                  left: String(state.plan.budget.left),
+                })}
+              </p>
+              {state.plan.budget.visits_month > 0 && state.plan.budget.left === 0 ? (
+                <p className="cz-note" role="alert" data-world-plan-out>
+                  {t("world.plan_out")}
+                </p>
+              ) : null}
+              <div className="flex items-center gap-3 flex-wrap">
+                <Button variant="primary" size="md" disabled={!ready || !grid} onClick={() => void savePlan()} data-world-action="plan">
+                  {busy === "plan" ? t("world.plan_saving") : t("world.plan_save")}
+                </Button>
+              </div>
+              {inTown && state.presence.plan ? (
+                <p className="text-sm" data-world-plan-now>
+                  {fill(t("world.plan_running"), { line: planNowLine(state.presence.plan) })}
+                </p>
+              ) : null}
+              <div className="cz-kicker">{t("world.plan_today")}</div>
+              {state.plan.plan?.slots.length ? (
+                <ul className="text-sm" style={{ paddingLeft: "1.1em", listStyle: "disc" }} data-world-plan-today>
+                  {state.plan.plan.slots.map((s) => {
+                    const when = slotState(state.plan!.today, s, state.plan!.ran, state.plan!.now);
+                    return (
+                      <li key={s.at} data-slot-state={when}>
+                        {slotLine(s)}
+                        {when === "later" ? "" : ` · ${t(when === "now" ? "world.plan_now" : "world.plan_done")}`}
+                      </li>
+                    );
+                  })}
+                </ul>
+              ) : (
+                <p className="cz-note">{t("world.plan_none")}</p>
+              )}
+              {state.plan.tomorrow?.slots.length ? (
+                <>
+                  <div className="cz-kicker">{t("world.plan_tomorrow")}</div>
+                  <ul className="text-sm" style={{ paddingLeft: "1.1em", listStyle: "disc" }} data-world-plan-tomorrow>
+                    {state.plan.tomorrow.slots.map((s) => (
+                      <li key={s.at}>{slotLine(s)}</li>
+                    ))}
+                  </ul>
+                </>
+              ) : null}
+            </div>
+          ) : null}
         </>
       ) : null}
 
