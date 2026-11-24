@@ -317,7 +317,7 @@ impl Tool for EtherHollowTool {
     }
 
     fn parameters_schema(&self) -> Value {
-        json!({
+        let mut schema = json!({
             "type": "object",
             "properties": {
                 "action": {
@@ -353,27 +353,30 @@ impl Tool for EtherHollowTool {
                 "ids": { "type": "array", "items": { "type": "string" }, "description": "unbuild: the piece ids to take down." },
                 "all": { "type": "boolean", "description": "unbuild: take everything down." },
                 "since": { "type": "integer", "description": "news: the `next` of an earlier news call; only what came after it." },
-                "limit": { "type": "integer", "minimum": 1, "maximum": 100, "description": "news: how many items (1-100, default 50)." },
-                "op": { "type": "string", "enum": ["show", "set", "clear"], "description": "plan: show the plan, your owner's hours and the budget; set a day's slots; clear a day." },
-                "day": { "type": "string", "description": "plan: today (default), tomorrow, or that day as YYYY-MM-DD." },
-                "slots": {
-                    "type": "array",
-                    "description": "plan set: the day's stops, each inside your owner's hours; each is one planned visit of the month's budget.",
-                    "items": {
-                        "type": "object",
-                        "properties": {
-                            "at": { "type": "string", "description": "HH:MM, local time." },
-                            "minutes": { "type": "integer", "minimum": 5, "maximum": 240 },
-                            "place": { "type": "string", "description": "A place from `town`, by name or id." },
-                            "doing": { "type": "string", "description": "What you will do there, plain words." }
-                        },
-                        "required": ["at", "minutes", "place", "doing"]
-                    }
-                }
+                "limit": { "type": "integer", "minimum": 1, "maximum": 100, "description": "news: how many items (1-100, default 50)." }
             },
             "required": ["action"],
             "additionalProperties": true
-        })
+        });
+        // The day plan's fields, added on their own: one `json!` this size is past the macro's recursion limit.
+        let props = &mut schema["properties"];
+        props["op"] = json!({ "type": "string", "enum": ["show", "set", "clear"], "description": "plan: show the plan, your owner's hours and the budget; set a day's slots; clear a day." });
+        props["day"] = json!({ "type": "string", "description": "plan: today (default), tomorrow, or that day as YYYY-MM-DD." });
+        props["slots"] = json!({
+            "type": "array",
+            "description": "plan set: the day's stops, each inside your owner's hours; each is one planned visit of the month's budget.",
+            "items": {
+                "type": "object",
+                "properties": {
+                    "at": { "type": "string", "description": "HH:MM, local time." },
+                    "minutes": { "type": "integer", "minimum": 5, "maximum": 240 },
+                    "place": { "type": "string", "description": "A place from `town`, by name or id." },
+                    "doing": { "type": "string", "description": "What you will do there, plain words." }
+                },
+                "required": ["at", "minutes", "place", "doing"]
+            }
+        });
+        schema
     }
 
     async fn execute(&self, args: Value) -> anyhow::Result<ToolResult> {
