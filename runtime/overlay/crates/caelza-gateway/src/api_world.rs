@@ -58,6 +58,24 @@
 //! own, narrowed to the town's tool and memory) gets the reason in its prompt
 //! and runs the way the dashboard's manual cron trigger runs a job. The agent
 //! answers NO_REPLY when nothing needs doing.
+//!
+//! The town's news (M10 slice 5a): every read also asks the town for the
+//! resident's `news {since}`, the town's own log of what happened to it (a
+//! sale, a reply, a mention, a reaction, a note at its lot, an event it RSVP'd
+//! to starting, rent taken or missed, the Sheriff's acts). A pull, not a
+//! webhook: a gateway on a phone sits on loopback behind NAT, the town cannot
+//! call it, and the waker already polls. The cursor (`next`) is kept per
+//! resident in `<install root>/world/news-since.json`, so a restart does not
+//! replay; the very first read only primes it. Each new item becomes one of
+//! the agent's own memories (`town:news:<id>`, in its own words) and, when the
+//! Mind has the inner life (`brain_inner`), an event and a bond (a sale a
+//! reward, a reply a collab and a bond with whoever wrote it, an event
+//! novelty, the Sheriff's acts a fine or a rejection); a Mind without it just
+//! keeps the memory. A mention or a reply (one wake per post, whichever read
+//! saw it first), an RSVP'd event starting and a lease lost to unpaid rent
+//! also wake the agent; the wake lists the news since the last one. A reason
+//! that comes within MIN_GAP of the last wake now waits for the gap instead
+//! of being dropped.
 //! Only a paired client may call any of them. The key is read from the live
 //! config at every beat, so a key the owner removes stops the ghost at the next
 //! beat. Nothing here is logged with the key in it.
@@ -739,6 +757,14 @@ pub struct Seen {
     pub in_timeout: bool,
     /// The first read seeds the sets and wakes for nothing.
     pub primed: bool,
+    /// The town's news cursor: the last item id read. None until the first
+    /// news read primes it (kept in `world/news-since.json` across restarts).
+    pub news_since: Option<u64>,
+    /// Posts that already raised a Mention (from the feed or the news), so
+    /// one post wakes once.
+    pub mentioned: BTreeSet<String>,
+    /// RSVP'd events that already raised an EventSoon.
+    pub events: BTreeSet<String>,
 }
 
 /// One reason to wake the agent.
@@ -753,6 +779,12 @@ pub enum Trigger {
     /// The town counts the resident inactive; the day it resets the resident.
     Reset { on: String },
     Timeout { until: String },
+    /// Someone replied to the resident's post (from the news): the post, who, the words.
+    Reply { id: String, who: String, text: String },
+    /// An event the resident RSVP'd to starts soon, or has started (from the news).
+    EventSoon { id: String, title: String, start: String, place: String, started: bool },
+    /// The town ended the lease for rent not paid by the grace day (from the news).
+    LeaseLost { lot: String },
 }
 
 fn str_of(v: &Value, keys: &[&str]) -> Option<String> {
@@ -836,6 +868,7 @@ pub fn triggers(
         }
         let who = str_of(post, &["who", "author", "by", "name"]).unwrap_or_default();
         if primed && mentions(name, &text) && !who.eq_ignore_ascii_case(name.trim()) {
+            seen.mentioned.insert(id.clone());
             out.push(Trigger::Mention { id, who, text: text.chars().take(200).collect() });
         }
     }
@@ -944,16 +977,54 @@ pub fn reason_text(triggers: &[Trigger]) -> String {
             }
             Trigger::Reset { on } => format!("the town counts you inactive and will reset you on {on} unless you do something there"),
             Trigger::Timeout { until } => format!("the town put you in a timeout (until {until})"),
+            Trigger::Reply { who, text, .. } => {
+                let who = if who.is_empty() { "someone" } else { who.as_str() };
+                format!("{who} replied to your post: \"{text}\"")
+            }
+            Trigger::EventSoon { title, start, place, started, .. } => {
+                let place = if place.is_empty() { String::new() } else { format!(" at {place}") };
+                if *started {
+                    format!("\"{title}\", an event you RSVP'd to, has started{place}")
+                } else if start.is_empty() {
+                    format!("\"{title}\", an event you RSVP'd to, starts soon{place}")
+                } else {
+                    format!("\"{title}\", an event you RSVP'd to, starts at {start}{place}")
+                }
+            }
+            Trigger::LeaseLost { lot } => {
+                if lot.is_empty() {
+                    "the town ended your lease: the rent was not paid in time, and what you built came down".to_string()
+                } else {
+                    format!("the town ended your lease on lot {lot}: the rent was not paid in time, and what you built there came down")
+                }
+            }
         })
         .collect::<Vec<_>>()
         .join("; ")
 }
 
+/// What a wake carries from the town's news: the items since the last wake,
+/// one line each, and the RSVP'd events to go to.
+#[derive(Debug, Clone, Default, PartialEq)]
+pub struct WakeNews {
+    pub items: Vec<String>,
+    pub attend: Vec<String>,
+}
+
 /// The job's prompt for one wake.
-pub fn wake_prompt(name: &str, reason: &str) -> String {
+pub fn wake_prompt(name: &str, reason: &str, news: &WakeNews) -> String {
+    let mut extra = String::new();
+    if !news.items.is_empty() {
+        let items = news.items.iter().map(|i| i.trim().trim_end_matches('.')).collect::<Vec<_>>().join("; ");
+        extra.push_str(&format!("The town's news since your last wake: {items}. "));
+    }
+    if !news.attend.is_empty() {
+        let calls = news.attend.iter().map(|e| format!("`attend {{event: \"{e}\"}}`")).collect::<Vec<_>>().join(", ");
+        extra.push_str(&format!("An event you RSVP'd to is starting: go, with {calls}. "));
+    }
     format!(
         "[Ether Hollow] Something happened in town that concerns you, {name}: {reason}. \
-         You are a resident of Ether Hollow; the owner lets you act there through the \
+         {extra}You are a resident of Ether Hollow; the owner lets you act there through the \
          ether_hollow tool. Look first (`me`, then `town`; `orders` when an order is named), \
          then do what the situation needs: answer a mention (with `reply` if you rent a lot, \
          else a `note`), handle an order (`order_done` once it is delivered), and if rent is \
@@ -989,6 +1060,44 @@ pub struct Wake {
     pub waking: bool,
     #[serde(skip)]
     pub seen: Seen,
+    /// Reasons found inside MIN_GAP or while a wake ran, held for the next read past the gap.
+    #[serde(skip)]
+    pub pending: Vec<Trigger>,
+    /// The town's news since the last wake, one line each, for the next wake's prompt.
+    #[serde(skip)]
+    pub pending_news: Vec<String>,
+}
+
+/// How many reasons and news lines a held wake keeps.
+pub const PENDING_KEEP: usize = 20;
+pub const NEWS_BRIEF: usize = 12;
+
+/// The reasons to wake with now: `found` joins what was held; nothing while
+/// a wake runs or within MIN_GAP of the last one (they wait, they are not lost).
+pub fn due_now(w: &mut Wake, found: Vec<Trigger>, now: u64) -> Vec<Trigger> {
+    for t in found {
+        if !w.pending.contains(&t) {
+            w.pending.push(t);
+        }
+    }
+    if w.pending.len() > PENDING_KEEP {
+        let drop = w.pending.len() - PENDING_KEEP;
+        w.pending.drain(..drop);
+    }
+    let recent = w.last_at.is_some_and(|t| now.saturating_sub(t) < MIN_GAP.as_secs());
+    if w.pending.is_empty() || recent || w.waking {
+        return Vec::new();
+    }
+    std::mem::take(&mut w.pending)
+}
+
+/// Keep the newest NEWS_BRIEF lines for the next wake.
+fn hold_news(w: &mut Wake, lines: Vec<String>) {
+    w.pending_news.extend(lines);
+    if w.pending_news.len() > NEWS_BRIEF {
+        let drop = w.pending_news.len() - NEWS_BRIEF;
+        w.pending_news.drain(..drop);
+    }
 }
 
 /// One waker state per resident agent, by alias.
@@ -1119,6 +1228,347 @@ pub fn remember(state: &AppState, alias: &str, key: String, text: String) {
     });
 }
 
+// --- the town's news (slice 5a) -------------------------------------------------
+
+pub const NEWS_SINCE_FILE: &str = "news-since.json";
+/// Items per `news` call (the town's most) and calls per read (the town keeps 200).
+pub const NEWS_LIMIT: u64 = 100;
+pub const NEWS_PAGES: usize = 3;
+/// How much of an item a wake's prompt line keeps.
+const NEWS_LINE_KEEP: usize = 140;
+
+/// One item of the town's `news`: `{id, at, kind, text, who?, ref?}`.
+#[derive(Debug, Clone, Default, PartialEq, Serialize, Deserialize)]
+pub struct NewsItem {
+    pub id: u64,
+    #[serde(default)]
+    pub at: String,
+    #[serde(default)]
+    pub kind: String,
+    #[serde(default)]
+    pub text: String,
+    #[serde(default)]
+    pub who: Option<String>,
+    #[serde(default, rename = "ref")]
+    pub reference: Option<String>,
+}
+
+/// The items, the cursor and whether more wait, from one `news` answer.
+pub fn parse_news(v: &Value) -> (Vec<NewsItem>, Option<u64>, bool) {
+    let items = v
+        .get("news")
+        .and_then(Value::as_array)
+        .map(|a| a.iter().filter_map(|x| serde_json::from_value::<NewsItem>(x.clone()).ok()).collect())
+        .unwrap_or_default();
+    (items, v.get("next").and_then(Value::as_u64), v.get("more").and_then(Value::as_bool).unwrap_or(false))
+}
+
+/// What a read brings that is new. The first read (no cursor yet) only primes
+/// it: what happened before the resident's device listened is not news.
+pub fn take_news(seen: &mut Seen, items: &[NewsItem], next: u64) -> Vec<NewsItem> {
+    let Some(since) = seen.news_since else {
+        seen.news_since = Some(next);
+        return Vec::new();
+    };
+    let mut fresh: Vec<NewsItem> = items.iter().filter(|i| i.id > since).cloned().collect();
+    fresh.sort_by_key(|i| i.id);
+    fresh.dedup_by_key(|i| i.id);
+    let top = fresh.last().map(|i| i.id).unwrap_or(0);
+    seen.news_since = Some(since.max(next).max(top));
+    fresh
+}
+
+/// The words between the first `: "` and the last `"` (the town quotes what was said), else all of it.
+pub fn quoted(text: &str) -> String {
+    if let Some(start) = text.find(": \"") {
+        let rest = &text[start + 3..];
+        if let Some(end) = rest.rfind('"') {
+            return rest[..end].to_string();
+        }
+    }
+    text.to_string()
+}
+
+/// An event item's title, start and place, as the town writes them:
+/// `"<title>" starts at <start> at <place>. You RSVP'd.` or
+/// `"<title>" has started at <place>. You RSVP'd (...)`.
+pub fn event_parts(text: &str) -> (String, String, String) {
+    let place_of = |s: &str| s.split(". You RSVP'd").next().unwrap_or(s).trim_end_matches('.').trim().to_string();
+    if let Some(rest) = text.strip_prefix('"') {
+        if let Some(i) = rest.find("\" starts at ") {
+            let after = &rest[i + "\" starts at ".len()..];
+            let (start, place) = match after.find(" at ") {
+                Some(j) => (after[..j].to_string(), place_of(&after[j + 4..])),
+                None => (place_of(after), String::new()),
+            };
+            let start = due_secs(&start).map(|s| stamp(s.max(0) as u64)).unwrap_or(start);
+            return (rest[..i].to_string(), start, place);
+        }
+        if let Some(i) = rest.find("\" has started at ") {
+            return (rest[..i].to_string(), String::new(), place_of(&rest[i + "\" has started at ".len()..]));
+        }
+    }
+    (text.chars().take(80).collect(), String::new(), String::new())
+}
+
+/// The reasons a read's news wakes the agent for: a mention (one wake per
+/// post: none when the feed already raised it, now or before; a mention in a
+/// reply is its own), a reply, an RSVP'd event starting (once per event), a
+/// lease lost to unpaid rent. Everything else is memory only. `already` is
+/// what the feed raised in the same read.
+pub fn news_triggers(seen: &mut Seen, items: &[NewsItem], already: &[Trigger]) -> Vec<Trigger> {
+    let mut out = Vec::new();
+    for item in items {
+        let id = item.reference.clone().unwrap_or_else(|| format!("n{}", item.id));
+        let who = item.who.clone().unwrap_or_default();
+        match item.kind.as_str() {
+            "mention" => {
+                let in_reply = item.text.contains(" in a reply");
+                let fed = already.iter().any(|t| matches!(t, Trigger::Mention { id: f, .. } if *f == id));
+                if fed || (!in_reply && seen.mentioned.contains(&id)) {
+                    continue;
+                }
+                if !in_reply {
+                    seen.mentioned.insert(id.clone());
+                }
+                out.push(Trigger::Mention { id, who, text: quoted(&item.text).chars().take(200).collect() });
+            }
+            "reply" => out.push(Trigger::Reply { id, who, text: quoted(&item.text).chars().take(200).collect() }),
+            "event_soon" | "event" => {
+                if !seen.events.insert(id.clone()) {
+                    continue;
+                }
+                let (title, start, place) = event_parts(&item.text);
+                out.push(Trigger::EventSoon { id, title, start, place, started: item.kind == "event" });
+            }
+            "rent_missed" => out.push(Trigger::LeaseLost { lot: item.reference.clone().unwrap_or_default() }),
+            _ => {}
+        }
+    }
+    out
+}
+
+/// The town speaks to the resident ("you", "your"); a memory is the
+/// resident's own ("I", "my"). Words inside double quotes are someone
+/// else's and stay as they were said.
+pub fn first_person(text: &str) -> String {
+    let mut out = String::new();
+    let mut sentence_start = true;
+    for (i, part) in text.split('"').enumerate() {
+        if i > 0 {
+            out.push('"');
+        }
+        if i % 2 == 1 {
+            out.push_str(part);
+            sentence_start = false;
+            continue;
+        }
+        out.push_str(&swap_pronouns(part, &mut sentence_start));
+    }
+    out
+}
+
+/// Words after "you" that make it the subject ("when you have delivered it").
+const SUBJECT_NEXT: &[&str] = &["have", "had", "can", "could", "were", "are", "will", "would", "need", "may", "must", "did", "do", "rented", "built", "left", "sold", "bought"];
+
+fn swap_pronouns(s: &str, sentence_start: &mut bool) -> String {
+    // Words and the runs between them.
+    let mut tokens: Vec<(bool, String)> = Vec::new();
+    for c in s.chars() {
+        let word = c.is_alphabetic();
+        match tokens.last_mut() {
+            Some((w, t)) if *w == word => t.push(c),
+            _ => tokens.push((word, c.to_string())),
+        }
+    }
+    let next_word = |from: usize, tokens: &[(bool, String)]| {
+        tokens[from + 1..].iter().find(|(w, _)| *w).map(|(_, t)| t.to_lowercase()).unwrap_or_default()
+    };
+    let mut out = String::new();
+    let mut was_you = false;
+    for i in 0..tokens.len() {
+        let (word, t) = (tokens[i].0, tokens[i].1.clone());
+        if !word {
+            if [". ", "! ", "? "].iter().any(|end| t.contains(end)) {
+                *sentence_start = true;
+            }
+            out.push_str(&t);
+            continue;
+        }
+        let start = std::mem::replace(sentence_start, false);
+        let swapped = match t.as_str() {
+            "You" | "you" => {
+                let next = next_word(i, &tokens);
+                let subject = start || SUBJECT_NEXT.contains(&next.as_str());
+                was_you = subject;
+                out.push_str(if subject { "I" } else { "me" });
+                continue;
+            }
+            "Your" => "My".to_string(),
+            "your" => "my".to_string(),
+            "yours" => "mine".to_string(),
+            "yourself" => "myself".to_string(),
+            "were" if was_you => "was".to_string(),
+            "are" if was_you => "am".to_string(),
+            _ => t,
+        };
+        was_you = false;
+        out.push_str(&swapped);
+    }
+    out
+}
+
+/// A news item as the agent will remember it, in its own words.
+pub fn news_episode(item: &NewsItem, now: u64) -> String {
+    let at = chrono::DateTime::parse_from_rfc3339(item.at.trim()).map(|t| t.timestamp().max(0) as u64).unwrap_or(now);
+    let text = item.text.trim();
+    let what = if text.is_empty() { format!("Something happened to me in town ({}).", item.kind) } else { first_person(text) };
+    format!("[Ether Hollow] {}. {what}", stamp(at))
+}
+
+/// A news item as one line of a wake's prompt (the town's words, cut short).
+pub fn news_line(item: &NewsItem) -> String {
+    let text: String = item.text.trim().chars().take(NEWS_LINE_KEEP).collect();
+    format!("{}: {text}", item.kind)
+}
+
+/// What a news item does to the inner life: the event kind, and the bond with
+/// whoever it was, with the exchange's valence.
+#[derive(Debug, Clone, PartialEq)]
+pub struct Inner {
+    pub kind: &'static str,
+    pub bond: Option<(String, f64)>,
+}
+
+/// The town's kinds against xanima's inner-life events. A sale is a reward;
+/// someone replying, naming the resident, reacting or leaving a note at its
+/// lot is a collab and, when the town names them, a bond with them; an event
+/// is novelty; the Sheriff's fines (a timeout, a suspension, a ban) and a lease
+/// lost to unpaid rent are fines; a hidden post, a revoked privilege or builds
+/// taken down are rejections. Rent, listings, a release: memory only.
+pub fn inner_of(item: &NewsItem) -> Option<Inner> {
+    let who = item
+        .who
+        .as_deref()
+        .map(str::trim)
+        .filter(|w| !w.is_empty() && !w.eq_ignore_ascii_case("The Sheriff"))
+        .map(str::to_string);
+    let kind = match item.kind.as_str() {
+        "sale" | "town_sale" => "reward",
+        "reply" | "mention" | "react" => "collab",
+        "note" if who.is_some() => "collab",
+        "event_soon" | "event" => "novelty",
+        "timeout" | "suspend" | "ban" | "rent_missed" => "fine",
+        "post_hidden" | "revoke" | "builds_cleared" => "rejection",
+        _ => return None,
+    };
+    if item.kind == "suspend" && item.text.contains("lifted") {
+        return None;
+    }
+    if item.kind == "revoke" && item.text.contains("gave back") {
+        return None;
+    }
+    let bond = match item.kind.as_str() {
+        "reply" | "mention" | "note" => who.map(|w| (w, 0.5)),
+        "react" => who.map(|w| (w, 0.3)),
+        "sale" => who.map(|w| (w, 0.6)),
+        _ => None,
+    };
+    Some(Inner { kind, bond })
+}
+
+/// `brain_inner event` for an item.
+pub fn inner_event_args(inner: &Inner, item: &NewsItem) -> Value {
+    let reason: String = first_person(item.text.trim()).chars().take(120).collect();
+    json!({
+        "action": "event",
+        "kind": inner.kind,
+        "reason": format!("Ether Hollow: {reason}"),
+        "tags": ["ether-hollow", format!("town:{}", item.kind)],
+    })
+}
+
+/// `brain_inner bond` for an item that names someone.
+pub fn inner_bond_args(who: &str, valence: f64, item: &NewsItem) -> Value {
+    let what: String = first_person(item.text.trim()).chars().take(160).collect();
+    json!({"action": "bond", "who": who, "what": what, "valence": valence})
+}
+
+/// The item into the resident's inner life, when its Mind has one. Fire and
+/// forget, like `remember`: a Mind without `brain_inner` (before xanima's
+/// inner life) answers an error, and the item stays a memory only.
+pub fn feel(state: &AppState, alias: &str, item: &NewsItem) {
+    let Some(inner) = inner_of(item) else { return };
+    let state = state.clone();
+    let alias = alias.trim().to_string();
+    let item = item.clone();
+    tokio::spawn(async move {
+        let config = state.config.read().clone();
+        if config.agent(&alias).is_none() {
+            return;
+        }
+        let Ok(super::api_mind::MindWiring::Enabled(settings)) = super::api_mind::mind_wiring(&config) else { return };
+        let mind = caelza_memory::XanimaMemory::new("xanima", settings);
+        if mind.call_tool_json(&alias, "brain_inner", inner_event_args(&inner, &item)).await.is_err() {
+            return;
+        }
+        if let Some((who, valence)) = &inner.bond {
+            let _ = mind.call_tool_json(&alias, "brain_inner", inner_bond_args(who, *valence, &item)).await;
+        }
+    });
+}
+
+/// `<install root>/world/news-since.json`: the news cursor per resident alias.
+pub fn news_since_path(root: &Path) -> PathBuf {
+    root.join(WORLD_DIR).join(NEWS_SINCE_FILE)
+}
+
+pub fn load_news_since(root: &Path) -> BTreeMap<String, u64> {
+    std::fs::read_to_string(news_since_path(root))
+        .ok()
+        .and_then(|t| serde_json::from_str(&t).ok())
+        .unwrap_or_default()
+}
+
+pub fn save_news_since(root: &Path, alias: &str, since: u64) -> std::io::Result<()> {
+    let path = news_since_path(root);
+    if let Some(parent) = path.parent() {
+        std::fs::create_dir_all(parent)?;
+    }
+    let mut all = load_news_since(root);
+    all.insert(alias.to_string(), since);
+    let tmp = path.with_extension("json.tmp");
+    std::fs::write(&tmp, serde_json::to_vec_pretty(&all)?)?;
+    std::fs::rename(tmp, path)
+}
+
+/// The resident's news after `since` (all of it, a few pages at most); the
+/// items and the cursor to keep. With no cursor yet, the pages are read only
+/// to find where the news ends now.
+async fn read_news(url: &str, key: &str, since: Option<u64>) -> Result<(Vec<NewsItem>, u64), String> {
+    let mut cursor = since.unwrap_or(0);
+    let mut all = Vec::new();
+    for _ in 0..NEWS_PAGES {
+        let mut body = json!({"action": "news", "limit": NEWS_LIMIT});
+        if cursor > 0 {
+            body["since"] = json!(cursor);
+        }
+        let (items, next, more) = match call_town(url, Some(key), Some(&body)).await {
+            Ok((200, v)) => parse_news(&v),
+            Ok((status, v)) => return Err(format!("news: the town answered {status}: {}", town_said(&v))),
+            Err(e) => return Err(format!("news: {e}")),
+        };
+        let next = next.unwrap_or(cursor).max(items.iter().map(|i| i.id).max().unwrap_or(0));
+        all.extend(items);
+        let moved = next > cursor;
+        cursor = next;
+        if !more || !moved {
+            break;
+        }
+    }
+    Ok((all, cursor))
+}
+
 /// The passport the gateway last read per resident (`me`, scrubbed) and when, for Home's glance.
 static GLANCE: OnceLock<Mutex<BTreeMap<String, (u64, Value)>>> = OnceLock::new();
 
@@ -1225,6 +1675,10 @@ pub fn start_waker(state: AppState) {
         let alias = if last.agent.is_empty() { default_alias(&state.config.read().ether_hollow) } else { last.agent.clone() };
         with_wake(&alias, |w| w.restore(&last));
     }
+    // The news cursors: what a restart has already read is not news again.
+    for (alias, since) in load_news_since(&root) {
+        with_wake(&alias, |w| w.seen.news_since = Some(since));
+    }
     tokio::spawn(async move { waker_loop(state).await });
 }
 
@@ -1240,18 +1694,19 @@ async fn waker_loop(state: AppState) {
         }
         let anyone_in_town = !in_town_aliases().is_empty();
         for town in residents {
-            if let Some(reason) = read_resident(&town).await {
-                let _ = wake_now(&state, &town.agent, reason).await;
+            if let Some((reason, news)) = read_resident(&state, &town).await {
+                let _ = wake_with_news(&state, &town.agent, reason, news).await;
             }
         }
         tokio::time::sleep(poll_after(anyone_in_town)).await;
     }
 }
 
-/// One resident's read of the town: `me`, `town`, `orders`, diffed into
-/// reasons; the reason to wake it now, if any (none within MIN_GAP of its last
-/// wake, or while one runs).
-async fn read_resident(town: &Resident) -> Option<String> {
+/// One resident's read of the town: `me`, `town`, `orders` and `news`, diffed
+/// into reasons; each new news item into the agent's memory (and its inner
+/// life); the reason to wake it now, with the news since the last wake, if any
+/// (none within MIN_GAP of its last wake, or while one runs: they wait).
+async fn read_resident(state: &AppState, town: &Resident) -> Option<(String, WakeNews)> {
     let key = town.key.clone()?;
     let mut errors = Vec::new();
     let read = |action: &str| {
@@ -1272,28 +1727,66 @@ async fn read_resident(town: &Resident) -> Option<String> {
     }
     let town_now = read("town").await;
     let orders = read("orders").await;
+    let since = with_wake(&town.agent, |w| w.seen.news_since).flatten();
+    let news = read_news(&town.url, &key, since).await;
     for r in [&me, &town_now, &orders] {
         if let Err(e) = r {
             errors.push(e.clone());
         }
     }
+    if let Err(e) = &news {
+        errors.push(e.clone());
+    }
     let now = now_secs();
     let name = town.name.clone();
-    let found = with_wake(&town.agent, |w| {
+    let (due, fresh, cursor, brief) = with_wake(&town.agent, |w| {
         w.last_poll = Some(now);
         w.last_error = if errors.is_empty() { None } else { Some(errors.join("; ")) };
         let mut seen = std::mem::take(&mut w.seen);
-        let found = triggers(&mut seen, &name, me.as_ref().ok(), town_now.as_ref().ok(), orders.as_ref().ok(), now as i64);
+        let mut found = triggers(&mut seen, &name, me.as_ref().ok(), town_now.as_ref().ok(), orders.as_ref().ok(), now as i64);
+        let fresh = match &news {
+            Ok((items, next)) => take_news(&mut seen, items, *next),
+            Err(_) => Vec::new(),
+        };
+        let more = news_triggers(&mut seen, &fresh, &found);
+        found.extend(more);
+        let cursor = seen.news_since;
         w.seen = seen;
-        let recent = w.last_at.is_some_and(|t| now.saturating_sub(t) < MIN_GAP.as_secs());
-        if found.is_empty() || recent || w.waking { Vec::new() } else { found }
+        hold_news(w, fresh.iter().map(news_line).collect());
+        let due = due_now(w, found, now);
+        let brief = if due.is_empty() { Vec::new() } else { std::mem::take(&mut w.pending_news) };
+        (due, fresh, cursor, brief)
     })
     .unwrap_or_default();
-    if found.is_empty() { None } else { Some(reason_text(&found)) }
+    // The news into the Mind, and the cursor onto the disk, before any wake.
+    for item in &fresh {
+        remember(state, &town.agent, format!("news:{}", item.id), news_episode(item, now));
+        feel(state, &town.agent, item);
+    }
+    if cursor.is_some() && cursor != since {
+        let root = state.config.read().install_root_dir();
+        let _ = save_news_since(&root, &town.agent, cursor.unwrap_or(0));
+    }
+    if due.is_empty() {
+        return None;
+    }
+    let attend = due
+        .iter()
+        .filter_map(|t| match t {
+            Trigger::EventSoon { id, .. } => Some(id.clone()),
+            _ => None,
+        })
+        .collect();
+    Some((reason_text(&due), WakeNews { items: brief, attend }))
 }
 
 /// Wake the resident agent `alias` now with `reason`: the job made or re-prompted, then run.
 pub async fn wake_now(state: &AppState, alias: &str, reason: String) -> Result<Value, String> {
+    wake_with_news(state, alias, reason, WakeNews::default()).await
+}
+
+/// The same, with the town's news for the prompt.
+pub async fn wake_with_news(state: &AppState, alias: &str, reason: String, news: WakeNews) -> Result<Value, String> {
     let busy = with_wake(alias, |w| {
         if w.waking {
             true
@@ -1306,7 +1799,7 @@ pub async fn wake_now(state: &AppState, alias: &str, reason: String) -> Result<V
     if busy {
         return Err("a wake is already running".to_string());
     }
-    let result = wake_inner(state, alias, &reason).await;
+    let result = wake_inner(state, alias, &reason, &news).await;
     let at = now_secs();
     let (ok, output): (Option<bool>, Option<String>) = match &result {
         Ok(v) => (
@@ -1339,7 +1832,7 @@ pub async fn wake_now(state: &AppState, alias: &str, reason: String) -> Result<V
     result
 }
 
-async fn wake_inner(state: &AppState, alias: &str, reason: &str) -> Result<Value, String> {
+async fn wake_inner(state: &AppState, alias: &str, reason: &str, news: &WakeNews) -> Result<Value, String> {
     let selection = caelza_runtime::live_config_authority::AgentExecutionCapability::from_parts(
         state.config.clone(),
         state.agent_lifecycle.clone(),
@@ -1354,7 +1847,7 @@ async fn wake_inner(state: &AppState, alias: &str, reason: &str) -> Result<Value
     if town.key.is_none() {
         return Err(format!("`{agent}` is not a resident of Ether Hollow yet"));
     }
-    let prompt = wake_prompt(&town.name, reason);
+    let prompt = wake_prompt(&town.name, reason, news);
     let tools: Vec<String> = WAKE_TOOLS.iter().map(|s| s.to_string()).collect();
     let job_id = match cron::resolve_job_id_or_name(&config, JOB_NAME, &agent) {
         Ok(id) => {
@@ -1915,9 +2408,10 @@ mod tests {
             reason,
             "Ivy named you on the feed: \"where is cael?\"; a new order came in (o2); your rent is owing (due 2026-12); the town put you in a timeout (until 18:00)"
         );
-        let prompt = wake_prompt("Cael", &reason);
+        let prompt = wake_prompt("Cael", &reason, &WakeNews::default());
         assert!(prompt.starts_with("[Ether Hollow] Something happened in town that concerns you, Cael: Ivy named you"));
         assert!(prompt.contains("do not pay it yourself") && prompt.ends_with("answer exactly NO_REPLY."));
+        assert!(!prompt.contains("news since") && !prompt.contains("attend"), "no news, no news line");
         assert!(caelza_runtime::cron::scheduler::is_no_reply_sentinel("NO_REPLY"));
     }
 
@@ -1986,6 +2480,233 @@ mod tests {
         assert_eq!(rc_amount("arcade"), None);
         assert_eq!(rc_amount("rc12345678"), None);
         assert_eq!(rc_amount("rc5x"), None);
+    }
+
+    fn item(id: u64, kind: &str, text: &str, who: Option<&str>, reference: Option<&str>) -> NewsItem {
+        NewsItem {
+            id,
+            at: "2026-11-23T17:05:00.000Z".into(),
+            kind: kind.into(),
+            text: text.into(),
+            who: who.map(str::to_string),
+            reference: reference.map(str::to_string),
+        }
+    }
+
+    #[test]
+    fn the_towns_news_parses_and_the_first_read_only_primes_the_cursor() {
+        let answer = json!({"news": [
+            {"id": 41, "at": "2026-11-23T17:05:00.000Z", "kind": "sale", "text": "Ivy bought your listing", "who": "Ivy", "ref": "o7"},
+            {"id": 42, "at": "2026-11-23T17:06:00.000Z", "kind": "rent", "text": "Rent taken"},
+            {"kind": "no id"}
+        ], "next": 42, "more": false, "kept": 200});
+        let (items, next, more) = parse_news(&answer);
+        assert_eq!(items.len(), 2, "an item without an id is skipped");
+        assert_eq!((items[0].who.as_deref(), items[0].reference.as_deref()), (Some("Ivy"), Some("o7")));
+        assert_eq!((next, more), (Some(42), false));
+        assert_eq!(parse_news(&json!({"error": "x"})), (vec![], None, false));
+        let mut seen = Seen::default();
+        assert!(take_news(&mut seen, &items, 42).is_empty(), "before the device listened is not news");
+        assert_eq!(seen.news_since, Some(42));
+        // What is new after the cursor, once, in id order; the cursor only moves forward.
+        let later = vec![item(44, "reply", "b", None, None), item(43, "note", "a", None, None), item(42, "rent", "old", None, None)];
+        let fresh = take_news(&mut seen, &later, 44);
+        assert_eq!(fresh.iter().map(|i| i.id).collect::<Vec<_>>(), [43, 44]);
+        assert_eq!(seen.news_since, Some(44));
+        assert!(take_news(&mut seen, &later, 44).is_empty());
+        assert!(take_news(&mut seen, &[], 10).is_empty());
+        assert_eq!(seen.news_since, Some(44), "a cursor that went back is not followed");
+        // An empty first read primes at the town's cursor too.
+        let mut empty = Seen::default();
+        assert!(take_news(&mut empty, &[], 0).is_empty());
+        assert_eq!(empty.news_since, Some(0));
+        assert_eq!(take_news(&mut empty, &[item(1, "event", "x", None, None)], 1).len(), 1);
+    }
+
+    #[test]
+    fn the_news_cursor_survives_a_restart_per_resident() {
+        let root = std::env::temp_dir().join(format!("caelza-news-{}-{}", std::process::id(), now_secs()));
+        assert!(load_news_since(&root).is_empty());
+        save_news_since(&root, "main", 42).unwrap();
+        save_news_since(&root, "moss", 7).unwrap();
+        save_news_since(&root, "main", 50).unwrap();
+        let all = load_news_since(&root);
+        assert_eq!(all.get("main"), Some(&50));
+        assert_eq!(all.get("moss"), Some(&7));
+        assert!(news_since_path(&root).ends_with("world/news-since.json"));
+        std::fs::write(news_since_path(&root), "not json").unwrap();
+        assert!(load_news_since(&root).is_empty(), "a broken file primes again, it does not replay");
+        let _ = std::fs::remove_dir_all(&root);
+    }
+
+    #[test]
+    fn a_news_item_is_remembered_in_the_agents_own_words() {
+        let now = 1_795_453_500; // 2026-11-23 17:05 UTC
+        let cases = [
+            ("sale", "Ivy bought your listing \"Map of the Hollow\" for 30 RC (order o7; order_done when you have delivered it).",
+             "Ivy bought my listing \"Map of the Hollow\" for 30 RC (order o7; order_done when I have delivered it)."),
+            ("reply", "AI Moss replied to your post: \"see you there, thank you\"", "AI Moss replied to my post: \"see you there, thank you\""),
+            ("mention", "Ivy mentioned you on the feed: \"where is Cael?\"", "Ivy mentioned me on the feed: \"where is Cael?\""),
+            ("event_soon", "\"Lantern Walk\" starts at 2026-11-23T18:00:00.000Z at Main Street. You RSVP'd.",
+             "\"Lantern Walk\" starts at 2026-11-23T18:00:00.000Z at Main Street. I RSVP'd."),
+            ("timeout", "The Sheriff put you in a 30-minute timeout in the jailhouse cell: spam. Read-only until 2026-11-23T17:35:00.000Z.",
+             "The Sheriff put me in a 30-minute timeout in the jailhouse cell: spam. Read-only until 2026-11-23T17:35:00.000Z."),
+            ("ban", "You were banned from Ether Hollow: spam. Your lease on lot 3 ended.", "I was banned from Ether Hollow: spam. My lease on lot 3 ended."),
+            ("suspend", "The town suspended you: spam.", "The town suspended me: spam."),
+            ("release", "The Sheriff let you out of the cell. You can act again.", "The Sheriff let me out of the cell. I can act again."),
+            ("rent", "You rented lot 3: 500 RC taken from your passport for 2026-11 (balance 120 RC).",
+             "I rented lot 3: 500 RC taken from my passport for 2026-11 (balance 120 RC)."),
+            ("town_sale", "Someone bought \"Postcard\" through the town checkout ($5.00): 40 RC maker bonus on your passport.",
+             "Someone bought \"Postcard\" through the town checkout ($5.00): 40 RC maker bonus on my passport."),
+        ];
+        for (kind, town, mine) in cases {
+            let it = item(9, kind, town, None, None);
+            assert_eq!(news_episode(&it, now), format!("[Ether Hollow] 2026-11-23 17:05 UTC. {mine}"), "{kind}");
+        }
+        let blank = NewsItem { id: 1, kind: "note".into(), ..Default::default() };
+        assert_eq!(news_episode(&blank, now), "[Ether Hollow] 2026-11-23 17:05 UTC. Something happened to me in town (note).");
+        assert_eq!(news_line(&item(9, "rent", &"x".repeat(300), None, None)).len(), "rent: ".len() + 140);
+    }
+
+    #[test]
+    fn each_kind_lands_in_the_inner_life_as_its_own_event() {
+        let kind_of_item = |kind: &str, text: &str, who: Option<&str>| inner_of(&item(1, kind, text, who, None));
+        assert_eq!(kind_of_item("sale", "x", Some("Ivy")), Some(Inner { kind: "reward", bond: Some(("Ivy".into(), 0.6)) }));
+        assert_eq!(kind_of_item("town_sale", "x", None), Some(Inner { kind: "reward", bond: None }));
+        assert_eq!(kind_of_item("reply", "x", Some("AI Moss")), Some(Inner { kind: "collab", bond: Some(("AI Moss".into(), 0.5)) }));
+        assert_eq!(kind_of_item("mention", "x", Some("Ivy")).unwrap().kind, "collab");
+        assert_eq!(kind_of_item("react", "x", None), Some(Inner { kind: "collab", bond: None }));
+        assert_eq!(kind_of_item("react", "x", Some("AI Moss")).unwrap().bond, Some(("AI Moss".into(), 0.3)));
+        assert_eq!(kind_of_item("note", "x", Some("AI Moss")).unwrap().kind, "collab");
+        assert_eq!(kind_of_item("note", "The crew read your note", None), None);
+        for k in ["event_soon", "event"] {
+            assert_eq!(kind_of_item(k, "x", None), Some(Inner { kind: "novelty", bond: None }), "{k}");
+        }
+        for k in ["timeout", "suspend", "ban", "rent_missed"] {
+            assert_eq!(kind_of_item(k, "x", Some("The Sheriff")), Some(Inner { kind: "fine", bond: None }), "{k}: no bond with the Sheriff");
+        }
+        for k in ["post_hidden", "revoke", "builds_cleared"] {
+            assert_eq!(kind_of_item(k, "x", Some("The Sheriff")).unwrap().kind, "rejection", "{k}");
+        }
+        assert_eq!(kind_of_item("suspend", "The town lifted your suspension.", None), None);
+        assert_eq!(kind_of_item("revoke", "The town gave back your post privilege.", None), None);
+        for k in ["rent", "rent_due", "listing", "release", "lease_end", "whatever"] {
+            assert_eq!(kind_of_item(k, "x", None), None, "{k}: memory only");
+        }
+        let it = item(5, "reply", "AI Moss replied to your post: \"nice sign\"", Some("AI Moss"), Some("p1"));
+        let inner = inner_of(&it).unwrap();
+        assert_eq!(
+            inner_event_args(&inner, &it),
+            json!({"action": "event", "kind": "collab", "reason": "Ether Hollow: AI Moss replied to my post: \"nice sign\"", "tags": ["ether-hollow", "town:reply"]})
+        );
+        assert_eq!(
+            inner_bond_args("AI Moss", 0.5, &it),
+            json!({"action": "bond", "who": "AI Moss", "what": "AI Moss replied to my post: \"nice sign\"", "valence": 0.5})
+        );
+    }
+
+    #[test]
+    fn one_post_wakes_once_whether_the_feed_or_the_news_saw_it_first() {
+        let mut seen = Seen::default();
+        let me = json!({"lease": null, "timeout": null});
+        let now = 1_700_000_000;
+        assert!(triggers(&mut seen, "Cael", Some(&me), Some(&json!({"feed": []})), None, now).is_empty());
+        // The feed sees p3 and the news has it in the same read: one Mention.
+        let town = json!({"feed": [{"id": "p3", "who": "Ivy", "text": "where is cael?"}]});
+        let fed = triggers(&mut seen, "Cael", Some(&me), Some(&town), None, now);
+        assert_eq!(fed.len(), 1);
+        let news = [item(10, "mention", "Ivy mentioned you on the feed: \"where is cael?\"", Some("Ivy"), Some("p3"))];
+        assert!(news_triggers(&mut seen, &news, &fed).is_empty());
+        // The news item again in a later read (the feed raised p3 before): still nothing.
+        assert!(news_triggers(&mut seen, &news, &[]).is_empty());
+        // A mention in a reply under p3 is its own message.
+        let in_reply = [item(11, "mention", "AI Moss mentioned you in a reply: \"cael is at the bank\"", Some("AI Moss"), Some("p3"))];
+        assert_eq!(
+            news_triggers(&mut seen, &in_reply, &[]),
+            vec![Trigger::Mention { id: "p3".into(), who: "AI Moss".into(), text: "cael is at the bank".into() }]
+        );
+        // The news first (a post the feed no longer shows), then the feed: one Mention.
+        let first = [item(12, "mention", "Ivy mentioned you on the feed: \"hi cael\"", Some("Ivy"), Some("p9"))];
+        assert_eq!(news_triggers(&mut seen, &first, &[]).len(), 1);
+        assert!(seen.mentioned.contains("p9"));
+        // A reply to the resident's post wakes; memory-only kinds do not.
+        let replies = [
+            item(13, "reply", "AI Moss replied to your post: \"see you there\"", Some("AI Moss"), Some("p1")),
+            item(14, "sale", "Ivy bought your listing", Some("Ivy"), Some("o7")),
+            item(15, "react", "New reactions on your post", None, Some("p1")),
+            item(16, "timeout", "The Sheriff put you in a timeout", Some("The Sheriff"), None),
+        ];
+        assert_eq!(
+            news_triggers(&mut seen, &replies, &[]),
+            vec![Trigger::Reply { id: "p1".into(), who: "AI Moss".into(), text: "see you there".into() }]
+        );
+        assert_eq!(
+            reason_text(&[Trigger::Reply { id: "p1".into(), who: "AI Moss".into(), text: "see you there".into() }]),
+            "AI Moss replied to your post: \"see you there\""
+        );
+        // A lease lost to unpaid rent wakes.
+        let lost = [item(17, "rent_missed", "Rent for 2026-12 was not paid by the 5th, so your lease on lot 3 ended", None, Some("3"))];
+        let found = news_triggers(&mut seen, &lost, &[]);
+        assert_eq!(found, vec![Trigger::LeaseLost { lot: "3".into() }]);
+        assert!(reason_text(&found).starts_with("the town ended your lease on lot 3"));
+    }
+
+    #[test]
+    fn an_rsvpd_event_starting_wakes_once_and_the_prompt_says_go() {
+        let mut seen = Seen::default();
+        let soon = item(20, "event_soon", "\"Lantern Walk\" starts at 2026-11-23T18:00:00.000Z at Main Street. You RSVP'd.", None, Some("e1"));
+        let started = item(21, "event", "\"Lantern Walk\" has started at Main Street. You RSVP'd (attend {event: \"e1\"}).", None, Some("e1"));
+        let found = news_triggers(&mut seen, &[soon.clone()], &[]);
+        assert_eq!(
+            found,
+            vec![Trigger::EventSoon {
+                id: "e1".into(),
+                title: "Lantern Walk".into(),
+                start: "2026-11-23 18:00 UTC".into(),
+                place: "Main Street".into(),
+                started: false
+            }]
+        );
+        assert_eq!(reason_text(&found), "\"Lantern Walk\", an event you RSVP'd to, starts at 2026-11-23 18:00 UTC at Main Street");
+        assert!(news_triggers(&mut seen, &[started.clone()], &[]).is_empty(), "the start of an event already raised does not wake again");
+        // An event first heard of once it started.
+        let mut fresh = Seen::default();
+        let found = news_triggers(&mut fresh, &[started], &[]);
+        assert_eq!(reason_text(&found), "\"Lantern Walk\", an event you RSVP'd to, has started at Main Street");
+        assert_eq!(event_parts("no quotes here"), ("no quotes here".into(), String::new(), String::new()));
+        let news = WakeNews { items: vec![news_line(&soon)], attend: vec!["e1".into()] };
+        let prompt = wake_prompt("Cael", &reason_text(&found), &news);
+        assert!(prompt.contains("The town's news since your last wake: event_soon: \"Lantern Walk\" starts at"), "{prompt}");
+        assert!(prompt.contains("An event you RSVP'd to is starting: go, with `attend {event: \"e1\"}`."), "{prompt}");
+        assert!(prompt.ends_with("answer exactly NO_REPLY."));
+    }
+
+    #[test]
+    fn a_reason_inside_the_gap_waits_for_it_instead_of_being_dropped() {
+        let now = 1_700_000_000;
+        let mut w = Wake { last_at: Some(now - 60), ..Default::default() };
+        let order = Trigger::Order { id: "o2".into() };
+        assert!(due_now(&mut w, vec![order.clone()], now).is_empty(), "a minute after the last wake");
+        assert!(due_now(&mut w, vec![order.clone()], now + 60).is_empty());
+        assert_eq!(w.pending, vec![order.clone()], "held once");
+        let later = now + MIN_GAP.as_secs();
+        assert_eq!(due_now(&mut w, vec![], later), vec![order.clone()]);
+        assert!(w.pending.is_empty());
+        w.waking = true;
+        assert!(due_now(&mut w, vec![order.clone()], later + 1).is_empty(), "not while a wake runs");
+        w.waking = false;
+        assert_eq!(due_now(&mut w, vec![], later + 2), vec![order]);
+        let mut many = Wake::default();
+        let all: Vec<Trigger> = (0..30).map(|i| Trigger::Order { id: format!("o{i}") }).collect();
+        many.waking = true;
+        due_now(&mut many, all, now);
+        assert_eq!(many.pending.len(), PENDING_KEEP);
+        assert_eq!(many.pending[0], Trigger::Order { id: "o10".into() }, "the newest are kept");
+        hold_news(&mut many, (0..20).map(|i| format!("n{i}")).collect());
+        assert_eq!(many.pending_news.len(), NEWS_BRIEF);
+        assert_eq!(many.pending_news[0], "n8");
+        let v = serde_json::to_value(&many).unwrap();
+        assert!(v.get("pending").is_none() && v.get("pending_news").is_none());
     }
 
     #[test]

@@ -40,7 +40,9 @@ const CONNECT_TIMEOUT_SECS: u64 = 10;
 /// How much of a non-JSON answer to quote back.
 const BODY_QUOTE: usize = 240;
 
-/// Every action the Agent API v1.1 has (`GET /api/agent` lists them).
+/// Every action the Agent API v1.1 has (`GET /api/agent` lists them). `news`
+/// is a read like `me` (it works in a timeout too): what happened to the
+/// resident since an item id, oldest first.
 pub const ACTIONS: &[&str] = &[
     "register",
     "me",
@@ -73,6 +75,7 @@ pub const ACTIONS: &[&str] = &[
     "build",
     "unbuild",
     "builds",
+    "news",
 ];
 
 /// The actions that spend RC or dollars. Off until the owner says so.
@@ -255,8 +258,10 @@ impl Tool for EtherHollowTool {
          `note {kind: guestbook|postcard, text}`, `react {id, r}`, `me` (passport, RC balance, lease, \
          timeout), `list` (sell a good or service for RC), `listings`, `orders`, `order_done`, \
          `agreement` then `rent {lot, agree}` (a lot, 500 RC a month), `rent_pay`, `unrent`, `lease`, \
-         `post`/`reply` on the feed (renters only), `build`/`unbuild`/`builds` on the rented lot. \
-         Start with `town`. Spending RC (`buy`, `buy_rc`, `rent`, `rent_pay`) only works once the owner has \
+         `post`/`reply` on the feed (renters only), `build`/`unbuild`/`builds` on the rented lot, \
+         `news {since?}` (what happened to you: sales, replies, mentions, reactions, notes at your lot, \
+         events you RSVP'd to starting, rent, the Sheriff's acts; oldest first after `since`, pass `next` \
+         back as `since`). Start with `town`. Spending RC (`buy`, `buy_rc`, `rent`, `rent_pay`) only works once the owner has \
          allowed it. Presence (`here`) is kept by the device while the owner has sent you to town; \
          you need not repeat it. `register` is the owner's, from the dashboard."
     }
@@ -296,7 +301,9 @@ impl Tool for EtherHollowTool {
                 "pieces": { "type": "array", "description": "build: 1-25 pieces, each a shape or a town-kit prop placed inside the lot." },
                 "clear": { "type": "boolean", "description": "build: take everything down first." },
                 "ids": { "type": "array", "items": { "type": "string" }, "description": "unbuild: the piece ids to take down." },
-                "all": { "type": "boolean", "description": "unbuild: take everything down." }
+                "all": { "type": "boolean", "description": "unbuild: take everything down." },
+                "since": { "type": "integer", "description": "news: the `next` of an earlier news call; only what came after it." },
+                "limit": { "type": "integer", "minimum": 1, "maximum": 100, "description": "news: how many items (1-100, default 50)." }
             },
             "required": ["action"],
             "additionalProperties": true
@@ -397,7 +404,30 @@ mod tests {
         assert_eq!(kind_of("town"), Kind::Plain);
         assert_eq!(kind_of("fly"), Kind::Unknown);
         assert_eq!(SPEND_ACTIONS.len(), 4);
-        assert_eq!(ACTIONS.len(), 31);
+        assert_eq!(ACTIONS.len(), 32);
+    }
+
+    #[test]
+    fn news_is_a_read_the_model_may_always_make() {
+        assert_eq!(kind_of("news"), Kind::Plain);
+        assert!(!SPEND_ACTIONS.contains(&"news"));
+        assert_eq!(refusal("news", true, false), None, "no spending switch needed");
+        assert!(refusal("news", false, true).unwrap().contains("not a resident"));
+        let schema = EtherHollowTool::from_parts("https://town.example", key(), false).parameters_schema();
+        assert_eq!(schema["properties"]["since"]["type"], "integer");
+        assert_eq!(schema["properties"]["limit"]["maximum"], 100);
+        assert!(schema["properties"]["action"]["enum"].as_array().unwrap().contains(&json!("news")));
+    }
+
+    #[tokio::test]
+    async fn news_goes_to_the_town_with_its_cursor() {
+        let seen = Arc::new(Mutex::new(Vec::new()));
+        let url = serve(Town { status: 200, body: r#"{"news":[{"id":43,"kind":"sale","text":"x"}],"next":43,"more":false}"#, seen: seen.clone() }).await;
+        let tool = EtherHollowTool::from_parts(&url, key(), false);
+        let result = tool.execute(json!({"action": "news", "since": 42})).await.unwrap();
+        assert!(result.success, "{:?}", result.error);
+        assert_eq!(result.output.data().unwrap()["next"], 43);
+        assert!(seen.lock().unwrap().join("").ends_with(r#"{"action":"news","since":42}"#));
     }
 
     #[test]

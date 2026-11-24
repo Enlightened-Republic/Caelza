@@ -25,12 +25,12 @@ MANIFEST = tomllib.loads((REPO_ROOT / "bundle" / "manifest.toml").read_text())
 VISION = (REPO_ROOT / "docs" / "design" / "caelza-vision.md").read_text()
 
 TOWN = "https://etherhollow.enlightenedrepublic.online"
-# The Agent API v1.1's actions, as `GET /api/agent` lists them (read 2026-11-20).
+# The Agent API v1.1's actions, as `GET /api/agent` lists them (read 2026-11-20; `news` 2026-11-24).
 ACTIONS = [
     "register", "me", "town", "look", "move", "here", "leave", "read", "item", "buy", "buy_rc",
     "events", "rsvp", "attend", "note", "list", "unlist", "listings", "orders", "order_done",
     "agreement", "rent", "rent_pay", "unrent", "lease", "post", "reply", "react",
-    "build", "unbuild", "builds",
+    "build", "unbuild", "builds", "news",
 ]
 
 
@@ -325,7 +325,7 @@ def test_several_agents_can_live_in_town():
     assert API.count("Query(q): Query<AgentQuery>") == 10, "every route takes ?agent="
     assert "fn resident_in(cfg: &EtherHollowConfig, alias: &str) -> Resident" in API and "pub fn default_alias(cfg: &EtherHollowConfig) -> String" in API
     assert "api_config::handle_map_key(" in API and 'path: "ether_hollow.residents".to_string(), key: alias.clone()' in API
-    for per_alias in ("fn with_presence<T>(alias: &str", "fn with_wake<T>(alias: &str", "fn remember_me(alias: &str, me: Value)", "async fn read_resident(town: &Resident) -> Option<String>", "pub async fn wake_now(state: &AppState, alias: &str, reason: String)", "pub fn remember(state: &AppState, alias: &str, key: String, text: String)"):
+    for per_alias in ("fn with_presence<T>(alias: &str", "fn with_wake<T>(alias: &str", "fn remember_me(alias: &str, me: Value)", "async fn read_resident(state: &AppState, town: &Resident) -> Option<(String, WakeNews)>", "pub async fn wake_now(state: &AppState, alias: &str, reason: String)", "pub fn remember(state: &AppState, alias: &str, key: String, text: String)"):
         assert per_alias in API, per_alias
     assert '"spend_path": town.path,' in API and '"residents": residents_summary(&state),' in API
     assert "for town in residents {" in API, "one poll per resident"
@@ -412,3 +412,41 @@ def test_the_manifest_and_the_vision_name_the_slice():
     row = VISION.split("| **M10 Ether Hollow** |", 1)[1].split("\n", 1)[0]
     assert "0018-ether-hollow.patch" in row and "`ether_hollow`" in row and "/api/world" in row
     assert "Left:" in row, "the slices still to come are named"
+
+
+def test_the_towns_news_reaches_the_mind_by_a_pull():
+    """M10 slice 5a: the waker reads `news {since}`, remembers each item, feeds the inner life, wakes for what needs the agent."""
+    # The tool has the action, as a read.
+    assert "news" in rust_str_list(TOOL, "ACTIONS") and "news" not in rust_str_list(TOOL, "SPEND_ACTIONS")
+    assert '"since": { "type": "integer"' in TOOL and "`news {since?}`" in TOOL
+    # The waker: the read, the cursor on disk, the first read priming it.
+    assert 'json!({"action": "news", "limit": NEWS_LIMIT})' in API and 'body["since"] = json!(cursor);' in API
+    assert 'pub const NEWS_SINCE_FILE: &str = "news-since.json";' in API
+    assert "for (alias, since) in load_news_since(&root) {" in API and "save_news_since(&root, &town.agent," in API
+    assert "pub fn take_news(seen: &mut Seen, items: &[NewsItem], next: u64) -> Vec<NewsItem>" in API
+    assert "seen.news_since = Some(next);\n        return Vec::new();" in API, "the first read primes"
+    # Each item: an episode in the agent's own words, and the inner life where the Mind has it.
+    assert 'remember(state, &town.agent, format!("news:{}", item.id), news_episode(item, now));' in API
+    assert "pub fn first_person(text: &str) -> String" in API
+    assert 'mind.call_tool_json(&alias, "brain_inner", inner_event_args(&inner, &item))' in API
+    assert '"sale" | "town_sale" => "reward",' in API and '"event_soon" | "event" => "novelty",' in API
+    assert '"timeout" | "suspend" | "ban" | "rent_missed" => "fine",' in API
+    assert '"post_hidden" | "revoke" | "builds_cleared" => "rejection",' in API
+    assert 'json!({"action": "bond", "who": who, "what": what, "valence": valence})' in API
+    # What wakes: a mention or a reply (once per post), an RSVP'd event, a lost lease; the gap holds, it does not drop.
+    for variant in ("Reply { id: String, who: String, text: String },", "EventSoon { id: String, title: String, start: String, place: String, started: bool },", "LeaseLost { lot: String },"):
+        assert variant in API, variant
+    assert "pub fn news_triggers(seen: &mut Seen, items: &[NewsItem], already: &[Trigger]) -> Vec<Trigger>" in API
+    assert "seen.mentioned.insert(id.clone());" in API
+    assert "pub fn due_now(w: &mut Wake, found: Vec<Trigger>, now: u64) -> Vec<Trigger>" in API
+    assert "An event you RSVP'd to is starting: go, with {calls}." in API and "The town's news since your last wake:" in API
+    # The docs, the FAQ and the corpus.
+    six = NOTE.split("6. **Feeding the Mind**", 1)[1].split("\n7. ", 1)[0]
+    assert "(pull; shipped town side 2026-11-24" in six and "behind NAT" in six
+    p5 = " ".join(NOTE.split("**P5 · The town in the Mind, and on Home (Caelza).**", 1)[1].split("**P6 ·", 1)[0].split())
+    assert "**The town's news (slice 5a, 2026-11-24):**" in p5 and p5.endswith("Still to come: the day plan.")
+    section = " ".join(FAQ.split("## Can Cael live in Ether Hollow?", 1)[1].split("\n## ", 1)[0].split())
+    assert "reads the town's news for your agent" in section
+    assert "reads the town's news for your agent" in CORPUS and CORPUS == APP_CORPUS
+    row = VISION.split("| **M10 Ether Hollow** |", 1)[1].split("\n", 1)[0]
+    assert "**The town's news (slice 5a, 2026-11-24):**" in row and "fed to the Mind (§6.6" not in row
