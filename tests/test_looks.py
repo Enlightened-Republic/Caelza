@@ -31,6 +31,7 @@ API_RS = (REPO_ROOT / "runtime" / "overlay" / "crates" / "caelza-gateway" / "src
 PATCH = (REPO_ROOT / "runtime" / "patches" / "0011-looks-and-shop.patch").read_text()
 # The unlock codes (M8e) moved the Shop's priced-pack strings into patch 0014.
 PATCH_UNLOCK = (REPO_ROOT / "runtime" / "patches" / "0014-unlock-codes.patch").read_text()
+PATCH_CHARACTERS = (REPO_ROOT / "runtime" / "patches" / "0031-looks-packs-and-characters.patch").read_text(encoding="utf-8")
 BUILD_SH = (REPO_ROOT / "runtime" / "build.sh").read_text()
 MANIFEST = tomllib.loads((REPO_ROOT / "bundle" / "manifest.toml").read_text())
 
@@ -154,7 +155,7 @@ def test_patch_touches_only_the_files_it_claims():
 def test_every_string_the_pages_use_is_in_the_patch():
     used = set(re.findall(r'"((?:looks|shop)\.[a-z_]+)"', LOOKS_PAGE + SHOP_PAGE))
     used |= {f"looks.layer_{layer}" for layer in lib.LAYER_ORDER} | {f"looks.slot_{slot}" for slot in lib.SLOTS}
-    added = set(re.findall(r"^\+    '((?:looks|shop)\.[a-z_]+)': ", PATCH + PATCH_UNLOCK, re.M))
+    added = set(re.findall(r"^\+    '((?:looks|shop)\.[a-z_]+)': ", PATCH + PATCH_UNLOCK + PATCH_CHARACTERS, re.M))
     removed = set(re.findall(r"^-    '((?:looks|shop)\.[a-z_]+)': ", PATCH_UNLOCK, re.M))
     assert used and used <= added - removed, sorted(used - (added - removed))
     assert "+    'nav.looks': 'Looks'," in PATCH and "+    'nav.shop': 'Shop'," in PATCH
