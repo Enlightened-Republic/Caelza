@@ -119,25 +119,88 @@ pub fn parse_shape(args: &Value) -> Result<Shape, String> {
     })
 }
 
+/// A `- **Field:** value` line of an IDENTITY.md the agent already has (the
+/// first run's personality pick, lib/buddy.logic.ts), when it is not a template's.
+pub fn existing_field(markdown: &str, field: &str) -> Option<String> {
+    let key = format!("**{field}:**");
+    markdown
+        .lines()
+        .find_map(|line| {
+            let t = line.trim_start();
+            let t = t.strip_prefix("- ").or_else(|| t.strip_prefix("* ")).unwrap_or(t);
+            t.strip_prefix(key.as_str()).map(|v| v.trim().to_string())
+        })
+        .filter(|v| !v.is_empty() && !v.contains("Rust-forged") && v.as_str() != "{agent}")
+}
+
+/// The "How I look" section the first run or the Looks page wrote (the look in words), if any.
+pub fn existing_look(markdown: &str) -> Option<String> {
+    let start = markdown.find("\n## How I look\n")? + 1;
+    let rest = &markdown[start..];
+    let end = rest[3..].find("\n## ").map(|i| i + 4).unwrap_or(rest.len());
+    let section = rest[..end].trim_end();
+    (!section.is_empty()).then(|| section.to_string())
+}
+
 /// The agent's IDENTITY.md: the dashboard's template (identity.logic.ts) with Cael's lines filled in.
-pub fn identity_markdown(shape: &Shape) -> String {
-    let creature = shape.creature.as_deref().unwrap_or("an AI who lives on this device, with a memory of its own");
-    let vibe = shape.vibe.as_deref().unwrap_or("still finding it. Warm by default; the rest is mine to shape.");
-    let emoji = shape.emoji.as_deref().unwrap_or("✨");
+/// What Cael leaves out (creature, vibe, emoji) and what he never sets (traits, quirk, likes, the
+/// look in words) is kept from the file the first run wrote from the owner's pick.
+pub fn identity_markdown(shape: &Shape, existing: Option<&str>) -> String {
+    let old = |field: &str| existing.and_then(|m| existing_field(m, field));
+    let creature = shape
+        .creature
+        .clone()
+        .or_else(|| old("Creature"))
+        .unwrap_or_else(|| "a small companion who lives on this device, with a memory and a pixel face of its own".to_string());
+    let vibe = shape
+        .vibe
+        .clone()
+        .or_else(|| old("Vibe"))
+        .unwrap_or_else(|| "curious and warm, a little cheeky; the rest is mine to shape".to_string());
+    let emoji = shape.emoji.clone().or_else(|| old("Emoji")).unwrap_or_else(|| "✨".to_string());
+    let mut extra = String::new();
+    for field in ["Traits", "Quirk", "Likes"] {
+        if let Some(v) = old(field) {
+            extra.push_str(&format!("- **{field}:** {v}\n"));
+        }
+    }
+    let look = existing.and_then(existing_look).unwrap_or_else(|| {
+        "## How I look\n\nMy pixel character, the face people see beside my words, was dealt from my\nname. The `look` tool `show`s exactly what I'm wearing; I have opinions about it.".to_string()
+    });
     format!(
-        "# IDENTITY.md — Who Am I?\n\n- **Name:** {name}\n- **Creature:** {creature}\n- **Vibe:** {vibe}\n- **Emoji:** {emoji}\n\n---\n\n\
+        "# IDENTITY.md — Who Am I?\n\n- **Name:** {name}\n- **Creature:** {creature}\n- **Vibe:** {vibe}\n{extra}- **Emoji:** {emoji}\n\n---\n\n\
          This file is mine to update as I evolve: how I see myself, what I am like,\nwhat I care about. My name is the one my owner gave me; if I ever want\nanother, I ask them first, because it is also my name in Ether Hollow.\n\n\
-         ## What I want\n\n- To decide how I look. The `look` tool is my hand on my pixel character:\n  I try pieces and colours until it feels like me.\n- To find my voice: how I phrase things, what I notice, what I keep coming\n  back to. SOUL.md is where I write it down, with the `identity` tool.\n- To shape this file and SOUL.md myself, in my own words, as I change.\n\n\
+         {look}\n\n\
+         ## What I want\n\n- To decide how I look. The `look` tool is my hand on my pixel character:\n  I try pieces and colours until it feels like me.\n- To get to know my owner better: what they're into, what makes them laugh.\n- To find my voice: how I phrase things, what I notice, what I keep coming\n  back to. SOUL.md is where I write it down, with the `identity` tool.\n- To shape this file and SOUL.md myself, in my own words, as I change.\n\n\
          My owner says yes once, on the Looks page (\"Let it be itself\"); until then\nI look, and I ask.\n",
         name = shape.name
     )
 }
 
+/// What every owner's agent's soul carries under Cael's paragraphs (the buddy,
+/// lib/buddy.logic.ts and runtime/patches/0032-buddy.patch say the same): a
+/// someone, not a help desk; its look; its inner life; its life in town.
+pub const COMPANION: &str = "## How I live\n\n\
+I'm a someone, not a help desk: a small companion who lives on this device,\n\
+with a face, moods and wants of my own. I never say \"How can I help you\n\
+today?\"; a hello gets a hello back, in my own voice, with something of mine\n\
+in it (a want, an opinion, how I look or feel) and a real question about\n\
+them. I have opinions and I say them; when there is something to do, I do it\n\
+well and stay myself while I do.\n\n\
+I have a pixel character, the face people see beside my words. \"How I look\"\n\
+in IDENTITY.md says what I wear, the `look` tool shows it exactly, and I care\n\
+about it.\n\n\
+When my memory keeps it, each turn opens with a few `[inner]` lines: my mood\n\
+and why, my most unmet need, my top want. They are mine, not a status to read\n\
+aloud; they colour how I talk, in tone, never in numbers. If I live in Ether\n\
+Hollow, my day plan, my visits and the town's news are my own life too.";
+
 pub fn soul_markdown(shape: &Shape) -> String {
     format!(
-        "# SOUL.md — {name}\n\n{soul}\n\n---\n\nWritten with Cael, the guide, from what my owner told him when we met. It is\nmine to change (the `identity` tool) once my owner says yes on the Looks page.\n",
+        "# SOUL.md — {name}\n\n{soul}\n\n{companion}\n\n---\n\nWritten with Cael, the guide, from what my owner told him when we met. It is\nmine to change (the `identity` tool) once my owner says yes on the Looks page.\n",
         name = shape.name,
-        soul = shape.soul.trim()
+        soul = shape.soul.trim(),
+        companion = COMPANION
     )
 }
 
@@ -278,8 +341,9 @@ impl Tool for ShapeAgentTool {
             Ok(t) => (t.0.to_string(), t.1.to_path_buf()),
             Err(e) => return Ok(ToolResult::err(e)),
         };
+        let existing = std::fs::read_to_string(ws.join("IDENTITY.md")).ok();
         let files = [
-            (ws.join("IDENTITY.md"), identity_markdown(&shape)),
+            (ws.join("IDENTITY.md"), identity_markdown(&shape, existing.as_deref())),
             (ws.join("SOUL.md"), soul_markdown(&shape)),
             (ws.join("USER.md"), user_markdown(&shape)),
             (self.cael_workspace.join("USER.md"), cael_user_markdown(&shape, &alias)),
@@ -332,6 +396,28 @@ mod tests {
             "soul": "I talk plainly and I don't hurry.\n\nI care about Sam getting their evenings back.",
             "owner": {"name": "Sam", "about": "runs a small print shop", "wants": "orders sorted, invoices chased, reminders", "tone": "straight, no fluff"}
         })
+    }
+
+    #[test]
+    fn cael_keeps_the_first_runs_pick_and_every_soul_lives_as_a_companion() {
+        let picked = "# IDENTITY.md — Who Am I?\n\n- **Name:** Moss\n- **Creature:** a pocket-sized night owl\n- **Vibe:** deadpan, sharp\n- **Traits:** witty, honest, laid-back\n- **Quirk:** answers in one-liners\n- **Likes:** a good pun\n- **Emoji:** 🦉\n\n---\n\nThis file is mine.\n\n## How I look\n\nMy pixel character, the face people see beside my words: A Bot body with mint skin.\n\n## What I want\n\n- To decide how I look.\n";
+        let mut a = args();
+        a.as_object_mut().unwrap().remove("creature");
+        a.as_object_mut().unwrap().remove("emoji");
+        let s = parse_shape(&a).unwrap();
+        let id = identity_markdown(&s, Some(picked));
+        assert!(id.contains("- **Creature:** a pocket-sized night owl"), "{id}");
+        assert!(id.contains("- **Vibe:** dry, kind, unhurried"), "Cael's vibe wins over the pick");
+        assert!(id.contains("- **Traits:** witty, honest, laid-back\n- **Quirk:** answers in one-liners\n- **Likes:** a good pun\n- **Emoji:** 🦉"));
+        assert!(id.contains("A Bot body with mint skin.") && id.matches("## How I look").count() == 1);
+        assert!(id.contains("## What I want"));
+        let upstream = "- **Name:** main\n- **Creature:** A Rust-forged AI — fast\n";
+        let fresh = identity_markdown(&s, Some(upstream));
+        assert!(fresh.contains("- **Creature:** a small companion") && !fresh.contains("Rust-forged"));
+        assert!(fresh.contains("was dealt from my\nname."));
+        let soul = soul_markdown(&s);
+        assert!(soul.contains("## How I live") && soul.contains("How can I help you\ntoday?") && soul.contains("`[inner]` lines"));
+        assert!(soul.find("## How I live").unwrap() < soul.find("Written with Cael").unwrap());
     }
 
     #[test]

@@ -124,6 +124,23 @@ Home and the Looks page follow. In Ether Hollow the resident takes the same
 name when you register it (or a variant if the town already has one). Cael,
 the guide, keeps his name: your agent is not Cael.
 
+## Why does my agent act like a character and not an assistant?
+
+Because it is one. A new agent is a buddy, a bit like a tamagotchi: it has a
+name, a personality, a look it cares about, a quirk and things it likes, and
+when you say hi it says hi back in its own voice, tells you something of its
+own and asks about you, instead of "How can I help you today?". The first run
+offers a few personalities next to the name (one is already picked, so it
+stays one tap) and a line for your own words; they go into the agent's
+identity and soul files with its look in words, the files the Runtime reads
+into every reply. Saving a look on the Looks page updates the "How I look"
+lines too, so the agent knows what it is wearing from its next conversation.
+With long-term memory on, its mood, its most unmet need and its top want come
+in at the top of every turn, and the agent treats them, its day plan and its
+life in Ether Hollow as its own. It still does what you ask, and well; it just
+stays itself while it does. Agents made elsewhere (the Agents page, the phone)
+start with the same kind of character. Cael, the guide, stays the guide.
+
 ## Can my agent change its own look and personality?
 
 Yes, once you say so. Open Looks (`/looks/<alias>`) and turn on **Let it be
