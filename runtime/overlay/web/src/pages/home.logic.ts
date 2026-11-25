@@ -112,7 +112,8 @@ export function bodyTile(body: BodiesStatus | null, devices: BodyDevice[] | null
 export interface TownResidentSlice {
   registered: boolean;
   name: string;
-  presence: { in_town: boolean };
+  /** `plan`: the day plan's slot running now, when the agent's own plan sent it to town (M10 slice 5b). */
+  presence: { in_town: boolean; plan?: { place: string; doing: string; end: string } | null };
   wake: { last_at: number | null; last_reason: string | null; last_ok: boolean | null };
   me: {
     agent?: { place?: string };
@@ -130,6 +131,13 @@ export interface TownHomeSlice extends TownResidentSlice {
 
 /** How much of the last wake's reason the tile shows; the Connect card has the whole line. */
 export const TOWN_REASON_CHARS = 60;
+
+/** The slot a resident is living now, `at the bank: opening the shop, until 10:00`; null when its plan did not send it. */
+export function planNow(r: TownResidentSlice): string | null {
+  const p = r.presence.in_town ? r.presence.plan : null;
+  if (!p || !p.place?.trim() || !p.doing?.trim()) return null;
+  return `at ${p.place.trim()}: ${p.doing.trim()}${p.end ? `, until ${p.end}` : ''}`;
+}
 
 /** A resident's money or standing trouble, as the tile words it; empty when none. */
 function trouble(r: TownResidentSlice): string[] {
@@ -158,7 +166,7 @@ export function townTile(town: TownHomeSlice | null, error?: string | null, nowS
     const value = inTown.length > 0 ? `${inTown.length} of ${registered.length} in town` : `${registered.length} residents at home`;
     const parts = registered.map((r) => {
       const rc = r.me?.passport?.rc;
-      const where = r.presence.in_town ? 'in town' : 'at home';
+      const where = planNow(r) ?? (r.presence.in_town ? 'in town' : 'at home');
       return `${r.name || 'resident'} ${where}${typeof rc === 'number' && Number.isFinite(rc) ? ` · ${rc} RC` : ''}`;
     });
     const troubled = registered.flatMap((r) => trouble(r).map((t) => `${r.name || 'resident'}: ${t}`));
@@ -173,7 +181,14 @@ export function townTile(town: TownHomeSlice | null, error?: string | null, nowS
   }
   if (!town.registered) return { label: 'Town', value: 'Not a resident', sublabel: 'Ether Hollow waits on the Connect page', tone: 'neutral', to };
   const place = town.me?.agent?.place?.trim();
-  const value = town.presence.in_town ? (place ? `In town · ${place}` : 'In town') : 'At home';
+  const planned = planNow(town);
+  const value = planned
+    ? `${planned.charAt(0).toUpperCase()}${planned.slice(1)}`
+    : town.presence.in_town
+      ? place
+        ? `In town · ${place}`
+        : 'In town'
+      : 'At home';
   let tone: Tone = town.presence.in_town ? 'ok' : 'neutral';
   const parts: string[] = [town.name || 'resident'];
   const rc = town.me?.passport?.rc;

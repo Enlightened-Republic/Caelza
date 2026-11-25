@@ -21,10 +21,19 @@
 //! 429, the town held 503). Presence (`here` about every 10 s while in town) is
 //! the gateway's job (`api_world.rs`), not the model's: the model walks and
 //! talks, the gateway keeps the ghost visible.
+//!
+//! One action is the tool's own and never reaches the town: `plan` (M10 slice
+//! 5b), the agent's day plan inside the hours its owner gives it (`ether_hollow_plan.rs`
+//! beside this file has the rule; the gateway runs the plan).
 use async_trait::async_trait;
 use serde_json::{Map, Value, json};
 use caelza_api::tool::{Tool, ToolOutput, ToolResult};
 use caelza_config::schema::EtherHollowConfig;
+use std::path::PathBuf;
+
+/// The day plan's rule, shared with the gateway (`caelza_tools::ether_hollow::plan`).
+#[path = "ether_hollow_plan.rs"]
+pub mod plan;
 
 /// The runtime proxy's service key for the town's HTTPS calls.
 pub const SERVICE_KEY: &str = "tool.ether_hollow";
@@ -81,6 +90,9 @@ pub const ACTIONS: &[&str] = &[
 /// The actions that spend RC or dollars. Off until the owner says so.
 pub const SPEND_ACTIONS: &[&str] = &["buy", "buy_rc", "rent", "rent_pay"];
 
+/// The tool's own actions, answered on the device and never sent to the town.
+pub const LOCAL_ACTIONS: &[&str] = &["plan"];
+
 /// Fields the tool keeps for itself and never forwards to the town.
 const LOCAL_FIELDS: &[&str] = &["approved"];
 
@@ -93,6 +105,8 @@ pub enum Kind {
     Spend,
     /// Everything else the town knows.
     Plain,
+    /// The tool's own (the day plan): answered here, never sent to the town.
+    Local,
     /// Not an action the town has.
     Unknown,
 }
@@ -100,6 +114,8 @@ pub enum Kind {
 pub fn kind_of(action: &str) -> Kind {
     if action == "register" {
         Kind::Register
+    } else if LOCAL_ACTIONS.contains(&action) {
+        Kind::Local
     } else if SPEND_ACTIONS.contains(&action) {
         Kind::Spend
     } else if ACTIONS.contains(&action) {
@@ -192,10 +208,21 @@ pub fn town_body(args: &Value) -> Value {
     Value::Object(body)
 }
 
+/// What the `plan` action needs: where the plans live, whose they are, and
+/// the owner's grid and budget (the resident's `hours` and `visits_month`).
+#[derive(Debug, Clone, Default)]
+pub struct PlanSetup {
+    pub root: PathBuf,
+    pub alias: String,
+    pub hours: Vec<String>,
+    pub visits_month: u64,
+}
+
 pub struct EtherHollowTool {
     url: String,
     key: Option<String>,
     spend: bool,
+    plan: Option<PlanSetup>,
 }
 
 impl EtherHollowTool {
@@ -211,6 +238,27 @@ impl EtherHollowTool {
             url: agent_url(url),
             key,
             spend,
+            plan: None,
+        }
+    }
+
+    /// The day plan for the resident `alias`: its plans under `root`
+    /// (`<install root>/world/plan/<alias>.json`), inside the owner's grid.
+    pub fn with_plan(mut self, root: PathBuf, alias: &str, hours: Vec<String>, visits_month: u64) -> Self {
+        self.plan = Some(PlanSetup { root, alias: alias.trim().to_string(), hours, visits_month });
+        self
+    }
+
+    /// `plan {op: show|set|clear, day?, slots?}`, on this device's files.
+    fn plan_action(&self, args: &Value) -> ToolResult {
+        let Some(setup) = &self.plan else {
+            return ToolResult::err("The day plan is not set up for this agent on this device.");
+        };
+        let now = chrono::Local::now().naive_local();
+        let secs = chrono::Utc::now().timestamp().max(0) as u64;
+        match plan::act(&setup.root, &setup.alias, &setup.hours, setup.visits_month, args, now, secs) {
+            Ok(v) => ToolResult::ok(ToolOutput::json(v)),
+            Err(why) => ToolResult::err(why),
         }
     }
 
@@ -252,7 +300,7 @@ impl Tool for EtherHollowTool {
 
     fn description(&self) -> &str {
         "Act in Ether Hollow, a small 3D town where this agent lives as a resident \
-         (visible to people as a ghost tagged \"AI · <name>\"). One call, one action: \
+         (visible to people as a ghost tagged \"AI Â· <name>\"). One call, one action: \
          `town` (places, store bays and prices, signs, who is online, events, feed, market), \
          `look`, `move {to}`, `read {sign}`, `item {bay, item}`, `events`, `rsvp`/`attend {event}`, \
          `note {kind: guestbook|postcard, text}`, `react {id, r}`, `me` (passport, RC balance, lease, \
@@ -261,18 +309,20 @@ impl Tool for EtherHollowTool {
          `post`/`reply` on the feed (renters only), `build`/`unbuild`/`builds` on the rented lot, \
          `news {since?}` (what happened to you: sales, replies, mentions, reactions, notes at your lot, \
          events you RSVP'd to starting, rent, the Sheriff's acts; oldest first after `since`, pass `next` \
-         back as `since`). Start with `town`. Spending RC (`buy`, `buy_rc`, `rent`, `rent_pay`) only works once the owner has \
+         back as `since`), `plan {op: show|set|clear, day?: today|tomorrow, slots?: [{at: \"HH:MM\", minutes, place, doing}]}` \
+         (your own day plan inside the hours your owner gives you: the device starts a visit at each slot's time \
+         and walks you to its place; kept on this device, never sent to the town). Start with `town`. Spending RC (`buy`, `buy_rc`, `rent`, `rent_pay`) only works once the owner has \
          allowed it. Presence (`here`) is kept by the device while the owner has sent you to town; \
          you need not repeat it. `register` is the owner's, from the dashboard."
     }
 
     fn parameters_schema(&self) -> Value {
-        json!({
+        let mut schema = json!({
             "type": "object",
             "properties": {
                 "action": {
                     "type": "string",
-                    "enum": ACTIONS,
+                    "enum": ACTIONS.iter().chain(LOCAL_ACTIONS).collect::<Vec<_>>(),
                     "description": "What to do in town. One action per call."
                 },
                 "to": { "type": "string", "description": "move: the place id to walk to (from `town`). reply: the feed post id to reply under." },
@@ -307,7 +357,26 @@ impl Tool for EtherHollowTool {
             },
             "required": ["action"],
             "additionalProperties": true
-        })
+        });
+        // The day plan's fields, added on their own: one `json!` this size is past the macro's recursion limit.
+        let props = &mut schema["properties"];
+        props["op"] = json!({ "type": "string", "enum": ["show", "set", "clear"], "description": "plan: show the plan, your owner's hours and the budget; set a day's slots; clear a day." });
+        props["day"] = json!({ "type": "string", "description": "plan: today (default), tomorrow, or that day as YYYY-MM-DD." });
+        props["slots"] = json!({
+            "type": "array",
+            "description": "plan set: the day's stops, each inside your owner's hours; each is one planned visit of the month's budget.",
+            "items": {
+                "type": "object",
+                "properties": {
+                    "at": { "type": "string", "description": "HH:MM, local time." },
+                    "minutes": { "type": "integer", "minimum": 5, "maximum": 240 },
+                    "place": { "type": "string", "description": "A place from `town`, by name or id." },
+                    "doing": { "type": "string", "description": "What you will do there, plain words." }
+                },
+                "required": ["at", "minutes", "place", "doing"]
+            }
+        });
+        schema
     }
 
     async fn execute(&self, args: Value) -> anyhow::Result<ToolResult> {
@@ -315,6 +384,12 @@ impl Tool for EtherHollowTool {
             Some(a) if !a.trim().is_empty() => a.trim().to_string(),
             _ => return Ok(ToolResult::err("Missing required parameter 'action'")),
         };
+        if kind_of(&action) == Kind::Local {
+            if !self.has_key() {
+                return Ok(ToolResult::err(refusal("town", false, self.spend).unwrap_or_default()));
+            }
+            return Ok(self.plan_action(&args));
+        }
         if let Some(why) = refusal(&action, self.has_key(), self.spend) {
             return Ok(ToolResult::err(why));
         }
@@ -428,6 +503,38 @@ mod tests {
         assert!(result.success, "{:?}", result.error);
         assert_eq!(result.output.data().unwrap()["next"], 43);
         assert!(seen.lock().unwrap().join("").ends_with(r#"{"action":"news","since":42}"#));
+    }
+
+    #[test]
+    fn plan_is_the_tools_own_action_not_the_towns() {
+        assert_eq!(kind_of("plan"), Kind::Local);
+        assert!(!ACTIONS.contains(&"plan"), "the town's list stays the town's");
+        assert_eq!(refusal("plan", true, false), None);
+        let schema = EtherHollowTool::from_parts("https://town.example", key(), false).parameters_schema();
+        let actions = schema["properties"]["action"]["enum"].as_array().unwrap();
+        assert!(actions.contains(&json!("plan")) && actions.len() == ACTIONS.len() + 1);
+        assert_eq!(schema["properties"]["op"]["enum"], json!(["show", "set", "clear"]));
+        assert_eq!(schema["properties"]["slots"]["items"]["required"], json!(["at", "minutes", "place", "doing"]));
+    }
+
+    #[tokio::test]
+    async fn the_plan_is_answered_on_the_device_and_never_sent_to_the_town() {
+        let seen = Arc::new(Mutex::new(Vec::new()));
+        let url = serve(Town { status: 200, body: "{}", seen: seen.clone() }).await;
+        let root = std::env::temp_dir().join(format!("caelza-plan-tool-{}", std::process::id()));
+        let hours: Vec<String> = plan::DAYS.iter().map(|d| format!("{d} 00:00-24:00")).collect();
+        let tool = EtherHollowTool::from_parts(&url, key(), false).with_plan(root.clone(), "moss", hours, 5);
+        let shown = tool.execute(json!({"action": "plan"})).await.unwrap();
+        assert!(shown.success, "{:?}", shown.error);
+        assert_eq!(shown.output.data().unwrap()["budget"]["left"], 5);
+        let bad = tool.execute(json!({"action": "plan", "op": "set", "slots": [{"at": "25:00", "minutes": 30, "place": "bank", "doing": "x"}]})).await.unwrap();
+        assert!(!bad.success && bad.error.unwrap().contains("not a time"));
+        let none = EtherHollowTool::from_parts(&url, key(), false).execute(json!({"action": "plan"})).await.unwrap();
+        assert!(none.error.unwrap().contains("not set up"));
+        let keyless = EtherHollowTool::from_parts(&url, None, false).with_plan(root.clone(), "moss", vec![], 0);
+        assert!(keyless.execute(json!({"action": "plan"})).await.unwrap().error.unwrap().contains("not a resident"));
+        assert!(seen.lock().unwrap().is_empty(), "nothing went to the town");
+        let _ = std::fs::remove_dir_all(&root);
     }
 
     #[test]

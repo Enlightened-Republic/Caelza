@@ -1,8 +1,10 @@
 // The Ether Hollow card's pure part: what a resident's name may be, how the
 // agent's pixel look becomes the town's four swatches and a name-tag color,
-// the config write for the spending switch, and the words for a visit.
+// the config write for the spending switch, and the words for a visit. The
+// day plan (M10 slice 5b): the owner's weekly grid as the card edits it, the
+// config writes for it and the budget, and the agent's plan as lines.
 import type { Slot } from "@/looks/looks.logic";
-import type { WorldLook, WorldPresence, WorldTagColor } from "@/lib/world";
+import type { WorldLook, WorldPlanNow, WorldPresence, WorldSlot, WorldTagColor } from "@/lib/world";
 import type { PatchOp } from "./connect.logic";
 
 /** The town, as the Runtime's default names it. */
@@ -215,6 +217,124 @@ export function leaseLine(
   const due = lease.next_due ?? lease.due_by;
   if (due && !((lease.missed ?? 0) > 0)) parts.push(words.next.replace("{date}", due));
   return parts.join(" · ");
+}
+
+/** The week as the config's `hours` lines name it. */
+export const PLAN_DAYS = ["mon", "tue", "wed", "thu", "fri", "sat", "sun"] as const;
+export type PlanDay = (typeof PLAN_DAYS)[number];
+
+/** One day of the owner's grid as the card edits it: on or off, from and to (local `HH:MM`). */
+export interface DayHours {
+  day: PlanDay;
+  on: boolean;
+  from: string;
+  to: string;
+}
+
+/** A new day's hours when the owner turns it on. */
+export const DAY_DEFAULT = { from: "09:00", to: "17:00" } as const;
+
+/** `HH:MM` (or `H:MM`) as minutes; null when it is not a time. `24:00` is an end. */
+export function minutesOf(text: string): number | null {
+  const m = /^(\d{1,2}):(\d{2})$/.exec(text.trim());
+  if (!m) return null;
+  const h = parseInt(m[1]!, 10);
+  const min = parseInt(m[2]!, 10);
+  if (min > 59 || h > 24 || (h === 24 && min !== 0)) return null;
+  return h * 60 + min;
+}
+
+export function hhmm(minutes: number): string {
+  const m = Math.max(0, Math.round(minutes));
+  return `${String(Math.floor(m / 60)).padStart(2, "0")}:${String(m % 60).padStart(2, "0")}`;
+}
+
+/**
+ * The config's `hours` lines as the card's simple grid: per day on or off,
+ * from the first span's start to the last span's end (the card edits one span
+ * a day; the Runtime reads several, comma-separated, when written by hand).
+ */
+export function gridFromLines(lines: readonly string[] | undefined): DayHours[] {
+  const spans = new Map<PlanDay, { from: number; to: number }>();
+  for (const raw of lines ?? []) {
+    const line = raw.trim();
+    const [head, ...rest] = line.split(/\s+/);
+    const day = PLAN_DAYS.find((d) => (head ?? "").toLowerCase().startsWith(d));
+    if (!day) continue;
+    for (const span of rest.join(" ").split(",")) {
+      const [a, b] = span.split("-");
+      const from = minutesOf(a ?? "");
+      const to = minutesOf(b ?? "");
+      if (from === null || to === null || to <= from) continue;
+      const had = spans.get(day);
+      spans.set(day, had ? { from: Math.min(had.from, from), to: Math.max(had.to, to) } : { from, to });
+    }
+  }
+  return PLAN_DAYS.map((day) => {
+    const s = spans.get(day);
+    return s ? { day, on: true, from: hhmm(s.from), to: hhmm(s.to) } : { day, on: false, from: DAY_DEFAULT.from, to: DAY_DEFAULT.to };
+  });
+}
+
+/** The grid as the config's lines: one per day that is on. */
+export function linesFromGrid(grid: readonly DayHours[]): string[] {
+  return grid.filter((d) => d.on).map((d) => `${d.day} ${hhmm(minutesOf(d.from) ?? 0)}-${hhmm(minutesOf(d.to) ?? 0)}`);
+}
+
+/** The first day that is on and does not read (not a time, or it ends before it starts); null when all read. */
+export function gridProblem(grid: readonly DayHours[]): PlanDay | null {
+  for (const d of grid) {
+    if (!d.on) continue;
+    const from = minutesOf(d.from);
+    const to = minutesOf(d.to);
+    if (from === null || to === null || from >= 24 * 60 || to <= from) return d.day;
+  }
+  return null;
+}
+
+/** A budget the owner typed: a whole number of visits from 0 to 1000; null when it is not one. */
+export function budgetOf(text: string): number | null {
+  const t = text.trim();
+  if (!/^\d{1,4}$/.test(t)) return null;
+  const n = parseInt(t, 10);
+  return n <= 1000 ? n : null;
+}
+
+/** The config writes for the owner's grid and the monthly budget, under the resident's own table. */
+export function planOps(lines: readonly string[], visitsMonth: number, path = "/ether_hollow"): PatchOp[] {
+  const table = path.trim().replace(/\/+$/, "") || "/ether_hollow";
+  return [
+    { op: "add", path: `${table}/hours`, value: [...lines] },
+    { op: "add", path: `${table}/visits_month`, value: Math.max(0, Math.floor(visitsMonth)) },
+  ];
+}
+
+/** A slot's end as `HH:MM`. */
+export function slotEnd(slot: Pick<WorldSlot, "at" | "minutes">): string {
+  const start = minutesOf(slot.at);
+  return start === null ? "" : hhmm(Math.min(24 * 60, start + slot.minutes));
+}
+
+/** One stop of the agent's day as the card lists it: `09:00-10:00 · the bank · open the shop`. */
+export function slotLine(slot: WorldSlot): string {
+  return `${slot.at}-${slotEnd(slot)} · ${slot.place} · ${slot.doing}`;
+}
+
+/** Whether a slot of today ran already, runs now, or is still to come. `now` is the gateway's `YYYY-MM-DD HH:MM`. */
+export function slotState(day: string, slot: WorldSlot, ran: readonly string[], now: string): "done" | "now" | "later" {
+  const [today, time] = now.split(" ");
+  const at = minutesOf(time ?? "");
+  const start = minutesOf(slot.at);
+  const end = start === null ? null : start + slot.minutes;
+  const started = ran.includes(`${day} ${slot.at}`);
+  if (today === day && at !== null && start !== null && end !== null && start <= at && at < end && started) return "now";
+  if (started || (today === day && at !== null && end !== null && end <= at)) return "done";
+  return "later";
+}
+
+/** The slot running now, as Home and the card say it: `at the bank: opening the shop, until 10:00`. */
+export function planNowLine(now: WorldPlanNow): string {
+  return `at ${now.place}: ${now.doing}, until ${now.end}`;
 }
 
 /** Where the owner opens the town itself, to watch the ghost. */

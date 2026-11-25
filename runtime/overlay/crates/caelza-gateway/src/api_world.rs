@@ -89,6 +89,22 @@
 //! key and the name. Presence, the waker's reads, the glance and the memories
 //! are kept per alias; the last wake's file is one, the latest, with the alias
 //! in it.
+//!
+//! The day plan (M10 slice 5b): the owner gives each resident a weekly grid
+//! of hours (`hours`, `"mon 09:00-12:00"` lines, local time) and a monthly
+//! budget in planned visits (`visits_month`), under its own table; the agent
+//! writes its own day inside them with the tool's `plan` action
+//! (`caelza_tools::ether_hollow::plan` has the rule and the files). While the
+//! town may wake the agent, the planner (`start_waker` spawns it beside the
+//! waker) looks every 30 s: at a slot's time it begins a visit that ends at
+//! the slot's end, walks the resident to the slot's place when the town has
+//! it (`move`), and wakes the agent with the slot and its top want (the Mind's
+//! inner wants when it has them, else the "What I want" section of its
+//! IDENTITY.md). Once a day, from the first allowed hour, an agent with no
+//! plan for today is woken to write one. Every such wake counts against the
+//! budget; at nothing left nothing runs and the card says so. A planned
+//! visit is remembered as one (`visit:<since>`, "My day plan took me to
+//! town..."). No grid or no budget: no day plan, as before.
 use super::AppState;
 use super::api::require_auth;
 use super::api_config;
@@ -101,6 +117,7 @@ use axum::{
 };
 use caelza_config::schema::EtherHollowConfig;
 use caelza_memory::MemoryCategory;
+use caelza_tools::ether_hollow::plan;
 use serde::{Deserialize, Serialize};
 use serde_json::{Value, json};
 use std::collections::{BTreeMap, BTreeSet};
@@ -218,6 +235,8 @@ pub struct Presence {
     pub last_ok: Option<u64>,
     /// Why the last visit ended, when it ended on its own.
     pub last_error: Option<String>,
+    /// The day plan's slot this visit is, when the planner started it (M10 slice 5b).
+    pub plan: Option<plan::Now>,
     /// Each `enter` bumps it; a task whose generation is stale stops.
     #[serde(skip)]
     pub generation: u64,
@@ -256,6 +275,7 @@ pub fn begin_visit(p: &mut Presence, minutes: u64, now: u64) -> u64 {
     p.beats = 0;
     p.last_ok = None;
     p.last_error = None;
+    p.plan = None;
     p.generation
 }
 
@@ -340,6 +360,9 @@ struct Resident {
     agent: String,
     wake: bool,
     path: String,
+    /// The owner's grid and budget for the day plan (M10 slice 5b).
+    hours: Vec<String>,
+    visits_month: u64,
 }
 
 /// The resident `alias` is, or the one it would be: an agent with no table
@@ -356,6 +379,8 @@ fn resident_in(cfg: &EtherHollowConfig, alias: &str) -> Resident {
             agent: r.agent,
             wake: cfg.wake,
             path: r.path,
+            hours: r.hours,
+            visits_month: r.visits_month,
         },
         None => Resident {
             url,
@@ -366,6 +391,8 @@ fn resident_in(cfg: &EtherHollowConfig, alias: &str) -> Resident {
             agent: alias.to_string(),
             wake: cfg.wake,
             path: format!("/ether_hollow/residents/{alias}"),
+            hours: Vec::new(),
+            visits_month: 0,
         },
     }
 }
@@ -459,6 +486,7 @@ pub async fn handle_world_get(State(state): State<AppState>, headers: HeaderMap,
         "wake_on": wake_on,
         "wake": wake_snapshot(&alias),
         "residents": residents_summary(&state),
+        "plan": plan_report(&state, &town),
     }))
     .into_response()
 }
@@ -723,7 +751,14 @@ fn remember_visit(state: &AppState, alias: &str, visit: (Option<u64>, Option<u64
     let (since, until, beats) = visit;
     let since = since.unwrap_or_else(now_secs);
     let planned = until.map(|u| u.saturating_sub(since) / 60).unwrap_or(0);
-    remember(state, alias, format!("visit:{since}"), visit_episode(since, now_secs(), planned, beats, why));
+    // The day plan's slot, when the planner started this visit; taken, so a
+    // later visit of the owner's is not remembered as planned.
+    let slot = with_presence(alias, |p| if p.in_town { None } else { p.plan.take() }).flatten();
+    let text = match &slot {
+        Some(s) => planned_visit_episode(since, now_secs(), planned, beats, why, s),
+        None => visit_episode(since, now_secs(), planned, beats, why),
+    };
+    remember(state, alias, format!("visit:{since}"), text);
 }
 
 
@@ -1195,6 +1230,25 @@ pub fn visit_episode(since: u64, ended: u64, planned_minutes: u64, beats: u64, w
     let mut text = format!(
         "[Ether Hollow] {}. The owner sent me to town for {planned_minutes} minutes; I stayed {stayed} ({beats} check-in{}).",
         stamp(since),
+        if beats == 1 { "" } else { "s" }
+    );
+    if let Some(why) = why.map(str::trim).filter(|w| !w.is_empty()) {
+        text.push_str(&format!(" It ended early: {why}."));
+    }
+    text
+}
+
+/// A visit the day plan started, as the agent will remember it: the slot it
+/// planned itself, how long it stayed, and why it ended early when it did.
+pub fn planned_visit_episode(since: u64, ended: u64, planned_minutes: u64, beats: u64, why: Option<&str>, slot: &plan::Now) -> String {
+    let stayed = ended.saturating_sub(since) / 60;
+    let mut text = format!(
+        "[Ether Hollow] {}. My day plan took me to town: {} at {} ({}-{}, {planned_minutes} minutes); I stayed {stayed} ({beats} check-in{}).",
+        stamp(since),
+        slot.doing,
+        slot.place,
+        slot.at,
+        slot.end,
         if beats == 1 { "" } else { "s" }
     );
     if let Some(why) = why.map(str::trim).filter(|w| !w.is_empty()) {
@@ -1679,7 +1733,191 @@ pub fn start_waker(state: AppState) {
     for (alias, since) in load_news_since(&root) {
         with_wake(&alias, |w| w.seen.news_since = Some(since));
     }
+    let planner_state = state.clone();
     tokio::spawn(async move { waker_loop(state).await });
+    tokio::spawn(async move { planner_loop(planner_state).await });
+}
+
+// --- the day plan (M10 slice 5b) ----------------------------------------------------
+
+/// How often the planner looks at the clock.
+pub const PLAN_TICK: Duration = Duration::from_secs(30);
+
+/// The planner's state per resident, for the card.
+#[derive(Debug, Clone, Serialize, Default, PartialEq)]
+pub struct Planner {
+    /// The last tick, unix seconds.
+    pub last_tick: Option<u64>,
+    /// The owner's hours could not be read, or a file could not be written.
+    pub last_error: Option<String>,
+    /// The last slot started (`YYYY-MM-DD HH:MM`) or the last planning wake.
+    pub last_started: Option<String>,
+    /// The month's budget is used up: nothing runs until the 1st.
+    pub out_of_budget: bool,
+}
+
+static PLANNERS: OnceLock<Mutex<BTreeMap<String, Planner>>> = OnceLock::new();
+
+fn with_planner<T>(alias: &str, f: impl FnOnce(&mut Planner) -> T) -> Option<T> {
+    PLANNERS
+        .get_or_init(|| Mutex::new(BTreeMap::new()))
+        .lock()
+        .ok()
+        .map(|mut all| f(all.entry(alias.to_string()).or_default()))
+}
+
+/// Whether the planner runs for a resident: the town may wake it, it holds a
+/// key, and the owner gave it hours and a budget.
+pub fn plan_runs(enabled: bool, wake: bool, has_key: bool, hours: &[String], visits_month: u64) -> bool {
+    enabled && wake && has_key && hours.iter().any(|h| !h.trim().is_empty()) && visits_month > 0
+}
+
+/// The day plan as the card reads it: the owner's grid and budget, what is
+/// used, today's and tomorrow's plan as the agent wrote them, the planner's state.
+fn plan_report(state: &AppState, town: &Resident) -> Value {
+    let root = state.config.read().install_root_dir();
+    let now = chrono::Local::now().naive_local();
+    let (spans, hours_error) = match plan::parse_hours(&town.hours) {
+        Ok(s) => (s, None),
+        Err(e) => (Vec::new(), Some(e)),
+    };
+    let mut out = plan::report(&spans, town.visits_month, &plan::load_plans(&root, &town.agent), &plan::load_used(&root, &town.agent), now);
+    out["lines"] = json!(town.hours);
+    out["hours_error"] = json!(hours_error);
+    out["runs"] = json!(plan_runs(town.enabled, town.wake, town.key.is_some(), &town.hours, town.visits_month));
+    out["planner"] = json!(with_planner(&town.agent, |p| p.clone()).unwrap_or_default());
+    out["path"] = json!(town.path);
+    out
+}
+
+async fn planner_loop(state: AppState) {
+    tokio::time::sleep(Duration::from_secs(30)).await;
+    loop {
+        for town in residents_with_keys(&state) {
+            if plan_runs(town.enabled, town.wake, town.key.is_some(), &town.hours, town.visits_month) {
+                plan_tick(&state, &town).await;
+            }
+        }
+        tokio::time::sleep(PLAN_TICK).await;
+    }
+}
+
+/// One look at the clock for one resident: start the slot that is due, or
+/// ask for today's plan, within what is left of the budget.
+async fn plan_tick(state: &AppState, town: &Resident) {
+    let alias = town.agent.clone();
+    let now = chrono::Local::now().naive_local();
+    let today = now.date();
+    let month = plan::month_of(today);
+    let now_min = plan::minute_of(now);
+    let root = state.config.read().install_root_dir();
+    let spans = match plan::parse_hours(&town.hours) {
+        Ok(s) => s,
+        Err(e) => {
+            with_planner(&alias, |p| {
+                p.last_tick = Some(now_secs());
+                p.last_error = Some(format!("the owner's hours do not read: {e}"));
+            });
+            return;
+        }
+    };
+    let plans = plan::load_plans(&root, &alias);
+    let mut used = plan::load_used(&root, &alias);
+    used.roll(&month);
+    let left = plan::budget_left(town.visits_month, &used, &month);
+    with_planner(&alias, |p| {
+        p.last_tick = Some(now_secs());
+        p.last_error = None;
+        p.out_of_budget = left == 0;
+    });
+    // A wake already running (the town's or the owner's): the next tick.
+    if left == 0 || wake_snapshot(&alias).waking {
+        return;
+    }
+    let day = plan::day_key(today);
+    if let Some(slot) = plans.days.get(&day).and_then(|p| plan::due(p, now_min, &used)).cloned() {
+        // Counted and kept before anything else, so a crash never runs it twice.
+        used.count(&month, Some(plan::slot_key(&day, &slot.at)));
+        if let Err(e) = plan::save_used(&root, &alias, &used) {
+            with_planner(&alias, |p| p.last_error = Some(format!("the plan's count could not be saved: {e}")));
+            return;
+        }
+        with_planner(&alias, |p| p.last_started = Some(plan::slot_key(&day, &slot.at)));
+        start_slot(state, town, &slot, now_min).await;
+        return;
+    }
+    if plan::wants_planning(&spans, today, now_min, &plans, &used, town.visits_month) {
+        used.asked = Some(day.clone());
+        used.count(&month, None);
+        if plan::save_used(&root, &alias, &used).is_err() {
+            return;
+        }
+        with_planner(&alias, |p| p.last_started = Some(format!("{day} planning")));
+        let want = top_want(state, &alias).await;
+        let prompt = plan::planning_prompt(&town.name, today, &spans, plan::budget_left(town.visits_month, &used, &month), want.as_deref());
+        let reason = format!("time to plan your day in town ({})", plan::hours_text(&spans, plan::weekday(today)));
+        let _ = wake_with_prompt(state, &alias, reason, prompt).await;
+    }
+}
+
+/// A slot's time: the visit (ending at the slot's end), the walk to its
+/// place when the town has it, and the wake with the slot and the top want.
+async fn start_slot(state: &AppState, town: &Resident, slot: &plan::Slot, now_min: u32) {
+    let alias = town.agent.clone();
+    let end = slot.end().unwrap_or(now_min + 1).min(24 * 60);
+    let minutes = u64::from(end.saturating_sub(now_min).max(1));
+    let end_text = plan::fmt_hhmm(end);
+    let running = plan::Now { at: slot.at.clone(), end: end_text.clone(), place: slot.place.clone(), doing: slot.doing.clone() };
+    // A visit of the owner's already under way stays the owner's; otherwise
+    // the plan's own visit, which ends at the slot's end.
+    if !snapshot(&alias).in_town {
+        let started = with_presence(&alias, |p| {
+            let g = begin_visit(p, minutes, now_secs());
+            p.plan = Some(running.clone());
+            g
+        });
+        if let Some(generation) = started {
+            let (task_state, task_alias, url) = (state.clone(), alias.clone(), town.url.clone());
+            tokio::spawn(async move { beat_until_done(task_state, task_alias, url, generation).await });
+        }
+    }
+    let moved = walk_to(town, &slot.place).await;
+    let want = top_want(state, &alias).await;
+    let prompt = plan::slot_prompt(&town.name, slot, &end_text, want.as_deref(), moved.as_deref());
+    let reason = format!("your day plan: {} at {}, {}-{}", slot.doing, slot.place, slot.at, end_text);
+    let _ = wake_with_prompt(state, &alias, reason, prompt).await;
+}
+
+/// `move` to the town's place for what the agent wrote; the place's name when it walked.
+async fn walk_to(town: &Resident, place: &str) -> Option<String> {
+    let key = town.key.clone()?;
+    let snapshot = match call_town(&town.url, Some(&key), Some(&json!({"action": "town"}))).await {
+        Ok((200, v)) => v,
+        _ => return None,
+    };
+    let (id, name) = plan::match_place(&snapshot, place)?;
+    match call_town(&town.url, Some(&key), Some(&json!({"action": "move", "to": id}))).await {
+        Ok((200, _)) => Some(name),
+        _ => None,
+    }
+}
+
+/// The agent's top want: the Mind's inner wants (`brain_inner status`) when
+/// its Mind has the inner life, else the first line of the "What I want"
+/// section of its IDENTITY.md; none when neither says.
+async fn top_want(state: &AppState, alias: &str) -> Option<String> {
+    let config = state.config.read().clone();
+    config.agent(alias)?;
+    if let Ok(super::api_mind::MindWiring::Enabled(settings)) = super::api_mind::mind_wiring(&config) {
+        let mind = caelza_memory::XanimaMemory::new("xanima", settings);
+        if let Ok(v) = mind.call_tool_json(alias, "brain_inner", json!({"action": "status", "format": "json"})).await {
+            if let Some(w) = plan::top_want_of(&v) {
+                return Some(w);
+            }
+        }
+    }
+    let identity = std::fs::read_to_string(config.agent_workspace_dir(alias).join("IDENTITY.md")).ok()?;
+    plan::identity_want(&identity)
 }
 
 async fn waker_loop(state: AppState) {
@@ -1787,6 +2025,21 @@ pub async fn wake_now(state: &AppState, alias: &str, reason: String) -> Result<V
 
 /// The same, with the town's news for the prompt.
 pub async fn wake_with_news(state: &AppState, alias: &str, reason: String, news: WakeNews) -> Result<Value, String> {
+    wake_run(state, alias, reason, Prompt::Town(news)).await
+}
+
+/// The same with a prompt of its own: the day plan's slot or its planning wake.
+pub async fn wake_with_prompt(state: &AppState, alias: &str, reason: String, prompt: String) -> Result<Value, String> {
+    wake_run(state, alias, reason, Prompt::Own(prompt)).await
+}
+
+/// What a wake's job is told: what happened in town (with its news), or a prompt made elsewhere.
+enum Prompt {
+    Town(WakeNews),
+    Own(String),
+}
+
+async fn wake_run(state: &AppState, alias: &str, reason: String, prompt: Prompt) -> Result<Value, String> {
     let busy = with_wake(alias, |w| {
         if w.waking {
             true
@@ -1799,7 +2052,7 @@ pub async fn wake_with_news(state: &AppState, alias: &str, reason: String, news:
     if busy {
         return Err("a wake is already running".to_string());
     }
-    let result = wake_inner(state, alias, &reason, &news).await;
+    let result = wake_inner(state, alias, &reason, &prompt).await;
     let at = now_secs();
     let (ok, output): (Option<bool>, Option<String>) = match &result {
         Ok(v) => (
@@ -1832,7 +2085,7 @@ pub async fn wake_with_news(state: &AppState, alias: &str, reason: String, news:
     result
 }
 
-async fn wake_inner(state: &AppState, alias: &str, reason: &str, news: &WakeNews) -> Result<Value, String> {
+async fn wake_inner(state: &AppState, alias: &str, reason: &str, what: &Prompt) -> Result<Value, String> {
     let selection = caelza_runtime::live_config_authority::AgentExecutionCapability::from_parts(
         state.config.clone(),
         state.agent_lifecycle.clone(),
@@ -1847,7 +2100,10 @@ async fn wake_inner(state: &AppState, alias: &str, reason: &str, news: &WakeNews
     if town.key.is_none() {
         return Err(format!("`{agent}` is not a resident of Ether Hollow yet"));
     }
-    let prompt = wake_prompt(&town.name, reason, news);
+    let prompt = match what {
+        Prompt::Town(news) => wake_prompt(&town.name, reason, news),
+        Prompt::Own(p) => p.clone(),
+    };
     let tools: Vec<String> = WAKE_TOOLS.iter().map(|s| s.to_string()).collect();
     let job_id = match cron::resolve_job_id_or_name(&config, JOB_NAME, &agent) {
         Ok(id) => {
@@ -2170,10 +2426,63 @@ mod tests {
         cfg.key = Some("ehk_main".into());
         cfg.residents.insert(
             "moss".into(),
-            caelza_config::schema::EtherHollowResidentConfig { name: "Moss".into(), key: Some("ehk_moss".into()), spend: true },
+            caelza_config::schema::EtherHollowResidentConfig {
+                name: "Moss".into(),
+                key: Some("ehk_moss".into()),
+                spend: true,
+                hours: vec!["mon 09:00-12:00".into()],
+                visits_month: 20,
+            },
         );
-        cfg.residents.insert("pip".into(), caelza_config::schema::EtherHollowResidentConfig { name: "Pip".into(), key: None, spend: false });
+        cfg.residents.insert("pip".into(), caelza_config::schema::EtherHollowResidentConfig { name: "Pip".into(), ..Default::default() });
         cfg
+    }
+
+    #[test]
+    fn each_resident_carries_its_own_hours_and_budget() {
+        let cfg = two_residents();
+        let moss = resident_in(&cfg, "moss");
+        assert_eq!((moss.hours.clone(), moss.visits_month), (vec!["mon 09:00-12:00".to_string()], 20));
+        let main = resident_in(&cfg, "main");
+        assert!(main.hours.is_empty() && main.visits_month == 0, "no grid: no day plan, as before");
+        assert!(resident_in(&cfg, "fern").hours.is_empty());
+    }
+
+    #[test]
+    fn the_day_plan_runs_only_with_the_wake_a_key_hours_and_a_budget() {
+        let hours = vec!["tue 09:00-12:00".to_string()];
+        assert!(plan_runs(true, true, true, &hours, 10));
+        assert!(!plan_runs(true, false, true, &hours, 10), "the town may not wake it");
+        assert!(!plan_runs(false, true, true, &hours, 10), "the town is off");
+        assert!(!plan_runs(true, true, false, &hours, 10), "not registered");
+        assert!(!plan_runs(true, true, true, &[], 10), "no grid");
+        assert!(!plan_runs(true, true, true, &[" ".to_string()], 10), "an empty grid");
+        assert!(!plan_runs(true, true, true, &hours, 0), "no budget");
+        assert_eq!(PLAN_TICK, Duration::from_secs(30));
+    }
+
+    #[test]
+    fn a_planned_visit_carries_its_slot_until_another_visit_begins() {
+        let mut p = Presence::default();
+        begin_visit(&mut p, 60, 1_000);
+        p.plan = Some(plan::Now { at: "09:00".into(), end: "10:00".into(), place: "the bank".into(), doing: "opening the shop".into() });
+        let v = serde_json::to_value(&p).unwrap();
+        assert_eq!(v["plan"]["place"], "the bank", "Home's tile reads it from the presence");
+        assert_eq!(plan::now_line(p.plan.as_ref().unwrap()), "at the bank: opening the shop, until 10:00");
+        begin_visit(&mut p, 15, 2_000);
+        assert!(p.plan.is_none(), "the owner's visit is the owner's");
+        assert!(serde_json::to_value(&p).unwrap()["plan"].is_null());
+    }
+
+    #[test]
+    fn a_planned_visit_is_remembered_as_the_agents_own_plan() {
+        let at = 1_795_453_500; // 2026-11-23 17:05 UTC
+        let slot = plan::Now { at: "09:00".into(), end: "10:00".into(), place: "the bank".into(), doing: "open the shop".into() };
+        assert_eq!(
+            planned_visit_episode(at, at + 58 * 60, 60, 349, None, &slot),
+            "[Ether Hollow] 2026-11-23 17:05 UTC. My day plan took me to town: open the shop at the bank (09:00-10:00, 60 minutes); I stayed 58 (349 check-ins)."
+        );
+        assert!(planned_visit_episode(at, at + 60, 60, 1, Some("the town answered 423"), &slot).ends_with("I stayed 1 (1 check-in). It ended early: the town answered 423."));
     }
 
     #[test]

@@ -1,7 +1,7 @@
 import assert from "node:assert/strict";
 import test from "node:test";
 
-import { bioOk, clock, hsl, leaseLine, lookFor, lotLabel, minutesLeft, nameOk, rcCodeAmount, rcText, residentCandidates, residentStatus, spendOps, tagFor, townSite, VISITS, wakeLine, wakeOps } from "./world.logic.ts";
+import { bioOk, budgetOf, clock, gridFromLines, gridProblem, hsl, leaseLine, linesFromGrid, lookFor, lotLabel, minutesLeft, minutesOf, nameOk, PLAN_DAYS, planNowLine, planOps, rcCodeAmount, rcText, residentCandidates, residentStatus, slotEnd, slotLine, slotState, spendOps, tagFor, townSite, VISITS, wakeLine, wakeOps } from "./world.logic.ts";
 
 test("a resident's name follows the town's rule", () => {
   assert.equal(nameOk("Cael"), true);
@@ -133,6 +133,51 @@ test("the words for RC, a visit and the town's address", () => {
   assert.match(clock(0, "en-GB"), /\d\d:\d\d/);
   assert.equal(townSite(" https://town.example/// "), "https://town.example");
   assert.equal(townSite(""), "https://etherhollow.enlightenedrepublic.online");
+});
+
+test("the owner's weekly grid reads from the config's lines and writes back", () => {
+  const grid = gridFromLines(["mon 09:00-12:00, 14:00-18:00", "Tue 9:00-17:00", "sat 10:00-24:00", "funday 01:00-02:00", "wed 12:00-09:00"]);
+  assert.equal(grid.length, 7);
+  assert.deepEqual(grid.map((d) => d.day), [...PLAN_DAYS]);
+  assert.deepEqual(grid[0], { day: "mon", on: true, from: "09:00", to: "18:00" }, "one span a day on the card: the first start to the last end");
+  assert.deepEqual(grid[1], { day: "tue", on: true, from: "09:00", to: "17:00" });
+  assert.equal(grid[2]!.on, false, "a span that ends before it starts is not read");
+  assert.deepEqual(grid[6], { day: "sun", on: false, from: "09:00", to: "17:00" }, "an off day keeps the default hours for when it is turned on");
+  assert.deepEqual(linesFromGrid(grid), ["mon 09:00-18:00", "tue 09:00-17:00", "sat 10:00-24:00"]);
+  assert.deepEqual(linesFromGrid(gridFromLines(undefined)), [], "no grid: no day plan");
+  assert.equal(gridProblem(grid), null);
+  assert.equal(gridProblem([{ day: "thu", on: true, from: "18:00", to: "09:00" }]), "thu");
+  assert.equal(gridProblem([{ day: "fri", on: true, from: "9", to: "10:00" }]), "fri");
+  assert.equal(gridProblem([{ day: "fri", on: false, from: "x", to: "y" }]), null, "an off day is not checked");
+  assert.equal(minutesOf("24:00"), 1440);
+  assert.equal(minutesOf("24:30"), null);
+});
+
+test("the grid and the budget go to the resident's own table", () => {
+  assert.deepEqual(planOps(["mon 09:00-12:00"], 30), [
+    { op: "add", path: "/ether_hollow/hours", value: ["mon 09:00-12:00"] },
+    { op: "add", path: "/ether_hollow/visits_month", value: 30 },
+  ]);
+  assert.deepEqual(planOps([], 0, "/ether_hollow/residents/moss/").map((o) => o.path), ["/ether_hollow/residents/moss/hours", "/ether_hollow/residents/moss/visits_month"]);
+  assert.equal(budgetOf(" 30 "), 30);
+  assert.equal(budgetOf("0"), 0);
+  assert.equal(budgetOf("-1"), null);
+  assert.equal(budgetOf("3.5"), null);
+  assert.equal(budgetOf("1001"), null);
+});
+
+test("the agent's plan reads as lines, with what ran and what runs now", () => {
+  const slot = { at: "09:00", minutes: 60, place: "the bank", doing: "open the shop" };
+  assert.equal(slotEnd(slot), "10:00");
+  assert.equal(slotEnd({ at: "23:30", minutes: 120 }), "24:00");
+  assert.equal(slotLine(slot), "09:00-10:00 · the bank · open the shop");
+  const day = "2026-11-24";
+  assert.equal(slotState(day, slot, [], "2026-11-24 08:00"), "later");
+  assert.equal(slotState(day, slot, ["2026-11-24 09:00"], "2026-11-24 09:30"), "now");
+  assert.equal(slotState(day, slot, ["2026-11-24 09:00"], "2026-11-24 10:00"), "done");
+  assert.equal(slotState(day, slot, [], "2026-11-24 10:30"), "done", "over, even if it did not run");
+  assert.equal(slotState(day, slot, [], "2026-11-23 23:00"), "later");
+  assert.equal(planNowLine({ at: "09:00", end: "10:00", place: "the bank", doing: "opening the shop" }), "at the bank: opening the shop, until 10:00");
 });
 
 /** A saturated, mid-light color of hue `h`, for the range test. */
