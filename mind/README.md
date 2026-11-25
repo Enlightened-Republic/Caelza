@@ -19,9 +19,9 @@ The rebrand shipped on 2026-10-18/19: both repos' `main` branches carry it
 | Package | What | Where |
 |---|---|---|
 | `xanima-openclaw` 0.7.0 | the OpenClaw plugin, id `xanima` (legacy id `openwave` honoured), bin `xanima-openclaw-upgrade` | npm; ClawHub as `clawhub:xanima`; repo [Enlightened-Republic/xanima-openclaw](https://github.com/Enlightened-Republic/xanima-openclaw) `main` |
-| `xanima-core` 0.7.0 | the engine (formerly `sharpwave-core`) | npm; repo [Enlightened-Republic/xanima](https://github.com/Enlightened-Republic/xanima) `main`, `packages/core` |
-| `xanima` 0.7.0 | the stdio MCP server (formerly `sharpwave`), bins `xanima` and `sharpwave` | npm; `packages/mcp` |
-| `xanima-server` 0.8.0 | the brain service (formerly `sharpwave-server`), bins `xanima-server`, `xanima-client` plus the old names; 0.8.0 (tag `v0.8.0`, schema v31) adds the inner life, see below. The engine packages above stay at 0.7.0 on npm until upstream's 0.8.0 publish goes through; the Mind does not wait for it, it is built from source | **private, not on npm**: every Caelza release carries it built, as `caelza-mind-<version>.tgz` (`mind/pack.sh` packs the commit `bundle/manifest.toml` pins as `service_commit`), and `mind/install.sh` installs it as `caelza-mind` on a hub or in Termux. From a checkout: `npm run build --workspace xanima-server`, then `node packages/server/dist/cli.js serve` |
+| `xanima-core` 0.8.0 | the engine (formerly `sharpwave-core`) | npm; repo [Enlightened-Republic/xanima](https://github.com/Enlightened-Republic/xanima) `main`, `packages/core` |
+| `xanima` 0.8.0 | the stdio MCP server (formerly `sharpwave`), bins `xanima` and `sharpwave` | npm; `packages/mcp` |
+| `xanima-server` 0.8.0 | the brain service (formerly `sharpwave-server`), bins `xanima-server`, `xanima-client` plus the old names; 0.8.0 (tag `v0.8.0`, schema v31) adds the inner life, see below. The engine packages above are on npm at 0.8.0 too (published 2026-11-25); the Mind is built from source either way | **private, not on npm**: every Caelza release carries it built, as `caelza-mind-<version>.tgz` (`mind/pack.sh` packs the commit `bundle/manifest.toml` pins as `service_commit`), and `mind/install.sh` installs it as `caelza-mind` on a hub or in Termux. From a checkout: `npm run build --workspace xanima-server`, then `node packages/server/dist/cli.js serve` |
 
 What moved, and what did not:
 
