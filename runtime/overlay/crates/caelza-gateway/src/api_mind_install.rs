@@ -544,6 +544,29 @@ pub fn scopes_for(agent: &str) -> &'static str {
     if agent == "cael" { "read" } else { "read,write" }
 }
 
+/// The agents the Mind's inner life leaves out: Cael, the guide, who answers
+/// questions about Caelza and has no needs, moods or wants of his own.
+pub const INNER_LIFE_EXCLUDED: &[&str] = &["cael"];
+
+/// Turn on the Mind's inner life (xanima 0.8.0: needs, moods, wants, bonds) in
+/// the service's `config.json`: `brain.innerLife = {excludeAgents: ["cael"]}`.
+/// An object turns the layer on (xanima's rule: writing the block is opting
+/// in) for every agent but the excluded ones. An `innerLife` that is already
+/// there, on or off, is the owner's and is kept. True when it was written.
+pub fn with_inner_life(cfg: &mut Value) -> bool {
+    let Some(obj) = cfg.as_object_mut() else { return false };
+    let brain = obj.entry("brain").or_insert_with(|| json!({}));
+    if !brain.is_object() {
+        *brain = json!({});
+    }
+    let brain = brain.as_object_mut().expect("an object");
+    if brain.contains_key("innerLife") {
+        return false;
+    }
+    brain.insert("innerLife".to_string(), json!({"excludeAgents": INNER_LIFE_EXCLUDED}));
+    true
+}
+
 // --- the job ----------------------------------------------------------------------------
 
 async fn run_install(agents: Vec<String>) -> Result<(), String> {
@@ -742,10 +765,29 @@ async fn run_install(agents: Vec<String>) -> Result<(), String> {
         format!("tokens -> {} ({})", lay.tokens_dir.display(), minted.join(", "))
     });
 
+    // 5b. The inner life on for the owner's agents (not Cael), before the service
+    //     reads its config; an innerLife already there is the owner's and stays.
+    stage("config", "turning on the agent's inner life");
+    let inner_written = {
+        let paths = super::api_mind_share::service_paths();
+        let mut cfg = super::api_mind_share::read_json(&paths.config)?;
+        if with_inner_life(&mut cfg) {
+            super::api_mind_share::write_json(&paths.config, &cfg, false)?;
+            log(format!("inner life on (brain.innerLife, Cael left out) -> {}", paths.config.display()));
+            true
+        } else {
+            log(format!("inner life: {} already says, kept", paths.config.display()));
+            false
+        }
+    };
+
     // 6. Start the service, unless one already answers.
     stage("start", "starting the Mind");
     if health(MIND_PORT).await {
         log(format!("a Mind already answers on 127.0.0.1:{MIND_PORT}; not starting another"));
+        if inner_written {
+            log("restart the Mind once for the inner life to start (it reads config.json when it starts)");
+        }
     } else {
         let logs = lay.mind_dir.join("logs");
         std::fs::create_dir_all(&logs).map_err(|e| format!("creating {}: {e}", logs.display()))?;
@@ -926,6 +968,22 @@ mod tests {
 
     fn env_of<'a>(pairs: &'a [(&'a str, &'a str)]) -> impl Fn(&str) -> Option<String> + 'a {
         move |k| pairs.iter().find(|(n, _)| *n == k).map(|(_, v)| v.to_string())
+    }
+
+    #[test]
+    fn the_inner_life_goes_on_once_and_an_owner_choice_stays() {
+        let mut fresh = json!({});
+        assert!(with_inner_life(&mut fresh));
+        assert_eq!(fresh, json!({"brain": {"innerLife": {"excludeAgents": ["cael"]}}}));
+        assert!(!with_inner_life(&mut fresh), "a second run changes nothing");
+        let mut shared = json!({"tailnetHosts": ["100.64.0.2"], "brain": {"beliefMetadata": true}});
+        assert!(with_inner_life(&mut shared));
+        assert_eq!(shared["tailnetHosts"], json!(["100.64.0.2"]));
+        assert_eq!(shared["brain"]["beliefMetadata"], json!(true));
+        assert_eq!(shared["brain"]["innerLife"]["excludeAgents"], json!(["cael"]));
+        let mut off = json!({"brain": {"innerLife": false}});
+        assert!(!with_inner_life(&mut off));
+        assert_eq!(off["brain"]["innerLife"], json!(false), "the owner turned it off; it stays off");
     }
 
     #[test]

@@ -3,7 +3,7 @@ import test from 'node:test';
 import { POLL_MS, installBackendOps, megabytes, percent, stageLabel } from './mind.install.logic.ts';
 
 test('every stage has words of its own', () => {
-  for (const stage of ['release', 'node', 'install', 'launcher', 'tokens', 'start', 'startup', 'done']) {
+  for (const stage of ['release', 'node', 'install', 'launcher', 'tokens', 'config', 'start', 'startup', 'done']) {
     const label = stageLabel(stage);
     assert.ok(label.length > 2 && label !== stage, stage);
   }

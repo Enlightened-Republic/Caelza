@@ -1052,6 +1052,7 @@ fn render_turn_context(text: &str) -> (String, Vec<i64>) {
             parts.push(block.to_string());
         }
     }
+    let text_block = map.get("text").and_then(Value::as_str).unwrap_or_default();
     for (key, value) in map {
         if matches!(key.as_str(), "identity" | "activeGoals" | "text" | "now") {
             continue;
@@ -1059,6 +1060,10 @@ fn render_turn_context(text: &str) -> (String, Vec<i64>) {
         if let Some(block) = value.as_str().map(str::trim)
             && block.starts_with('[')
             && block.contains(']')
+            // xanima 0.8.0 folds the inner life's `[inner]` lines into `text` and
+            // also returns them as `inner`: a block `text` already carries is not
+            // said twice.
+            && !text_block.contains(block)
         {
             parts.push(block.to_string());
         }
@@ -1513,6 +1518,14 @@ mod tests {
              [BRAIN: recent]\nyesterday: the icon landed"
         );
         assert_eq!(notes, vec![41, 42]);
+
+        // xanima 0.8.0's inner life: the `[inner]` lines are folded into `text` and also
+        // returned as `inner`; they are said once.
+        let inner = "[inner] mood Happy +4.0\n[inner] top unmet need: Social 0.62";
+        let with_inner = json!({"text": format!("{inner}\n[BRAIN: goals]\nship it"), "inner": inner});
+        let (rendered, _) = render_turn_context(&with_inner.to_string());
+        assert_eq!(rendered, format!("{inner}\n[BRAIN: goals]\nship it"));
+        assert_eq!(rendered.matches("[inner] mood").count(), 1);
 
         // Nothing to say: nothing rendered. Plain text: taken as it is.
         assert_eq!(render_turn_context(&json!({"noteIds": [], "triggered": []}).to_string()), (String::new(), vec![]));

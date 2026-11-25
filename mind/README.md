@@ -21,7 +21,7 @@ The rebrand shipped on 2026-10-18/19: both repos' `main` branches carry it
 | `xanima-openclaw` 0.7.0 | the OpenClaw plugin, id `xanima` (legacy id `openwave` honoured), bin `xanima-openclaw-upgrade` | npm; ClawHub as `clawhub:xanima`; repo [Enlightened-Republic/xanima-openclaw](https://github.com/Enlightened-Republic/xanima-openclaw) `main` |
 | `xanima-core` 0.7.0 | the engine (formerly `sharpwave-core`) | npm; repo [Enlightened-Republic/xanima](https://github.com/Enlightened-Republic/xanima) `main`, `packages/core` |
 | `xanima` 0.7.0 | the stdio MCP server (formerly `sharpwave`), bins `xanima` and `sharpwave` | npm; `packages/mcp` |
-| `xanima-server` 0.7.0 | the brain service (formerly `sharpwave-server`), bins `xanima-server`, `xanima-client` plus the old names | **private, not on npm**: every Caelza release carries it built, as `caelza-mind-<version>.tgz` (`mind/pack.sh` packs the commit `bundle/manifest.toml` pins as `service_commit`), and `mind/install.sh` installs it as `caelza-mind` on a hub or in Termux. From a checkout: `npm run build --workspace xanima-server`, then `node packages/server/dist/cli.js serve` |
+| `xanima-server` 0.8.0 | the brain service (formerly `sharpwave-server`), bins `xanima-server`, `xanima-client` plus the old names; 0.8.0 (tag `v0.8.0`, schema v31) adds the inner life, see below. The engine packages above stay at 0.7.0 on npm until upstream's 0.8.0 publish goes through; the Mind does not wait for it, it is built from source | **private, not on npm**: every Caelza release carries it built, as `caelza-mind-<version>.tgz` (`mind/pack.sh` packs the commit `bundle/manifest.toml` pins as `service_commit`), and `mind/install.sh` installs it as `caelza-mind` on a hub or in Termux. From a checkout: `npm run build --workspace xanima-server`, then `node packages/server/dist/cli.js serve` |
 
 What moved, and what did not:
 
@@ -33,7 +33,7 @@ What moved, and what did not:
 | engine env vars | `SHARPWAVE_DATA_DIR`, `SHARPWAVE_DB_PATH`, `SHARPWAVE_AGENT_ID`, `SHARPWAVE_EMBEDDING_MODEL`, … | unchanged |
 | service root / port | `~/.sharpwave/service/`, `127.0.0.1:18790` | unchanged |
 | host cron id | `openwave:consolidation` | unchanged (rename deferred) |
-| tools | 16 `brain_*` | 42 `brain_*` at 0.7.0 (schema v28); names unchanged and permanent |
+| tools | 16 `brain_*` | 43 `brain_*` at 0.8.0 for an agent token (schema v31; 0.7.0's 42 plus `brain_inner`); names unchanged and permanent |
 | old packages on npm | `openwave` 0.1.1, `sharpwave` 0.4.1, `sharpwave-core` 0.4.5 | still listed, not deprecated; the `sharpwave` bin now ships inside `xanima` |
 
 One lag worth knowing: the published `xanima-openclaw` README still shows the
@@ -149,9 +149,51 @@ with `CAELZA_XANIMA_E2E_URL`, `CAELZA_XANIMA_E2E_TOKEN_FILE` and, to exercise
 provisioning, `CAELZA_XANIMA_E2E_PROVISION_TOKEN_FILE`) walks store, recall,
 the standing context, the ack and forget against the real service. The
 contract the backend speaks was read from the service's source
-(`packages/server/src/{tools,provision,tokens}.ts` at 0.7.0): the tool
+(`packages/server/src/{tools,provision,tokens}.ts` at 0.7.0, re-read at 0.8.0:
+`brain_turn_context` gains `inner`, folded into `text` too): the tool
 arguments, the JSON keys of the replies (`identity`, `activeGoals`, `text`,
 `now`, `noteIds`; `status`, `token`), the scopes and the loopback rule.
+
+### The inner life (xanima 0.8.0)
+
+The Mind at 0.8.0 keeps an inner life for each agent: seven needs that drain
+over time (social, fun, inspiration, rest, autonomy, competence,
+relatedness), moodlets with a reason and an expiry, dopamine as a reward
+prediction error, 3-5 traits read from the identity field `Traits`, wants,
+and (schema v31) bonds with the people the agent deals with, notes on coming
+back after time away and a sentence about the last few days. These are
+functional states that steer attention and choice, not a claim of human
+feeling (xanima's `docs/INNER-LIFE.md`). Each turn's standing context opens
+with up to three `[inner]` lines (mood, the top unmet need, the top want);
+the service folds them into `brain_turn_context`'s `text` and the backend
+shows them once. The agent can read and move it with `brain_inner`; the
+gateway's Ether Hollow waker feeds it from the town's news (a sale a reward,
+a reply a collab and a bond, an event novelty, the Sheriff's acts a fine or
+a rejection).
+
+Upstream the layer is off by default. Caelza turns it on for the owner's
+agents and leaves Cael (the guide, the read-only `cael` brain) out, in the
+service's `config.json` (in the service root: `$XANIMA_SERVICE_ROOT`, else
+`~/.xanima/service`, else an un-migrated `~/.sharpwave/service`):
+
+```json
+{ "brain": { "innerLife": { "excludeAgents": ["cael"] } } }
+```
+
+Every install writes that block before the service starts: the Memory
+page's *Turn on memory* (`with_inner_life` in `api_mind_install.rs`, the
+`config` stage), `mind/install.sh` and `mind/windows-install.ps1` (the same
+few lines of Node in both, so the JSON is never reshaped by PowerShell). An
+`innerLife` that is already there, on or off, is the owner's and stays; the
+rest of the file (`tailnetHosts`, other `brain` settings) is kept.
+
+An existing install upgrades the same way: run the installer again (or *Turn
+on memory* on a device whose Mind is not running) and it adds the block.
+By hand it is one line: put `"brain": {"innerLife": {"excludeAgents":
+["cael"]}}` in that `config.json` (merged into a `brain` block that is
+already there), then restart the Mind (it reads the file when it starts).
+`"innerLife": false` turns it off again; `brain_inner status` shows the
+state.
 
 Still open from xanima's host-side behaviour: the last-24h digest. The
 system-noise filter is already in the service (`brain_episode_append` skips
