@@ -1,0 +1,196 @@
+The chat shows the agent it is bound to: a chat with a new agent no longer
+reads "Caelza Agent", so the owner can tell their own agent from Cael, the
+setup guide, at a glance.
+
+Two places said the product's name where the agent's belonged: the top bar's
+title on /agent/<alias> was the section's "Agent" right beside the Caelza
+wordmark, and an empty chat's heading was the string "Caelza Agent". Now the
+top bar's title is the agent's look and "Chat with <name>"; the empty chat's
+heading is the agent's name, with a line saying whether this is the owner's
+own agent (and where Cael is) or Cael himself; the chat pane's header shows
+the name larger, its look beside it; the browser tab reads "<name> · Chat".
+
+The chat workspace mirrors the tab in front to the address bar with
+replaceState, which the router does not see, so it reports the agent in front
+through `lib/activeChat.ts` (overlay) and the top bar and the tab title read
+that, not the stale address. The overlay holds the logic
+(`lib/activeChat.logic.ts`, its test in the web test list); this patch
+touches the chat header and empty state (AgentChat.tsx), the workspace
+(ChatWorkspace.tsx), the top bar (Header.tsx), the tab title (Layout.tsx),
+the strings (i18n.ts) and the test list (package.json).
+
+--- a/web/package.json
++++ b/web/package.json
+@@ -14,7 +14,7 @@
+     "typecheck": "npm run check:generated && tsc -b",
+     "build": "npm run check:generated && tsc -b && vite build",
+     "dev": "vite",
+-    "test": "node --experimental-strip-types --test src/pages/quickstart/runtime-selection.test.ts src/pages/quickstart/doors.logic.test.ts src/pages/setup/setup.logic.test.ts src/pages/setup/ollama.logic.test.ts src/pages/connect/connect.logic.test.ts src/pages/connect/world.logic.test.ts src/lib/identity.logic.test.ts src/lib/persona.logic.test.ts src/lib/voice.logic.test.ts src/looks/looks.logic.test.ts src/guide/guide.logic.test.ts src/pages/home.logic.test.ts src/pages/bodies.logic.test.ts src/pages/mind.logic.test.ts src/pages/mind.share.logic.test.ts src/pages/mind.install.logic.test.ts src/pages/quickstart/channel-fields.test.ts src/pages/acp-console/thought-stream.test.ts src/lib/contextBar.test.ts src/components/sections/secretMap.logic.test.ts src/pages/integrations.logic.test.ts src/lib/historyTrimNotice.test.ts src/components/runLogPresentation.test.ts src/pages/pluginCatalog.test.ts && npm run test:sops && npm run test:sop-editor && jiti src/pages/quickstart/channel-form.test.ts",
++    "test": "node --experimental-strip-types --test src/pages/quickstart/runtime-selection.test.ts src/pages/quickstart/doors.logic.test.ts src/pages/setup/setup.logic.test.ts src/pages/setup/ollama.logic.test.ts src/pages/connect/connect.logic.test.ts src/pages/connect/world.logic.test.ts src/lib/identity.logic.test.ts src/lib/activeChat.logic.test.ts src/lib/persona.logic.test.ts src/lib/voice.logic.test.ts src/looks/looks.logic.test.ts src/guide/guide.logic.test.ts src/pages/home.logic.test.ts src/pages/bodies.logic.test.ts src/pages/mind.logic.test.ts src/pages/mind.share.logic.test.ts src/pages/mind.install.logic.test.ts src/pages/quickstart/channel-fields.test.ts src/pages/acp-console/thought-stream.test.ts src/lib/contextBar.test.ts src/components/sections/secretMap.logic.test.ts src/pages/integrations.logic.test.ts src/lib/historyTrimNotice.test.ts src/components/runLogPresentation.test.ts src/pages/pluginCatalog.test.ts && npm run test:sops && npm run test:sop-editor && jiti src/pages/quickstart/channel-form.test.ts",
+     "test:sops": "node --experimental-strip-types --test src/hooks/useRunOverlay.logic.test.ts src/pages/runs.logic.test.ts",
+     "test:sop-editor": "node --experimental-strip-types --test src/pages/sopSavePlan.test.ts",
+     "test:permissions": "jiti src/components/ToolPermissionGrid.logic.test.ts && jiti src/pages/Tools.logic.test.ts && jiti src/lib/toolCatalog.logic.test.ts && jiti src/components/ToolCatalogWarningPanel.test.ts && jiti src/lib/validationWarnings.test.ts && jiti src/components/UpgradeDialog.logic.test.ts && npm run test:navigation",
+--- a/web/src/components/layout/Header.tsx
++++ b/web/src/components/layout/Header.tsx
+@@ -9,6 +9,10 @@ import { Button } from '@/components/ui';
+ import { Mark, Wordmark } from '@/components/brand/CaelzaLockup';
+ import { CaelButton } from '@/guide/CaelButton';
+ import { basePath } from '@/lib/basePath';
++import { useActiveChatAgent } from '@/lib/activeChat';
++import { chatAgentFor, withAgentName } from '@/lib/activeChat.logic';
++import { useAgentName } from '@/lib/agentName';
++import { AgentLook } from '@/looks/Look';
+ 
+ // Exact-path titles. The dashboard ('/') must stay exact so it doesn't
+ // swallow every other route as a prefix.
+@@ -74,6 +78,11 @@ export default function Header({ onMenuToggle, onOpenPalette }: HeaderProps) {
+   // mapped here showed "Dashboard" for the first-run flow.
+   const titleKey = titleKeyFor(location.pathname);
+   const pageTitle = titleKey ? t(titleKey) : '';
++  // On a chat, the title is the agent the owner is talking to (its look and
++  // its own name), not the section's generic "Agent" beside the wordmark,
++  // which read as "Caelza Agent" for every agent alike.
++  const chatAlias = chatAgentFor(location.pathname, useActiveChatAgent());
++  const chatName = useAgentName(chatAlias ?? '');
+ 
+   const handleLogout = () => {
+     if (window.confirm(t('auth.logout_confirm'))) {
+@@ -117,7 +126,16 @@ export default function Header({ onMenuToggle, onOpenPalette }: HeaderProps) {
+           </div>
+           {/* Page title — truncates (rather than pushing the action cluster)
+               so the right-side icons never get squeezed. */}
+-          <h1 className="hidden md:block h-9 leading-9 text-lg font-semibold tracking-tight truncate min-w-0 border-l pl-3" style={{ color: 'var(--pc-text-secondary)', borderColor: 'var(--pc-border)' }}>{pageTitle}</h1>
++          <h1 className="hidden md:block h-9 leading-9 text-lg font-semibold tracking-tight truncate min-w-0 border-l pl-3" style={{ color: 'var(--pc-text-secondary)', borderColor: 'var(--pc-border)' }} data-page-title>
++            {chatAlias ? (
++              <span className="inline-flex items-center gap-2 min-w-0 align-middle">
++                <AgentLook alias={chatAlias} size={24} frame="closed" decorative className="shrink-0" />
++                <span className="truncate" style={{ color: 'var(--pc-text)' }}>{withAgentName(t('agentchat.header_title'), chatName || chatAlias)}</span>
++              </span>
++            ) : (
++              pageTitle
++            )}
++          </h1>
+         </div>
+ 
+         {/* Right-side controls. shrink-0 so the title yields first and these
+--- a/web/src/components/layout/Layout.tsx
++++ b/web/src/components/layout/Layout.tsx
+@@ -7,6 +7,9 @@ import UnsavedChangesBanner from '@/components/layout/UnsavedChangesBanner';
+ import CommandPalette, { useCommandPalette } from '@/components/CommandPalette';
+ import { ErrorBoundary } from '@/App';
+ import { t } from '@/lib/i18n';
++import { useActiveChatAgent } from '@/lib/activeChat';
++import { chatAgentFor, chatDocumentTitle } from '@/lib/activeChat.logic';
++import { useAgentName } from '@/lib/agentName';
+ 
+ // First-path-segment → i18n title key, so the browser tab/history/bookmark
+ // reflects the current page instead of a constant "Caelza".
+@@ -46,6 +49,11 @@ export default function Layout() {
+     setSidebarOpen(false);
+   }, [pathname]);
+ 
++  // The agent the chat is showing (the tab in front, not the stale address),
++  // by its own name, for the browser tab.
++  const chatAlias = chatAgentFor(pathname, useActiveChatAgent());
++  const chatName = useAgentName(chatAlias ?? '');
++
+   // Per-route browser tab title.
+   useEffect(() => {
+     const seg = pathname.split('/').filter(Boolean);
+@@ -53,14 +61,15 @@ export default function Layout() {
+     let name: string | null;
+     if (!first) {
+       name = t('nav.home');
+-    } else if (first === 'agent' && seg[1]) {
+-      name = `${decodeURIComponent(seg[1])} · ${t('nav.group.chat')}`;
++    } else if (first === 'agent' && chatAlias) {
++      document.title = chatDocumentTitle(chatName || chatAlias, t('nav.group.chat'), 'Caelza');
++      return;
+     } else {
+       const key = TITLE_KEYS[first];
+       name = key ? t(key) : null;
+     }
+     document.title = name ? `${name} — Caelza` : 'Caelza';
+-  }, [pathname]);
++  }, [pathname, chatAlias, chatName]);
+ 
+   return (
+     <div className="cz-space min-h-screen bg-pc-base text-pc-text">
+--- a/web/src/lib/i18n.ts
++++ b/web/src/lib/i18n.ts
+@@ -523,7 +523,10 @@ const translations: Record<Locale, Record<string, string>> = {
+     'add_entity.choose_different_type': "Choose a different type",
+     'agent.open_config_prefix': "Open ",
+     'agent.open_config_suffix': " config",
+-    'agentchat.empty_title': "Caelza Agent",
++    'agentchat.empty_title': "{name}",
++    'agentchat.empty_own': "This is your own agent. Cael, the setup guide, is the Cael button at the top of every page.",
++    'agentchat.empty_guide': "Cael, the setup guide. Ask about anything in Caelza; your own agents have their own chats.",
++    'agentchat.header_title': "Chat with {name}",
+     'agentchat.files': "Files",
+     'agentchat.open_workspace': "Open agent file workspace",
+     'agentchat.thinking': "Thinking",
+--- a/web/src/pages/AgentChat.tsx
++++ b/web/src/pages/AgentChat.tsx
+@@ -24,6 +24,7 @@ import { resolveContextBarState } from '@/lib/contextBar';
+ import SessionPicker from '@/components/SessionPicker';
+ import { AgentLook } from '@/looks/Look';
+ import { useAgentName } from '@/lib/agentName';
++import { emptyChatLine, withAgentName } from '@/lib/activeChat.logic';
+ import { SpeakToggle, useSpeech } from '@/lib/speech';
+ 
+ const DRAFT_KEY_PREFIX = 'agent-chat';
+@@ -566,8 +567,12 @@ export function AgentChatInner({
+       <div className="flex items-center justify-between flex-wrap gap-y-2 px-4 py-2 border-b border-pc-border bg-pc-surface">
+         <div className="flex items-center gap-2">
+           {/* The agent's look: it talks while the agent is answering (vision M8). */}
+-          <AgentLook alias={agentAlias} size={28} talking={typing || speech.speaking} />
+-          <span className="text-sm font-medium text-pc-text">{agentLabel}</span>
++          <AgentLook alias={agentAlias} size={32} talking={typing || speech.speaking} />
++          {/* Whose chat this is, by its own name (never the product's): the owner
++              can tell their agent from Cael, the guide, at a glance. */}
++          <span className="text-base font-semibold text-pc-text truncate max-w-[45vw]" data-chat-agent-name title={agentAlias}>
++            {agentLabel}
++          </span>
+           <Link
+             to={`/agent/${encodeURIComponent(agentAlias)}/workspace`}
+             className="inline-flex items-center gap-1 px-2 h-6 rounded-[var(--radius-md)] text-xs font-medium text-pc-text-secondary transition-colors hover:text-pc-text hover:bg-[var(--pc-hover)] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[var(--pc-focus)]"
+@@ -679,8 +684,11 @@ export function AgentChatInner({
+                 history in it. */}
+             {hydrated ? (
+               <>
+-                <p className="text-base font-semibold mb-1 text-pc-text">{t('agentchat.empty_title')}</p>
+-                <p className="text-sm text-pc-text-muted">{t('agent.start_conversation')}</p>
++                <p className="text-base font-semibold mb-1 text-pc-text" data-chat-empty-title>{withAgentName(t('agentchat.empty_title'), agentLabel)}</p>
++                <p className="text-sm text-pc-text-muted max-w-sm">
++                  {emptyChatLine(agentAlias, { own: t('agentchat.empty_own'), guide: t('agentchat.empty_guide') })}
++                </p>
++                <p className="text-sm text-pc-text-muted mt-1">{t('agent.start_conversation')}</p>
+               </>
+             ) : (
+               <p className="text-sm text-pc-text-muted">{t('agent.session_loading')}</p>
+--- a/web/src/pages/ChatWorkspace.tsx
++++ b/web/src/pages/ChatWorkspace.tsx
+@@ -3,6 +3,7 @@ import { AgentProvider } from '@/contexts/AgentContext';
+ import { AgentChatInner, type AgentChatStatus } from '@/pages/AgentChat';
+ import { ChatTabBar, type TabIndicator, type WorkspaceLayout } from '@/components/ChatTabBar';
+ import { basePath } from '@/lib/basePath';
++import { setActiveChatAgent } from '@/lib/activeChat';
+ import {
+   applySessionChange,
+   loadPersisted,
+@@ -80,6 +81,14 @@ export default function ChatWorkspace({ initialAlias }: ChatWorkspaceProps) {
+     [tabs, activeKey],
+   );
+ 
++  // Tell the top bar and the browser tab which agent is in front: the address
++  // bar follows with replaceState, which the router does not see.
++  const frontAlias = activeTab?.alias ?? initialAlias;
++  useEffect(() => {
++    setActiveChatAgent(frontAlias);
++  }, [frontAlias]);
++  useEffect(() => () => setActiveChatAgent(null), []);
++
+   // Per-alias streaming / unread bookkeeping. Kept in a ref (source of truth,
+   // mutated synchronously from onStatus) plus mirrored to state for rendering.
+   const statusRef = useRef<Record<string, PaneStatus>>({});
