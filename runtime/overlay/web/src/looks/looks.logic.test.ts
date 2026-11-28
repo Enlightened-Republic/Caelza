@@ -31,8 +31,24 @@ import {
   slotsInUse,
   unlocked,
   validateLook,
+  addedPacks,
+  packLayers,
+  wearPack,
+  wearCharacter,
+  CHARACTER_ID,
   type Catalog,
 } from "./looks.logic.ts";
+import {
+  CHARACTER_ID as CHARACTER_ID_FILES,
+  MAX_FRAME_BYTES,
+  characterId,
+  characterName,
+  fitSizes,
+  frameToDraw,
+  frameUrl,
+  pickFrames,
+  pngsInZip,
+} from "./characters.logic.ts";
 
 // The catalog beside this file in the staged tree (runtime/build.sh copies
 // looks/catalog.json here); from the overlay directory, the repo's own.
@@ -214,4 +230,168 @@ test("a saved look is validated, and a broken one made whole", () => {
   assert.ok(lookEquals(normalizeLook(good, "main", catalog), good));
   assert.ok(!lookEquals(fixed, { ...good, colors: { ...good.colors, skin: "#000000" } }));
   assert.deepEqual(slotsInUse(defaultLook("cael", catalog), catalog), ["skin", "hair", "outfit", "accent", "eyes"]);
+});
+
+// ---- the packs the owner added, worn in one tap -----------------------------------
+
+test("the packs the owner added are the wardrobe's, not the starter, in catalog order", () => {
+  const owned = ownedPacks(catalog, { version: 1, packs: ["cosmic"] });
+  assert.deepEqual(addedPacks(catalog, owned).map((p) => p.id), ["cosmic"]);
+  assert.deepEqual(addedPacks(catalog, ownedPacks(catalog, null)), [], "only the starter: nothing added");
+});
+
+test("wearing a pack puts its first piece on every layer it covers and takes a character off", () => {
+  const base = { ...defaultLook("main", catalog), character: "pirate" };
+  const worn = wearPack(base, catalog, "cosmic");
+  const layers = packLayers(catalog, "cosmic");
+  assert.ok(layers.length > 0);
+  for (const layer of LAYERS) {
+    const part = catalog.parts.find((p) => p.id === worn.parts[layer])!;
+    if (layers.includes(layer)) assert.equal(part.pack, "cosmic", layer);
+    else assert.equal(worn.parts[layer], base.parts[layer], `${layer} stays`);
+  }
+  assert.equal(worn.character, undefined, "the pieces show, not a character");
+  assert.deepEqual(worn.colors, base.colors);
+  assert.deepEqual(lockedParts(worn, catalog, ownedPacks(catalog, { version: 1, packs: ["cosmic"] })), []);
+});
+
+// ---- characters: a downloaded PNGtuber as a look -----------------------------------
+
+test("a look may wear a character; it survives normalizing and counts as a change", () => {
+  const look = defaultLook("main", catalog);
+  const dressed = wearCharacter(look, "pirate-radio-dj-female");
+  assert.equal(normalizeLook(dressed, "main", catalog).character, "pirate-radio-dj-female");
+  assert.ok(!lookEquals(look, dressed), "putting a character on is a change to save");
+  assert.ok(lookEquals(wearCharacter(dressed, null), look), "taking it off is the parts again");
+  assert.equal(normalizeLook({ ...look, character: "../etc" }, "main", catalog).character, undefined);
+  assert.equal(normalizeLook({ ...look, character: 7 }, "main", catalog).character, undefined);
+  assert.deepEqual(Object.keys(normalizeLook(look, "main", catalog)), ["version", "parts", "colors"], "no character: no key");
+});
+
+test("the dashboard and the Runtime agree on what a character id is", () => {
+  assert.equal(String(CHARACTER_ID), String(CHARACTER_ID_FILES));
+  const here = new URL(".", import.meta.url);
+  const rs = [
+    new URL("../../../crates/caelza-gateway/src/api_looks.rs", here),
+    new URL("../../../../../runtime/overlay/crates/caelza-gateway/src/api_looks.rs", here),
+  ].find((u) => existsSync(u));
+  if (!rs) return; // the staged web tree alone: the repo's test_looks.py checks the Rust side
+  const src = readFileSync(rs, "utf8");
+  assert.match(src, /id\.len\(\) <= 48/);
+  assert.match(src, /pub const MAX_FRAME_BYTES: usize = 60 \* 1024;/);
+  assert.equal(MAX_FRAME_BYTES, 60 * 1024);
+});
+
+test("a PNGtuber's frames are found by name: our store's, and the usual idle/talking/blink", () => {
+  const ours = ["01_closed.png", "02_open.png", "03_closed_blink.png", "04_open_blink.png", "05_smile.png", "coverphoto.png"];
+  assert.deepEqual(pickFrames(ours), { closed: "01_closed.png", open: "02_open.png", blink: "03_closed_blink.png" });
+  assert.deepEqual(
+    pickFrames(["Pack/idle.png", "Pack/talking.png", "Pack/blink.png", "Pack/angry.png"]),
+    { closed: "Pack/idle.png", open: "Pack/talking.png", blink: "Pack/blink.png" },
+  );
+  assert.deepEqual(pickFrames(["Mouth Closed.png", "Mouth Open.png"]), { closed: "Mouth Closed.png", open: "Mouth Open.png" });
+  assert.deepEqual(pickFrames(["b.png", "a.png"]), { closed: "a.png" }, "no names to go by: the first file is the face");
+  assert.deepEqual(pickFrames([]), {});
+});
+
+test("a character is named from its file, without the word PNGTuber", () => {
+  assert.equal(characterName("Pirate Radio DJ Female - PNGTuber.zip"), "Pirate Radio DJ Female");
+  assert.equal(characterName("C:\\Users\\h\\Downloads\\neko_cafe_pngtuber_male.zip"), "neko cafe male");
+  assert.equal(characterName("01_closed.png"), "01 closed");
+  assert.equal(characterName(".zip"), "Character");
+});
+
+test("a character's id is its name in lowercase words, made unique", () => {
+  assert.equal(characterId("Pirate Radio DJ Female", []), "pirate-radio-dj-female");
+  assert.equal(characterId("Pirate Radio DJ Female", ["pirate-radio-dj-female"]), "pirate-radio-dj-female-2");
+  assert.equal(characterId("Café ✨", []), "cafe");
+  assert.equal(characterId("!!!", []), "character");
+  assert.match(characterId("x".repeat(80), []), CHARACTER_ID);
+});
+
+test("a frame is fitted under the body limit by whole steps, starting no taller than 704", () => {
+  const ours = fitSizes(640, 704);
+  assert.deepEqual(ours[0], { width: 640, height: 704 });
+  assert.deepEqual(ours[1], { width: 320, height: 352 });
+  assert.ok(ours.every((s) => Math.abs(s.width / s.height - 640 / 704) < 0.02), "the ratio holds");
+  assert.deepEqual(fitSizes(2000, 2200)[0], { width: 640, height: 704 });
+  const smallest = fitSizes(2000, 2200);
+  assert.ok(smallest[smallest.length - 1]!.height >= 88);
+  assert.deepEqual(fitSizes(40, 44), [{ width: 40, height: 44 }], "a small frame is sent as it is");
+});
+
+test("the frame drawn falls back to the closed one; the URL is the Runtime's", () => {
+  assert.equal(frameToDraw({ frames: ["closed"] }, "open"), "closed");
+  assert.equal(frameToDraw({ frames: ["closed", "open", "blink"] }, "blink"), "blink");
+  assert.equal(frameToDraw(null, "open"), "closed");
+  assert.equal(frameUrl("pirate-dj", "open"), "/api/looks/characters/pirate-dj/open");
+});
+
+// A zip as a store's would be: one stored PNG, one deflated, a folder, macOS shadows.
+async function zipOf(entries: Array<{ name: string; data: Uint8Array; deflate?: boolean }>): Promise<Uint8Array> {
+  const enc = new TextEncoder();
+  const locals: Uint8Array[] = [];
+  const centrals: Uint8Array[] = [];
+  let offset = 0;
+  for (const e of entries) {
+    const name = enc.encode(e.name);
+    const body = e.deflate
+      ? new Uint8Array(await new Response(new Blob([e.data]).stream().pipeThrough(new CompressionStream("deflate-raw"))).arrayBuffer())
+      : e.data;
+    const local = new Uint8Array(30 + name.length + body.length);
+    const lv = new DataView(local.buffer);
+    lv.setUint32(0, 0x04034b50, true);
+    lv.setUint16(8, e.deflate ? 8 : 0, true);
+    lv.setUint32(18, body.length, true);
+    lv.setUint32(22, e.data.length, true);
+    lv.setUint16(26, name.length, true);
+    local.set(name, 30);
+    local.set(body, 30 + name.length);
+    const central = new Uint8Array(46 + name.length);
+    const cv = new DataView(central.buffer);
+    cv.setUint32(0, 0x02014b50, true);
+    cv.setUint16(10, e.deflate ? 8 : 0, true);
+    cv.setUint32(20, body.length, true);
+    cv.setUint32(24, e.data.length, true);
+    cv.setUint16(28, name.length, true);
+    cv.setUint32(42, offset, true);
+    central.set(name, 46);
+    locals.push(local);
+    centrals.push(central);
+    offset += local.length;
+  }
+  const cdSize = centrals.reduce((n, c) => n + c.length, 0);
+  const end = new Uint8Array(22);
+  const ev = new DataView(end.buffer);
+  ev.setUint32(0, 0x06054b50, true);
+  ev.setUint16(8, entries.length, true);
+  ev.setUint16(10, entries.length, true);
+  ev.setUint32(12, cdSize, true);
+  ev.setUint32(16, offset, true);
+  const all = [...locals, ...centrals, end];
+  const out = new Uint8Array(all.reduce((n, a) => n + a.length, 0));
+  let at = 0;
+  for (const a of all) {
+    out.set(a, at);
+    at += a.length;
+  }
+  return out;
+}
+
+test("the PNGs come out of a zip, stored or deflated, folders and macOS shadows left out", async () => {
+  const closed = new Uint8Array(500).map((_, i) => i % 7);
+  const open = new Uint8Array([137, 80, 78, 71, 1, 2, 3]);
+  const zip = await zipOf([
+    { name: "Pirate DJ/", data: new Uint8Array() },
+    { name: "Pirate DJ/01_closed.png", data: closed, deflate: true },
+    { name: "Pirate DJ/02_open.png", data: open },
+    { name: "Pirate DJ/listing.txt", data: new TextEncoder().encode("hi") },
+    { name: "__MACOSX/Pirate DJ/._01_closed.png", data: open },
+    { name: "Pirate DJ/.hidden.png", data: open },
+  ]);
+  const files = await pngsInZip(zip);
+  assert.deepEqual(files.map((f) => f.name), ["Pirate DJ/01_closed.png", "Pirate DJ/02_open.png"]);
+  assert.deepEqual([...files[0]!.data], [...closed], "deflate inflates back");
+  assert.deepEqual([...files[1]!.data], [...open]);
+  await assert.rejects(pngsInZip(new Uint8Array([1, 2, 3])), /not a zip/);
 });

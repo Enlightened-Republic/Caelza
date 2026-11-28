@@ -116,6 +116,7 @@ export default function Shop() {
     const next = add ? [...current.filter((p) => p !== pack.id), pack.id] : current.filter((p) => p !== pack.id);
     try {
       setWardrobe(await putWardrobe({ version: 1, packs: next }));
+      if (add) setNotice(t("shop.added").replace("{pack}", pack.name));
     } catch (e) {
       setError(errorText(e));
     } finally {
@@ -236,6 +237,13 @@ export default function Shop() {
                         <Check className="h-4 w-4" />
                         {t("shop.in_wardrobe")}
                       </Button>
+                      {/* Where the pack went: every agent's customizer, worn with one tap there. */}
+                      <Link to="/looks" data-shop-wear={pack.id}>
+                        <Button variant="primary" size="sm">
+                          <Shirt className="h-4 w-4" />
+                          {t("shop.wear_it")}
+                        </Button>
+                      </Link>
                       <button type="button" className="cz-btn-text" disabled={busy !== null} onClick={() => void change(pack, false)}>
                         {t("shop.remove")}
                       </button>

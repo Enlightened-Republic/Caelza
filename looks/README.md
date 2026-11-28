@@ -38,6 +38,34 @@ accessory) on top. Faces have three frames: `closed`, `open`, `blink`.
 3. `python3 scripts/looks.py export`, then look at `runtime/overlay/web/public/looks/sheets/<pack>.png`.
 4. `python3 scripts/looks.py check` (CI runs it through `tests/test_looks.py`).
 
+## Characters: a downloaded PNGtuber as a look
+
+A PNGtuber is a set of drawn frames, not pieces on the grid: our store's
+packs are a zip of `01_closed.png`, `02_open.png`, `03_closed_blink.png`,
+`04_open_blink.png` and reactions, 640 × 704 (the grid's 40 : 44, ×16). The
+customizer's **Characters** card imports one: pick the `.zip` (or the PNGs).
+
+- The zip is read in the browser (`looks/characters.logic.ts` `pngsInZip`:
+  stored or deflated entries, `__MACOSX` shadows and folders skipped).
+- `pickFrames` finds the look's three frames by name: closed / idle /
+  neutral, open / talk / talking, blink (with the mouth closed). With no
+  names to go by, the first image is the face and it holds still.
+- Each frame is sent as it is when it fits under `MAX_FRAME_BYTES` (60 KB, under
+  the gateway's 64 KB body limit; the store's frames are about 7 KB), else
+  scaled down by whole steps, nearest-neighbour, until it does.
+- The Runtime keeps it for every agent (`api_looks.rs`): `PUT
+  /api/looks/characters/<id>` `{name}`, then `PUT .../<id>/<frame>` with the
+  PNG, under `~/.caelza/looks/characters/<id>/` (`character.json`,
+  `closed.png`, `open.png`, `blink.png`). `GET /api/looks/characters` lists
+  them; `DELETE .../<id>` removes one.
+
+Wearing one sets `character: <id>` in the agent's look. Everything that
+draws the look (the chat, the tabs, the bubbles, Home, the avatar) then shows
+the character's frame: open while the agent talks, blink now and then, the
+closed one when a frame is missing. The parts stay in the look as what it
+falls back to. The agent's own `look` tool edits the parts, and its writes
+drop the character.
+
 ## The look as a profile picture
 
 "Save as avatar" on the customizer (`/looks/<alias>`) downloads

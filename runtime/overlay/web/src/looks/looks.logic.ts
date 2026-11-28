@@ -74,6 +74,9 @@ export interface Look {
   version: 1;
   parts: Record<Layer, string>;
   colors: Record<Slot, string>;
+  /** A drawn character the owner imported (a PNGtuber's frames), worn over the
+   *  parts; the parts stay as what it falls back to. See characters.logic.ts. */
+  character?: string;
 }
 export interface Wardrobe {
   version: 1;
@@ -306,8 +309,13 @@ export function normalizeLook(raw: unknown, alias: string, catalog: Catalog): Lo
     const c = (r.colors as Record<string, unknown> | undefined)?.[slot];
     if (typeof c === "string" && HEX.test(c)) colors[slot] = c.toLowerCase();
   }
+  const character = (r as { character?: unknown }).character;
+  if (typeof character === "string" && CHARACTER_ID.test(character)) return { version: 1, parts, colors, character };
   return { version: 1, parts, colors };
 }
+
+/** A character's id, as the Runtime checks it (api_looks.rs `is_character_id`). */
+export const CHARACTER_ID = /^[a-z0-9][a-z0-9-]{0,47}$/;
 
 /** The colour rows the customizer shows: the slots the chosen parts recolour, in slot order. */
 export function slotsInUse(look: Look, catalog: Catalog): Slot[] {
@@ -325,7 +333,43 @@ export function lockedParts(look: Look, catalog: Catalog, owned: Set<string>): s
 }
 
 export function lookEquals(a: Look, b: Look): boolean {
-  return LAYERS.every((l) => a.parts[l] === b.parts[l]) && SLOTS.every((s) => a.colors[s].toLowerCase() === b.colors[s].toLowerCase());
+  return (
+    (a.character ?? null) === (b.character ?? null) &&
+    LAYERS.every((l) => a.parts[l] === b.parts[l]) &&
+    SLOTS.every((s) => a.colors[s].toLowerCase() === b.colors[s].toLowerCase())
+  );
+}
+
+/** The packs the owner added (not the starter every wardrobe holds), in catalog order. */
+export function addedPacks(catalog: Catalog, owned: Set<string>): CatalogPack[] {
+  return catalog.packs.filter((p) => p.id !== STARTER && p.status === "available" && owned.has(p.id));
+}
+
+/** The layers a pack has pieces for, in draw order. */
+export function packLayers(catalog: Catalog, packId: string): Layer[] {
+  const has = new Set(catalog.parts.filter((p) => p.pack === packId).map((p) => p.layer));
+  return LAYERS.filter((l) => has.has(l));
+}
+
+/**
+ * The look in a whole pack: every layer the pack covers takes the pack's first
+ * piece for it (the rest of the look and the colours stay), and a worn
+ * character comes off so the pieces show. One tap from "I added a pack" to
+ * seeing it on the agent.
+ */
+export function wearPack(look: Look, catalog: Catalog, packId: string): Look {
+  const parts = { ...look.parts };
+  for (const layer of LAYERS) {
+    const first = catalog.parts.find((p) => p.pack === packId && p.layer === layer);
+    if (first) parts[layer] = first.id;
+  }
+  return { version: 1, parts, colors: { ...look.colors } };
+}
+
+/** The look wearing a character (or, with null, its parts again). */
+export function wearCharacter(look: Look, id: string | null): Look {
+  const base: Look = { version: 1, parts: { ...look.parts }, colors: { ...look.colors } };
+  return id ? { ...base, character: id } : base;
 }
 
 /** The pack price for a sentence. */

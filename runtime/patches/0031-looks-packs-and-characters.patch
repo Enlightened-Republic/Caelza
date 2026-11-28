@@ -1,0 +1,75 @@
+Looks: a pack the owner added is plain to find and wear, and a downloaded
+PNGtuber (a .zip or its PNGs) becomes a character any agent can wear.
+
+Adding a pack in the Shop put it in the wardrobe, but the customizer only
+un-dimmed its pieces among the starter's across seven layer tabs, so it
+looked as if nothing had arrived. Now the Shop says where it went, with a
+"Wear it on Looks" button; the Looks gallery names what is in the wardrobe;
+the customizer has a "Your packs" card with each added pack's sheet and a
+"Wear it" button that puts the pack's pieces on in one tap.
+
+A PNGtuber from the store downloads as a zip of frames (01_closed, 02_open,
+03_closed_blink, reactions). The customizer's Characters card imports one:
+the zip is read in the browser, the closed, open and blink frames are picked
+by name, each is fitted under the gateway's 64 KB body limit and sent to the
+Runtime, which keeps it in <install root>/looks/characters/<id>/ for every
+agent. A look may name a character (`character`): the dashboard then draws
+the character's frames, talking and blinking like the pixel ones, over the
+parts, which stay as the fallback (and what the agent's own look tool edits).
+
+The overlay holds the gateway routes' handlers (api_looks.rs), the client
+(lib/characters.ts), the logic (looks/characters.logic.ts, its tests in
+looks.logic.test.ts), the renderer (looks/Look.tsx) and the pages
+(pages/Looks.tsx, pages/Shop.tsx); this patch routes /api/looks/characters
+(lib.rs) and adds the strings (i18n.ts).
+
+--- a/crates/caelza-gateway/src/lib.rs
++++ b/crates/caelza-gateway/src/lib.rs
+@@ -2412,6 +2412,16 @@ pub async fn run_gateway_with_plugin_webhooks(
+             get(api_looks::handle_wardrobe_get).put(api_looks::handle_wardrobe_put),
+         )
+         .route("/api/looks/wardrobe/unlock", post(api_looks::handle_wardrobe_unlock))
++        // The drawn characters the owner imported (a PNGtuber's frames), wearable by any agent.
++        .route("/api/looks/characters", get(api_looks::handle_characters_list))
++        .route(
++            "/api/looks/characters/{id}",
++            put(api_looks::handle_character_put).delete(api_looks::handle_character_delete),
++        )
++        .route(
++            "/api/looks/characters/{id}/{frame}",
++            get(api_looks::handle_character_frame_get).put(api_looks::handle_character_frame_put),
++        )
+         // The voice (vision M10 §10): what the agent sounds like when a device
+         // reads its replies aloud; the devices' offers; the owner's ElevenLabs voices.
+         .route(
+--- a/web/src/lib/i18n.ts
++++ b/web/src/lib/i18n.ts
+@@ -1825,7 +1825,28 @@ const translations: Record<Locale, Record<string, string>> = {
+     'looks.undo': "Undo",
+     'looks.wardrobe_failed': "Couldn't read the wardrobe; every piece is open until it loads.",
+     'looks.wearing': "Wearing:",
++    'looks.gallery_added': "In your wardrobe: {items}. Tap an agent to put it on.",
++    'looks.packs_title': "Your packs",
++    'looks.packs_help': "What you added in the Shop. Wear a whole pack in one tap, or pick its pieces in the layers below.",
++    'looks.pack_wear': "Wear it",
++    'looks.pack_worn': "{pack} is on. Save look to keep it.",
++    'looks.characters_title': "Characters",
++    'looks.characters_help': "A PNGtuber you downloaded, as this agent's look: pick its .zip (or its PNGs). The closed, talking and blink frames are found by name; it talks in the chat like any look.",
++    'looks.characters_empty': "No characters yet.",
++    'looks.character_import': "Import a PNGtuber (.zip or PNGs)",
++    'looks.character_importing': "Importing...",
++    'looks.character_imported': "{name} is in. It is on this agent now; Save look to keep it.",
++    'looks.character_guessed': "{name} is in, but no talking or blink frame was named, so it holds still. Save look to keep it.",
++    'looks.character_failed': "That did not import:",
++    'looks.character_wear': "Wear this character",
++    'looks.character_off': "Take it off (back to the pieces)",
++    'looks.character_remove': "Remove",
++    'looks.character_remove_confirm': "Remove {name} from every agent? Agents wearing it go back to their pieces.",
++    'looks.character_removed': "{name} is removed.",
++    'looks.character_worn_note': "This agent wears a character. The pieces below are what it falls back to.",
+     'shop.add': "Add to wardrobe",
++    'shop.added': "{pack} is in your wardrobe. Its pieces are in every agent's Looks now.",
++    'shop.wear_it': "Wear it on Looks",
+     'shop.adding': "Adding\u2026",
+     'shop.always_yours': "Always yours",
+     'shop.code_label': "Unlock code",

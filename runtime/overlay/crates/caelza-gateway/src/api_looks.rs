@@ -8,6 +8,20 @@
 //! - `GET    /api/looks/{alias}`         → `{alias, look}`; `look` is null until one is saved (the dashboard deals a default)
 //! - `PUT    /api/looks/{alias}`         ← `{version: 1, parts: {layer: part}, colors: {slot: "#rrggbb"}}`
 //! - `DELETE /api/looks/{alias}`         → back to the default
+//! - `GET    /api/looks/characters`      → `{characters: [{id, name, frames}]}`: the drawn characters the owner
+//!                                         imported (a PNGtuber's frames), wearable by any agent
+//! - `PUT    /api/looks/characters/{id}` ← `{name}`: makes or renames one
+//! - `PUT    /api/looks/characters/{id}/{frame}` ← the frame's PNG as the body (`closed`, `open`, `blink`)
+//! - `GET    /api/looks/characters/{id}/{frame}` → that PNG
+//! - `DELETE /api/looks/characters/{id}`
+//!
+//! A look may name a character (`character: <id>`): the dashboard then draws
+//! the character's frames (closed, open while talking, blink) instead of the
+//! parts, which stay in the look as what it falls back to (and what the
+//! agent's own `look` tool edits; its writes drop the character).
+//! Characters live in `<install root>/looks/characters/<id>/`: `character.json`
+//! and one `<frame>.png` each, a frame at most `MAX_FRAME_BYTES` so a frame
+//! fits under the gateway's 64 KB body limit (the dashboard scales it down).
 //!
 //! The files are `<install root>/agents/<alias>/look.json` and
 //! `<install root>/looks/wardrobe.json`. The gateway checks the shape (the
@@ -48,6 +62,18 @@ pub const SLOTS: [&str; 5] = ["skin", "hair", "outfit", "accent", "eyes"];
 const MAX_BYTES: usize = 16 * 1024;
 const MAX_PACKS: usize = 64;
 
+pub const CHARACTERS_DIR: &str = "characters";
+pub const CHARACTER_FILE: &str = "character.json";
+/// A character's frames: the mouth closed, open (talking), and the blink.
+pub const FRAMES: [&str; 3] = ["closed", "open", "blink"];
+/// Under the gateway-wide 64 KB request body limit, with room for the headers.
+pub const MAX_FRAME_BYTES: usize = 60 * 1024;
+/// A frame's sides at most this many pixels (the dashboard draws them at 200 px).
+const MAX_FRAME_SIDE: u32 = 2048;
+const MAX_CHARACTERS: usize = 64;
+const MAX_NAME_CHARS: usize = 48;
+const PNG_SIGNATURE: [u8; 8] = [0x89, b'P', b'N', b'G', b'\r', b'\n', 0x1a, b'\n'];
+
 /// The public half of the key that signs unlock codes; looks/catalog.json
 /// `unlock.public_key` carries the same hex, and tests/test_unlock_codes.py
 /// keeps the two equal. Rotate with `scripts/unlock_codes.py keygen`.
@@ -67,6 +93,7 @@ pub(crate) fn alias_ok(alias: &str) -> bool {
     !alias.is_empty()
         && alias.len() <= 64
         && alias != "wardrobe"
+        && alias != CHARACTERS_DIR
         && alias
             .chars()
             .all(|c| c.is_ascii_alphanumeric() || c == '_' || c == '-')
@@ -97,14 +124,19 @@ fn read_json(path: &PathBuf) -> Result<Option<Value>, String> {
 
 /// Write whole or not at all: a sibling temp file of its own, then a rename.
 fn write_json(path: &PathBuf, value: &Value) -> Result<(), String> {
+    let text = serde_json::to_string_pretty(value).map_err(|e| e.to_string())?;
+    write_bytes(path, text.as_bytes())
+}
+
+fn write_bytes(path: &PathBuf, bytes: &[u8]) -> Result<(), String> {
     let parent = path
         .parent()
         .ok_or_else(|| format!("{} has no parent", path.display()))?;
     std::fs::create_dir_all(parent).map_err(|e| format!("creating {}: {e}", parent.display()))?;
     let seq = WRITE_SEQ.fetch_add(1, Ordering::Relaxed);
-    let tmp = path.with_extension(format!("json.{}.{seq}.tmp", std::process::id()));
-    let text = serde_json::to_string_pretty(value).map_err(|e| e.to_string())?;
-    std::fs::write(&tmp, text.as_bytes()).map_err(|e| format!("writing {}: {e}", tmp.display()))?;
+    let ext = path.extension().and_then(|e| e.to_str()).unwrap_or("file");
+    let tmp = path.with_extension(format!("{ext}.{}.{seq}.tmp", std::process::id()));
+    std::fs::write(&tmp, bytes).map_err(|e| format!("writing {}: {e}", tmp.display()))?;
     std::fs::rename(&tmp, path).map_err(|e| {
         let _ = std::fs::remove_file(&tmp);
         format!("renaming into {}: {e}", path.display())
@@ -172,7 +204,57 @@ pub(crate) fn validate_look(value: &Value) -> Result<Value, String> {
             return Err(format!("colors.{key} is not a slot"));
         }
     }
-    Ok(json!({"version": 1, "parts": clean_parts, "colors": clean_colors}))
+    let mut clean = json!({"version": 1, "parts": clean_parts, "colors": clean_colors});
+    // A drawn character, worn over the parts (which stay as the fallback).
+    match obj.get("character") {
+        None | Some(Value::Null) => {}
+        Some(Value::String(id)) if is_character_id(id) => clean["character"] = Value::String(id.clone()),
+        Some(other) => return Err(format!("character: {other} is not a character id")),
+    }
+    Ok(clean)
+}
+
+/// A character's id: lowercase letters, digits and `-`, starting with a letter
+/// or digit; it names a directory, so nothing else.
+pub(crate) fn is_character_id(id: &str) -> bool {
+    !id.is_empty()
+        && id.len() <= 48
+        && id.chars().next().is_some_and(|c| c.is_ascii_lowercase() || c.is_ascii_digit())
+        && id
+            .chars()
+            .all(|c| c.is_ascii_lowercase() || c.is_ascii_digit() || c == '-')
+}
+
+/// A character's display name: one line, at most `MAX_NAME_CHARS`, trimmed.
+fn clean_character_name(raw: &str) -> Result<String, String> {
+    let name = raw.trim();
+    if name.is_empty() {
+        return Err("a character needs a name".into());
+    }
+    if name.chars().count() > MAX_NAME_CHARS {
+        return Err(format!("a name is at most {MAX_NAME_CHARS} characters"));
+    }
+    if name.chars().any(char::is_control) {
+        return Err("a name is one line of text".into());
+    }
+    Ok(name.to_string())
+}
+
+/// A frame is a PNG of sane size: the signature, then an IHDR whose sides are
+/// between 1 and `MAX_FRAME_SIDE`. Returns `(width, height)`.
+pub(crate) fn check_frame_png(bytes: &[u8]) -> Result<(u32, u32), String> {
+    if bytes.len() > MAX_FRAME_BYTES {
+        return Err(format!("a frame is at most {} KB", MAX_FRAME_BYTES / 1024));
+    }
+    if bytes.len() < 24 || bytes[..8] != PNG_SIGNATURE || &bytes[12..16] != b"IHDR" {
+        return Err("a frame is a PNG image".into());
+    }
+    let w = u32::from_be_bytes([bytes[16], bytes[17], bytes[18], bytes[19]]);
+    let h = u32::from_be_bytes([bytes[20], bytes[21], bytes[22], bytes[23]]);
+    if w == 0 || h == 0 || w > MAX_FRAME_SIDE || h > MAX_FRAME_SIDE {
+        return Err(format!("a frame's sides are 1 to {MAX_FRAME_SIDE} pixels"));
+    }
+    Ok((w, h))
 }
 
 fn is_pack_id(id: &str) -> bool {
@@ -303,6 +385,159 @@ fn stored_wardrobe(config: &Config) -> Result<Value, String> {
 
 fn known_agent(config: &Config, alias: &str) -> bool {
     config.agents.contains_key(alias)
+}
+
+fn characters_root(config: &Config) -> PathBuf {
+    config.install_root_dir().join("looks").join(CHARACTERS_DIR)
+}
+
+/// The characters under `root`, by name: each directory with a readable
+/// `character.json` and the frames that are there. Anything else is skipped.
+pub(crate) fn list_characters(root: &std::path::Path) -> Vec<Value> {
+    let Ok(entries) = std::fs::read_dir(root) else {
+        return Vec::new();
+    };
+    let mut out: Vec<Value> = entries
+        .filter_map(Result::ok)
+        .filter_map(|e| {
+            let id = e.file_name().to_str()?.to_string();
+            if !is_character_id(&id) {
+                return None;
+            }
+            let meta = read_json(&e.path().join(CHARACTER_FILE)).ok().flatten()?;
+            let name = meta.get("name").and_then(Value::as_str).unwrap_or(&id).to_string();
+            let frames: Vec<&str> = FRAMES
+                .iter()
+                .copied()
+                .filter(|f| e.path().join(format!("{f}.png")).is_file())
+                .collect();
+            Some(json!({"id": id, "name": name, "frames": frames}))
+        })
+        .collect();
+    out.sort_by(|a, b| {
+        let key = |v: &Value| v["name"].as_str().unwrap_or("").to_lowercase();
+        key(a).cmp(&key(b)).then_with(|| a["id"].as_str().cmp(&b["id"].as_str()))
+    });
+    out
+}
+
+/// GET /api/looks/characters
+pub async fn handle_characters_list(State(state): State<AppState>, headers: HeaderMap) -> Response {
+    if let Err(e) = require_auth(&state, &headers) {
+        return e.into_response();
+    }
+    let config = state.config.read().clone();
+    Json(json!({"characters": list_characters(&characters_root(&config))})).into_response()
+}
+
+/// PUT /api/looks/characters/{id}: `{name}` makes the character or renames it.
+pub async fn handle_character_put(
+    State(state): State<AppState>,
+    headers: HeaderMap,
+    AxumPath(id): AxumPath<String>,
+    Json(body): Json<Value>,
+) -> Response {
+    if let Err(e) = require_auth(&state, &headers) {
+        return e.into_response();
+    }
+    if !is_character_id(&id) {
+        return error_response(StatusCode::BAD_REQUEST, "not a character id");
+    }
+    let name = match clean_character_name(body.get("name").and_then(Value::as_str).unwrap_or("")) {
+        Ok(n) => n,
+        Err(e) => return error_response(StatusCode::BAD_REQUEST, e),
+    };
+    let config = state.config.read().clone();
+    let root = characters_root(&config);
+    let dir = root.join(&id);
+    if !dir.join(CHARACTER_FILE).is_file() && list_characters(&root).len() >= MAX_CHARACTERS {
+        return error_response(StatusCode::BAD_REQUEST, format!("at most {MAX_CHARACTERS} characters"));
+    }
+    let meta = json!({"version": 1, "id": id, "name": name});
+    match write_json(&dir.join(CHARACTER_FILE), &meta) {
+        Ok(()) => Json(json!({"id": id, "name": name})).into_response(),
+        Err(e) => error_response(StatusCode::INTERNAL_SERVER_ERROR, e),
+    }
+}
+
+/// PUT /api/looks/characters/{id}/{frame}: the frame's PNG as the body.
+pub async fn handle_character_frame_put(
+    State(state): State<AppState>,
+    headers: HeaderMap,
+    AxumPath((id, frame)): AxumPath<(String, String)>,
+    body: axum::body::Bytes,
+) -> Response {
+    if let Err(e) = require_auth(&state, &headers) {
+        return e.into_response();
+    }
+    if !is_character_id(&id) || !FRAMES.contains(&frame.as_str()) {
+        return error_response(StatusCode::BAD_REQUEST, "not a character frame");
+    }
+    if let Err(e) = check_frame_png(&body) {
+        return error_response(StatusCode::BAD_REQUEST, e);
+    }
+    let config = state.config.read().clone();
+    let dir = characters_root(&config).join(&id);
+    if !dir.join(CHARACTER_FILE).is_file() {
+        return error_response(StatusCode::NOT_FOUND, format!("no character {id:?}"));
+    }
+    match write_bytes(&dir.join(format!("{frame}.png")), &body) {
+        Ok(()) => Json(json!({"id": id, "frame": frame, "bytes": body.len()})).into_response(),
+        Err(e) => error_response(StatusCode::INTERNAL_SERVER_ERROR, e),
+    }
+}
+
+/// GET /api/looks/characters/{id}/{frame}: the PNG.
+pub async fn handle_character_frame_get(
+    State(state): State<AppState>,
+    headers: HeaderMap,
+    AxumPath((id, frame)): AxumPath<(String, String)>,
+) -> Response {
+    if let Err(e) = require_auth(&state, &headers) {
+        return e.into_response();
+    }
+    if !is_character_id(&id) || !FRAMES.contains(&frame.as_str()) {
+        return error_response(StatusCode::BAD_REQUEST, "not a character frame");
+    }
+    let config = state.config.read().clone();
+    let path = characters_root(&config).join(&id).join(format!("{frame}.png"));
+    match std::fs::read(&path) {
+        Ok(bytes) => (
+            StatusCode::OK,
+            [
+                (axum::http::header::CONTENT_TYPE, "image/png"),
+                (axum::http::header::CACHE_CONTROL, "no-cache"),
+            ],
+            bytes,
+        )
+            .into_response(),
+        Err(e) if e.kind() == std::io::ErrorKind::NotFound => {
+            error_response(StatusCode::NOT_FOUND, format!("no {frame} frame for {id:?}"))
+        }
+        Err(e) => error_response(StatusCode::INTERNAL_SERVER_ERROR, format!("reading {}: {e}", path.display())),
+    }
+}
+
+/// DELETE /api/looks/characters/{id}: the character and its frames. Looks that
+/// wear it fall back to their parts.
+pub async fn handle_character_delete(
+    State(state): State<AppState>,
+    headers: HeaderMap,
+    AxumPath(id): AxumPath<String>,
+) -> Response {
+    if let Err(e) = require_auth(&state, &headers) {
+        return e.into_response();
+    }
+    if !is_character_id(&id) {
+        return error_response(StatusCode::BAD_REQUEST, "not a character id");
+    }
+    let config = state.config.read().clone();
+    let dir = characters_root(&config).join(&id);
+    match std::fs::remove_dir_all(&dir) {
+        Ok(()) => Json(json!({"id": id, "removed": true})).into_response(),
+        Err(e) if e.kind() == std::io::ErrorKind::NotFound => Json(json!({"id": id, "removed": false})).into_response(),
+        Err(e) => error_response(StatusCode::INTERNAL_SERVER_ERROR, format!("removing {}: {e}", dir.display())),
+    }
 }
 
 /// GET /api/looks/{alias}
@@ -543,6 +778,77 @@ mod tests {
     fn aliases_are_one_word_and_never_the_wardrobe() {
         assert!(alias_ok("main") && alias_ok("cael") && alias_ok("agent_2-b"));
         assert!(!alias_ok("") && !alias_ok("wardrobe") && !alias_ok("../main") && !alias_ok("a b"));
+        assert!(!alias_ok("characters"), "the characters' route, not an agent");
+    }
+
+    #[test]
+    fn a_look_may_wear_a_character_over_its_parts() {
+        let mut look = good_look();
+        look["character"] = json!("pirate-radio-dj");
+        let clean = validate_look(&look).expect("valid");
+        assert_eq!(clean["character"], "pirate-radio-dj");
+        assert_eq!(clean["parts"]["body"], "body.sprout", "the parts stay as the fallback");
+        look["character"] = Value::Null;
+        assert!(validate_look(&look).expect("null is none").get("character").is_none());
+        for bad in [json!("../x"), json!("Pirate"), json!(""), json!(7), json!("-x")] {
+            look["character"] = bad.clone();
+            assert!(validate_look(&look).is_err(), "{bad}");
+        }
+        assert!(validate_look(&good_look()).expect("valid").get("character").is_none());
+    }
+
+    fn png(w: u32, h: u32) -> Vec<u8> {
+        let mut b = PNG_SIGNATURE.to_vec();
+        b.extend_from_slice(&13u32.to_be_bytes());
+        b.extend_from_slice(b"IHDR");
+        b.extend_from_slice(&w.to_be_bytes());
+        b.extend_from_slice(&h.to_be_bytes());
+        b.extend_from_slice(&[8, 6, 0, 0, 0, 0, 0, 0, 0]);
+        b
+    }
+
+    #[test]
+    fn a_frame_is_a_png_of_sane_size() {
+        assert_eq!(check_frame_png(&png(320, 352)).expect("ok"), (320, 352));
+        assert!(check_frame_png(b"GIF89a............................").is_err());
+        assert!(check_frame_png(&png(0, 10)).is_err());
+        assert!(check_frame_png(&png(4096, 10)).is_err());
+        let mut big = png(10, 10);
+        big.resize(MAX_FRAME_BYTES + 1, 0);
+        assert!(check_frame_png(&big).is_err());
+        assert!(MAX_FRAME_BYTES < 65_536, "a frame fits the gateway's body limit");
+    }
+
+    #[test]
+    fn character_ids_name_a_directory_and_nothing_else() {
+        assert!(is_character_id("pirate-radio-dj-female") && is_character_id("a1"));
+        let long = "a".repeat(49);
+        for bad in ["", "-a", "A", "a_b", "a/b", "..", "a b", long.as_str()] {
+            assert!(!is_character_id(bad), "{bad:?}");
+        }
+        assert_eq!(clean_character_name("  Pirate DJ ").unwrap(), "Pirate DJ");
+        assert!(clean_character_name("").is_err() && clean_character_name("a\nb").is_err());
+        assert!(clean_character_name(&"x".repeat(49)).is_err());
+    }
+
+    #[test]
+    fn the_library_lists_characters_by_name_with_the_frames_they_have() {
+        let dir = tempfile::tempdir().expect("tempdir");
+        let root = dir.path().to_path_buf();
+        assert!(list_characters(&root.join("missing")).is_empty());
+        write_json(&root.join("zed").join(CHARACTER_FILE), &json!({"name": "Zed"})).unwrap();
+        write_bytes(&root.join("zed").join("closed.png"), &png(4, 4)).unwrap();
+        write_json(&root.join("amy").join(CHARACTER_FILE), &json!({"name": "amy"})).unwrap();
+        write_bytes(&root.join("amy").join("closed.png"), &png(4, 4)).unwrap();
+        write_bytes(&root.join("amy").join("open.png"), &png(4, 4)).unwrap();
+        std::fs::create_dir_all(root.join("Bad_Dir")).unwrap();
+        std::fs::create_dir_all(root.join("nometa")).unwrap();
+        let list = list_characters(&root);
+        assert_eq!(list.len(), 2, "{list:?}");
+        assert_eq!(list[0], json!({"id": "amy", "name": "amy", "frames": ["closed", "open"]}));
+        assert_eq!(list[1]["frames"], json!(["closed"]));
+        let left: Vec<_> = std::fs::read_dir(root.join("amy")).unwrap().map(|e| e.unwrap().file_name()).collect();
+        assert_eq!(left.len(), 3, "no temp files left: {left:?}");
     }
 
     #[test]

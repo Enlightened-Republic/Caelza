@@ -11,6 +11,7 @@ import { useEffect, useMemo, useRef, useState, type CSSProperties } from "react"
 
 import { getLook } from "@/lib/api";
 import { basePath } from "@/lib/basePath";
+import { CHARACTERS_EVENT, characterImage } from "@/lib/characters";
 import catalogJson from "./catalog.json";
 import {
   AVATAR_SIZE,
@@ -130,6 +131,7 @@ function composedFrame(key: string, look: LookData, frame: Frame): Promise<Compo
  *  frame at the largest whole scale that fits, Space behind it when it has
  *  no backdrop; `scripts/looks.py avatar` writes the same file. */
 export async function avatarPng(look: LookData, size = AVATAR_SIZE): Promise<Blob> {
+  if (look.character) return characterAvatarPng(look.character, size);
   const { data, complete } = await compose(avatarLook(look), "closed");
   if (!complete) throw new Error("a piece of the look did not load; try again");
   const g = avatarGeometry(size);
@@ -139,6 +141,24 @@ export async function avatarPng(look: LookData, size = AVATAR_SIZE): Promise<Blo
   const ctx = canvas.getContext("2d");
   if (!ctx) throw new Error("no 2d context");
   ctx.putImageData(new ImageData(sampleAvatar(data.data, GRID.width, GRID.height, g), size, size), 0, 0);
+  return new Promise((resolve, reject) => {
+    canvas.toBlob((blob) => (blob ? resolve(blob) : reject(new Error("could not encode the avatar"))), "image/png");
+  });
+}
+
+/** A drawn character's closed frame on the square, as large as fits, crisp. */
+async function characterAvatarPng(id: string, size: number): Promise<Blob> {
+  const img = await characterImage(id, "closed");
+  const canvas = document.createElement("canvas");
+  canvas.width = size;
+  canvas.height = size;
+  const ctx = canvas.getContext("2d");
+  if (!ctx) throw new Error("no 2d context");
+  ctx.imageSmoothingEnabled = false;
+  const scale = Math.min(size / img.naturalWidth, size / img.naturalHeight);
+  const w = Math.round(img.naturalWidth * scale);
+  const h = Math.round(img.naturalHeight * scale);
+  ctx.drawImage(img, Math.floor((size - w) / 2), Math.floor((size - h) / 2), w, h);
   return new Promise((resolve, reject) => {
     canvas.toBlob((blob) => (blob ? resolve(blob) : reject(new Error("could not encode the avatar"))), "image/png");
   });
@@ -179,6 +199,18 @@ export function Look({ look, size = 64, talking = false, frame, decorative = fal
   const [mouth, setMouth] = useState<"closed" | "open">("closed");
   const [blinking, setBlinking] = useState(false);
   const key = useMemo(() => JSON.stringify(look), [look]);
+  // A character re-imported or removed: draw again.
+  const [rev, setRev] = useState(0);
+  useEffect(() => {
+    if (!look.character || typeof window === "undefined" || typeof window.addEventListener !== "function") return;
+    const id = look.character;
+    const on = (e: Event) => {
+      const d = (e as CustomEvent<string | null>).detail;
+      if (d === null || d === id) setRev((n) => n + 1);
+    };
+    window.addEventListener(CHARACTERS_EVENT, on);
+    return () => window.removeEventListener(CHARACTERS_EVENT, on);
+  }, [look.character]);
 
   // Which frame to show: a fixed one, else the blink over the mouth.
   useEffect(() => {
@@ -219,22 +251,49 @@ export function Look({ look, size = 64, talking = false, frame, decorative = fal
   }, [frame]);
 
   // Compose on demand; the frame is shared with every other Look of this look.
+  // A drawn character shows its own frame (a missing open or blink frame shows
+  // the closed one); if even that does not load, the parts underneath it do.
   useEffect(() => {
     if (typeof document === "undefined") return;
     let cancelled = false;
-    void composedFrame(key, look, shown)
-      .then(({ data }) => {
-        const canvas = ref.current;
-        if (!canvas || cancelled) return;
-        canvas.getContext("2d")?.putImageData(data, 0, 0);
-      })
-      .catch(() => {
-        /* a part that failed to load leaves the canvas as it was */
-      });
+    const drawParts = () =>
+      composedFrame(key, look, shown)
+        .then(({ data }) => {
+          const canvas = ref.current;
+          if (!canvas || cancelled) return;
+          if (canvas.width !== GRID.width || canvas.height !== GRID.height) {
+            canvas.width = GRID.width;
+            canvas.height = GRID.height;
+          }
+          canvas.getContext("2d")?.putImageData(data, 0, 0);
+        })
+        .catch(() => {
+          /* a part that failed to load leaves the canvas as it was */
+        });
+    if (look.character) {
+      const id = look.character;
+      void characterImage(id, shown)
+        .catch(() => (shown === "closed" ? Promise.reject(new Error("no closed frame")) : characterImage(id, "closed")))
+        .then((img) => {
+          const canvas = ref.current;
+          if (!canvas || cancelled) return;
+          if (canvas.width !== img.naturalWidth || canvas.height !== img.naturalHeight) {
+            canvas.width = img.naturalWidth;
+            canvas.height = img.naturalHeight;
+          }
+          const ctx = canvas.getContext("2d");
+          if (!ctx) return;
+          ctx.clearRect(0, 0, canvas.width, canvas.height);
+          ctx.drawImage(img, 0, 0);
+        })
+        .catch(() => void drawParts());
+    } else {
+      void drawParts();
+    }
     return () => {
       cancelled = true;
     };
-  }, [key, shown, look]);
+  }, [key, shown, look, rev]);
 
   const width = Math.round((size * GRID.width) / GRID.height);
   const a11y = decorative ? { "aria-hidden": true as const } : { role: "img", "aria-label": title ?? "the agent's look", title };
@@ -244,7 +303,7 @@ export function Look({ look, size = 64, talking = false, frame, decorative = fal
       width={GRID.width}
       height={GRID.height}
       className={`cz-look${className ? ` ${className}` : ""}`}
-      style={{ width, height: size, ...style }}
+      style={{ width, height: size, ...(look.character ? { objectFit: "contain" as const } : null), ...style }}
       {...a11y}
     />
   );
