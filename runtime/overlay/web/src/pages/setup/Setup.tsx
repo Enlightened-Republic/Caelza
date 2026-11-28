@@ -16,6 +16,7 @@ import { ArrowLeft, Download, Eye, EyeOff, ExternalLink, KeyRound, Sparkles } fr
 
 import {
   getCatalogModels,
+  getLook,
   getProp,
   getQuickstartState,
   putProp,
@@ -29,8 +30,21 @@ import { basePath } from "@/lib/basePath";
 import { rememberAgentName } from "@/lib/agentName";
 import { createCael } from "@/lib/cael";
 import { GUIDE } from "@/lib/cael.logic";
-import { setAgentName, setUserFile } from "@/lib/identity";
-import { NAME_MAX, nameOk, suggestName, userTemplate } from "@/lib/identity.logic";
+import { getIdentity, getPersonality, putPersonality, setAgentName, setUserFile } from "@/lib/identity";
+import { IDENTITY_FILE, NAME_MAX, nameOk, suggestName, userTemplate } from "@/lib/identity.logic";
+import {
+  SOUL_FILE,
+  VIBES,
+  buddyIdentity,
+  buddySoul,
+  dealVibe,
+  describeLook,
+  isStarterFile,
+  oneLine,
+  vibeById,
+} from "@/lib/buddy.logic";
+import { Look, catalog as looksCatalog } from "@/looks/Look";
+import { defaultLook, normalizeLook } from "@/looks/looks.logic";
 import { t } from "@/lib/i18n";
 import { Eyebrow, Mark, Wordmark } from "@/components/brand/CaelzaLockup";
 import {
@@ -151,6 +165,13 @@ export default function Setup() {
   const [deal, setDeal] = useState(0);
   const [agentLabel, setAgentLabel] = useState(() => suggestName(AGENT_NAME));
   const labelOk = nameOk(agentLabel);
+
+  // The personality (the buddy): one dealt, kept or picked with one tap, and a
+  // line in the owner's own words if they like. Written with the name into the
+  // agent's IDENTITY.md and SOUL.md, with its look in words, so the agent meets
+  // its owner as a someone (lib/buddy.logic.ts).
+  const [vibeId, setVibeId] = useState(() => dealVibe(AGENT_NAME).id);
+  const [ownVibe, setOwnVibe] = useState("");
 
   // The phone's own first run already made `main` and gave it a model (the app
   // writes it with `caelza config set`); then this wizard only names it, and
@@ -335,6 +356,29 @@ export default function Setup() {
     }
   };
 
+  /**
+   * The agent's personality files from the pick: IDENTITY.md (name, creature,
+   * vibe, traits, quirk, likes, its look in words, its wants) and SOUL.md (who
+   * it is, how it talks, its first hello, its look, its inner life). Only over
+   * starter files: a soul Cael wrote with the owner, or the agent's own, stays.
+   */
+  const givePersona = async (alias: string, name: string) => {
+    const vibe = vibeById(vibeId) ?? dealVibe(alias);
+    let look: string | undefined;
+    try {
+      look = describeLook(normalizeLook((await getLook(alias)).look, alias, looksCatalog), looksCatalog);
+    } catch {
+      look = describeLook(defaultLook(alias, looksCatalog), looksCatalog);
+    }
+    const persona = { name, vibe, own: oneLine(ownVibe), look };
+    const [identity, soul] = await Promise.all([
+      getIdentity(alias).catch(() => null),
+      getPersonality(alias, SOUL_FILE).catch(() => null),
+    ]);
+    if (isStarterFile(identity?.content)) await putPersonality(alias, IDENTITY_FILE, buddyIdentity(persona));
+    if (isStarterFile(soul?.content)) await putPersonality(alias, SOUL_FILE, buddySoul(persona));
+  };
+
   const apply = async (staged: StagedProvider, guide?: string) => {
     setBusy(true);
     setErrors([]);
@@ -357,6 +401,8 @@ export default function Setup() {
       }
       // Its USER.md, so the Runtime's own template (which names the owner "User") never fills in.
       await setUserFile(res.agent.alias, userTemplate()).catch(() => undefined);
+      // Its personality and its look in words: a someone from its first hello.
+      await givePersona(res.agent.alias, named).catch(() => undefined);
       // Cael, the guide, on a PC (the app makes him on a phone): he meets the owner next.
       let cael = (state?.agents ?? []).includes(GUIDE);
       if (!cael) {
@@ -386,6 +432,7 @@ export default function Setup() {
       await setAgentName(AGENT_NAME, label);
       rememberAgentName(AGENT_NAME, label);
       await setUserFile(AGENT_NAME, userTemplate()).catch(() => undefined);
+      await givePersona(AGENT_NAME, label).catch(() => undefined);
       // The quickstart never ran here; say it is done so nothing nudges towards it again.
       await putProp("onboard_state.quickstart_completed", true).catch(() => undefined);
       setDone({ agent: AGENT_NAME, label, adopted: adopt.provider, cael: (state?.agents ?? []).includes(GUIDE) });
@@ -472,7 +519,8 @@ export default function Setup() {
       title = t("name.title");
       body = t("name.body");
       control = (
-        <label className="block">
+        <>
+          <label className="block">
           <div className="cz-kicker">{t("name.label")}</div>
           <input
             className="cz-input"
@@ -489,7 +537,46 @@ export default function Setup() {
             data-setup-name
           />
           {agentLabel.trim() !== "" && !labelOk ? <p className="cz-note">{t("name.rule")}</p> : null}
-        </label>
+          </label>
+          <div className="cz-buddy" data-setup-vibe-card>
+            <div className="cz-buddy-head">
+              <Look look={defaultLook(AGENT_NAME, looksCatalog)} size={56} decorative />
+              <div>
+                <div className="cz-kicker">{t("buddy.vibe_label")}</div>
+                <p className="cz-note">{t("buddy.vibe_help")}</p>
+              </div>
+            </div>
+            <div className="cz-chip-row cz-chip-wrap" role="radiogroup" aria-label={t("buddy.vibe_label")}>
+              {VIBES.map((v) => (
+                <button
+                  key={v.id}
+                  type="button"
+                  role="radio"
+                  aria-checked={v.id === vibeId}
+                  className={`cz-chip${v.id === vibeId ? " is-on" : ""}`}
+                  onClick={() => setVibeId(v.id)}
+                  data-setup-vibe={v.id}
+                >
+                  <span aria-hidden="true">{v.emoji}</span> {v.label}
+                </button>
+              ))}
+            </div>
+            <label className="block">
+              <div className="cz-kicker">{t("buddy.own_label")}</div>
+              <input
+                className="cz-input"
+                value={ownVibe}
+                maxLength={200}
+                placeholder={t("buddy.own_placeholder")}
+                onChange={(e) => setOwnVibe(e.target.value)}
+                onKeyDown={onEnter(() => {
+                  if (labelOk) nameNext();
+                })}
+                data-setup-vibe-own
+              />
+            </label>
+          </div>
+        </>
       );
       actions = (
         <>

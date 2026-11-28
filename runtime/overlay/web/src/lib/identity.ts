@@ -22,6 +22,11 @@ export function getIdentity(alias: string): Promise<PersonalityFile> {
   return apiFetch<PersonalityFile>(path(alias));
 }
 
+/** One of the agent's personality files (IDENTITY.md, SOUL.md, USER.md...). */
+export function getPersonality(alias: string, file: string): Promise<PersonalityFile> {
+  return apiFetch<PersonalityFile>(filePath(alias, file));
+}
+
 /** Replace one of the agent's personality files whole (the Runtime reads them into every prompt). */
 export function putPersonality(alias: string, file: string, content: string): Promise<unknown> {
   return apiFetch(filePath(alias, file), {

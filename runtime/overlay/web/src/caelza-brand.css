@@ -717,6 +717,31 @@ main .surface-panel {
   cursor: not-allowed;
 }
 
+/* The buddy: the first run's personality pick, two chips a row on a phone. */
+.cz-buddy {
+  display: grid;
+  gap: 12px;
+  margin-top: 16px;
+}
+.cz-buddy-head {
+  display: flex;
+  gap: 12px;
+  align-items: center;
+}
+.cz-buddy-head .cz-note {
+  margin: 2px 0 0;
+}
+.cz-chip-wrap {
+  flex-wrap: wrap;
+}
+.cz-chip-wrap .cz-chip {
+  flex: 1 1 calc(50% - 8px);
+  height: auto;
+  min-height: 44px;
+  padding: 8px 10px;
+  font-size: 14px;
+}
+
 /* The download bar of the local door: Ollama pulling the model, in our gradient. */
 .cz-progress {
   height: 10px;

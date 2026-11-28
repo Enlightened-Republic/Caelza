@@ -14,8 +14,9 @@ import { basePath } from "@/lib/basePath";
 import { AgentNameText, rememberAgentName, useAgentName } from "@/lib/agentName";
 import { deleteLook, getLook, getProp, getWardrobe, patchConfig, putLook } from "@/lib/api";
 import { t } from "@/lib/i18n";
-import { setAgentName } from "@/lib/identity";
+import { getIdentity, putIdentity, setAgentName } from "@/lib/identity";
 import { NAME_MAX, nameOk } from "@/lib/identity.logic";
+import { describeLook, withLookSection } from "@/lib/buddy.logic";
 import { freeOps } from "@/lib/persona.logic";
 import VoiceCard from "@/pages/VoiceCard";
 import { charactersChanged, deleteCharacter, importCharacter, listCharacters } from "@/lib/characters";
@@ -244,6 +245,20 @@ function Customizer({ alias }: { alias: string }) {
   const pick = (id: string) => setLook((l) => ({ ...l, parts: { ...l.parts, [layer]: id } }));
   const paint = (slot: Slot, hex: string) => setLook((l) => ({ ...l, colors: { ...l.colors, [slot]: hex.toLowerCase() } }));
 
+  // The look in words into the agent's IDENTITY.md ("How I look"): the Runtime
+  // reads that file into every prompt and never look.json, so this is how the
+  // look the owner picked reaches the agent. Cael's files are his own.
+  const tellAgent = async (l: LookData): Promise<boolean> => {
+    if (alias === "cael") return true;
+    try {
+      const current = await getIdentity(alias);
+      await putIdentity(alias, withLookSection(current.content, describeLook(l, catalog)));
+      return true;
+    } catch {
+      return false;
+    }
+  };
+
   const save = async () => {
     if (busy || locked.length) return;
     setBusy(true);
@@ -254,7 +269,8 @@ function Customizer({ alias }: { alias: string }) {
       setSaved(l);
       setLook(l);
       rememberLook(alias, l);
-      setNote({ tone: "ok", text: t("looks.saved") });
+      const told = await tellAgent(l);
+      setNote(told ? { tone: "ok", text: alias === "cael" ? t("looks.saved") : t("buddy.look_told") } : { tone: "error", text: t("buddy.look_untold") });
     } catch (e) {
       setNote({ tone: "error", text: e instanceof Error ? e.message : String(e) });
     } finally {
@@ -287,7 +303,8 @@ function Customizer({ alias }: { alias: string }) {
       setSaved(l);
       setLook(l);
       forgetLook(alias);
-      setNote({ tone: "ok", text: t("looks.reset_done") });
+      const told = await tellAgent(l);
+      setNote(told ? { tone: "ok", text: t("looks.reset_done") } : { tone: "error", text: t("buddy.look_untold") });
     } catch (e) {
       setNote({ tone: "error", text: e instanceof Error ? e.message : String(e) });
     } finally {
