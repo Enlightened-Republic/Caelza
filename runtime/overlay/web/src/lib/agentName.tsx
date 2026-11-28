@@ -10,8 +10,9 @@ const pending = new Map<string, Promise<string>>();
 const listeners = new Set<() => void>();
 
 // When Cael, the guide, replies, a name may have just changed (he gives the
-// owner's agent its name when they meet): ask the files again.
-if (typeof window !== "undefined") {
+// owner's agent its name when they meet): ask the files again. Only on a real
+// window: a node test renders the chat with a stub that has no listeners.
+if (typeof window !== "undefined" && typeof window.addEventListener === "function") {
   window.addEventListener("caelza-agent-reply", (e: Event) => {
     const detail = (e as CustomEvent<{ alias?: string }>).detail;
     if (detail?.alias !== "cael") return;
@@ -53,17 +54,18 @@ export function loadAgentName(alias: string): Promise<string> {
   return p;
 }
 
-/** The agent's name, the alias until the file has answered. */
+/** The agent's name, the alias until the file has answered; "" for no agent (""). */
 export function useAgentName(alias: string): string {
   const [, tick] = useState(0);
   useEffect(() => {
     const l = () => tick((n) => n + 1);
     listeners.add(l);
-    if (!names.has(alias)) void loadAgentName(alias);
+    if (alias && !names.has(alias)) void loadAgentName(alias);
     return () => {
       listeners.delete(l);
     };
   }, [alias]);
+  if (!alias) return "";
   return names.get(alias) ?? displayName(null, alias);
 }
 
