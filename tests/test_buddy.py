@@ -64,7 +64,7 @@ def test_the_patch_replaces_upstreams_starter_files_and_adds_the_strings_and_the
     assert "-- **Creature:** A Rust-forged AI — fast, lean, and relentless" in PATCH
     assert "-You are **{agent}**. Built in Rust. 3MB binary. Zero bloat." in PATCH
     assert "-# AGENTS.md — {agent} Personal Assistant" in PATCH
-    assert "src/lib/identity.logic.test.ts src/lib/buddy.logic.test.ts" in added("web/package.json")
+    assert "src/lib/activeChat.logic.test.ts src/lib/buddy.logic.test.ts" in added("web/package.json")
     patch = MANIFEST["components"]["runtime"]["buddy_patch"]
     assert (REPO_ROOT / patch).is_file() and patch.endswith("0032-buddy.patch")
 
